@@ -111,10 +111,22 @@ function loadMatches() {
             return response.json();
         })
         .then(function(data) {
-            allMatches = data;
-            if (!Array.isArray(allMatches)) {
+            // Handle new response format { matches, requested_date, source_date, is_exact }
+            if (data && data.matches && Array.isArray(data.matches)) {
+                allMatches = data.matches;
+                allMatches._meta = {
+                    requestedDate: data.requested_date,
+                    sourceDate: data.source_date,
+                    isExact: data.is_exact
+                };
+            } else if (Array.isArray(data)) {
+                // Fallback for old format
+                allMatches = data;
+                allMatches._meta = { isExact: true };
+            } else {
                 throw new Error('Respuesta invalida');
             }
+
             if (allMatches.length === 0) {
                 if (matchesContainer) {
                     matchesContainer.innerHTML = '<div class="no-matches">No hay partidos para ' + formatDate(currentDate) + '<br><small>Prueba con otra fecha</small></div>';
@@ -134,6 +146,15 @@ function loadMatches() {
 function renderMatches() {
     var matches = allMatches;
     var matchesContainer = getEl('matches-container');
+    var meta = matches._meta || { isExact: true };
+
+    // Show notice if matches are from a different date
+    var dateNotice = '';
+    if (!meta.isExact && meta.sourceDate) {
+        var sourceDateParts = meta.sourceDate.split('-');
+        var sourceDateFormatted = sourceDateParts[2] + '/' + sourceDateParts[1] + '/' + sourceDateParts[0];
+        dateNotice = '<div class="date-notice">Mostrando partidos del ' + sourceDateFormatted + ' (no hay partidos para la fecha seleccionada)</div>';
+    }
 
     if (currentFilter !== 'all') {
         matches = matches.filter(function(m) {
@@ -157,7 +178,7 @@ function renderMatches() {
         return (a.utcDate || '').localeCompare(b.utcDate || '');
     });
 
-    var html = '';
+    var html = dateNotice;
     for (var i = 0; i < matches.length; i++) {
         var match = matches[i];
         var home = match.homeTeam || {};
@@ -180,7 +201,14 @@ function renderMatches() {
 
         html += '<div class="match-card ' + (isLive ? 'live ' : '') + (isFinished ? 'finished' : '') + '" data-match-id="' + match.id + '">';
         html += '<div class="match-time-row">';
-        html += '<span class="match-time">' + time + '</span>';
+        var matchDateStr = match.matchDate || '';
+        var currentDateStr = formatDateISO(currentDate);
+        if (matchDateStr && matchDateStr !== currentDateStr) {
+            var mdParts = matchDateStr.split('-');
+            html += '<span class="match-time">' + mdParts[2] + '/' + mdParts[1] + '</span>';
+        } else {
+            html += '<span class="match-time">' + time + '</span>';
+        }
         html += statusBadge;
         if (scoreText) html += '<span class="match-score">' + scoreText + '</span>';
         html += '</div>';
