@@ -11,7 +11,7 @@ import requests
 logging.basicConfig(format='%(asctime)s - %(levelname)s - %(message)s', level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-app = FastAPI(title="Futbol Stats", version="3.2.0")
+app = FastAPI(title="Futbol Stats", version="3.3.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -27,10 +27,10 @@ templates = Jinja2Templates(directory="templates")
 API_KEY = os.environ.get('API_FOOTBALL_KEY', '650c819e61df3915394dd45ba62df836')
 HEADERS = {
     'x-rapidapi-key': API_KEY,
-    'x-apidapi-host': 'v3.football.api-sports.io'
+    'x-rapidapi-host': 'v3.football.api-sports.io'
 }
 
-# Cache simple
+# Cache
 _cache = {}
 
 def get_cache(key, ttl=600):
@@ -45,7 +45,7 @@ def set_cache(key, data):
 
 def api_request(endpoint, params, cache_key, ttl=600):
     cached = get_cache(cache_key, ttl)
-    if cached:
+    if cached is not None:
         return cached
     
     try:
@@ -56,7 +56,10 @@ def api_request(endpoint, params, cache_key, ttl=600):
             timeout=15
         )
         if resp.status_code == 429:
-            logger.error("RATE LIMIT API-FOOTBALL")
+            logger.error("RATE LIMIT")
+            return {'response': []}
+        if resp.status_code == 403:
+            logger.error("FORBIDDEN - API KEY INVALID?")
             return {'response': []}
         resp.raise_for_status()
         data = resp.json()
@@ -101,74 +104,92 @@ def matches(date: str = Query(None)):
     if not date:
         date = datetime.now().strftime("%Y-%m-%d")
     
-    # Buscar en fecha solicitada y ±3 días
-    for delta in [0, -1, 1, -2, 2, -3, 3]:
+    logger.info(f"=== BUSCANDO PARTIDOS PARA: {date} ===")
+    
+    # Buscar en fecha solicitada y ±7 días
+    for delta in [0, -1, 1, -2, 2, -3, 3, -4, 4, -5, 5, -6, 6, -7, 7]:
         try:
             check_date = (datetime.strptime(date, "%Y-%m-%d") + timedelta(days=delta)).strftime("%Y-%m-%d")
             result = _get_matches_for_date(check_date)
             if result:
-                if delta != 0:
-                    logger.info(f"Partidos encontrados en fecha alternativa: {check_date}")
+                logger.info(f"✅ ENCONTRADOS {len(result)} partidos en {check_date}")
                 return result
-        except:
+        except Exception as e:
+            logger.error(f"Error buscando {check_date}: {e}")
             continue
     
-    logger.warning(f"No hay partidos para {date} ni fechas cercanas")
+    logger.warning(f"❌ NO HAY PARTIDOS para {date} ni fechas cercanas")
     return []
 
 def _get_matches_for_date(date: str) -> list:
     all_matches = []
     
-    # Ligas que JUEGAN en verano (mayo 2026)
-    summer_leagues = {
-        113: 'Allsvenskan',      # Suecia
-        179: 'Eliteserien',      # Noruega
-        144: 'Veikkausliiga',    # Finlandia
-        253: 'MLS',              # USA
-        71: 'Serie A Brasil',    # Brasil
-        292: 'Premier League Rusia',
-        307: 'Premier League Ucrania',
-        250: 'A League Australia',
-        169: 'Liga MX',          # Mexico
-        242: 'Primera Division Chile',
-        243: 'Primera Division Argentina',
-        265: 'Primera Division Colombia',
-        148: 'Super Lig Turquia',
-        149: 'Super Lig Grecia',
-        94: 'Primeira Liga',     # Portugal (termina mayo)
-        88: 'Eredivisie',        # Holanda (termina mayo)
-    }
+    # TODAS las ligas disponibles
+    leagues = [
+        # Europa verano
+        (113, 'Allsvenskan'),      # Suecia
+        (179, 'Eliteserien'),      # Noruega
+        (144, 'Veikkausliiga'),    # Finlandia
+        (292, 'Premier League Rusia'),
+        (307, 'Premier League Ucrania'),
+        (148, 'Super Lig Turquia'),
+        (149, 'Super Lig Grecia'),
+        # Américas
+        (253, 'MLS'),              # USA
+        (71, 'Serie A Brasil'),    # Brasil
+        (169, 'Liga MX'),          # Mexico
+        (242, 'Primera Division Chile'),
+        (243, 'Primera Division Argentina'),
+        (265, 'Primera Division Colombia'),
+        (250, 'A League Australia'),
+        # Europa (pueden tener partidos finales)
+        (140, 'La Liga'),          # España
+        (39, 'Premier League'),    # Inglaterra
+        (135, 'Serie A'),          # Italia
+        (78, 'Bundesliga'),        # Alemania
+        (61, 'Ligue 1'),           # Francia
+        (88, 'Eredivisie'),        # Holanda
+        (94, 'Primeira Liga'),     # Portugal
+        # Copas
+        (2, 'Champions League'),
+        (3, 'Europa League'),
+    ]
     
-    # Finales de copas europeas
-    cup_finals = {
-        2: 'Champions League',
-        3: 'Europa League',
-    }
-    
-    all_leagues = {**summer_leagues, **cup_finals}
-    
-    for season in [2025, 2024]:
-        for lid, name in all_leagues.items():
-            data = api_request('fixtures', {
-                'league': lid, 'season': season, 'date': date, 'timezone': 'Europe/Madrid'
-            }, f"fix_{lid}_{season}_{date}", 600)
-            
-            for m in data.get('response', []):
-                all_matches.append(format_match(m))
+    for season in [2025, 2024, 2023]:
+        for lid, name in leagues:
+            try:
+                data = api_request('fixtures', {
+                    'league': lid, 'season': season, 'date': date, 'timezone': 'Europe/Madrid'
+                }, f"fix_{lid}_{season}_{date}", 600)
+                
+                count = len(data.get('response', []))
+                if count > 0:
+                    logger.info(f"  📌 {name} (season {season}): {count} partidos")
+                
+                for m in data.get('response', []):
+                    all_matches.append(format_match(m))
+            except Exception as e:
+                logger.error(f"  ❌ Error en {name}: {e}")
+                continue
         
         if all_matches:
+            logger.info(f"✅ Temporada {season}: {len(all_matches)} partidos totales")
             break
     
     return all_matches
 
 @app.get("/api/live")
 def live():
+    logger.info("=== BUSCANDO PARTIDOS EN VIVO ===")
     data = api_request('fixtures', {'live': 'all'}, "live_all", 60)
-    return [format_match(m) for m in data.get('response', [])]
+    matches = [format_match(m) for m in data.get('response', [])]
+    logger.info(f"✅ {len(matches)} partidos en vivo")
+    return matches
 
 @app.get("/api/analyze/{match_id}")
 def analyze(match_id: int):
-    # Detalles
+    logger.info(f"=== ANALIZANDO PARTIDO {match_id} ===")
+    
     data = api_request('fixtures', {'id': match_id}, f"match_{match_id}", 300)
     if not data.get('response'):
         raise HTTPException(404, "Partido no encontrado")
@@ -178,6 +199,9 @@ def analyze(match_id: int):
     away_id = match['teams']['away']['id']
     league_id = match['league']['id']
     season = match['league']['season']
+    
+    logger.info(f"Partido: {match['teams']['home']['name']} vs {match['teams']['away']['name']}")
+    logger.info(f"Liga: {match['league']['name']}, Season: {season}")
     
     # Stats
     home_stats = api_request('teams/statistics', {
@@ -328,7 +352,12 @@ def analyze(match_id: int):
 
 @app.get("/health")
 def health():
-    return {"status": "ok", "cache_size": len(_cache), "time": datetime.now().isoformat()}
+    return {
+        "status": "ok",
+        "cache_size": len(_cache),
+        "time": datetime.now().isoformat(),
+        "api_key": "configured" if API_KEY else "missing"
+    }
 
 if __name__ == "__main__":
     import uvicorn
