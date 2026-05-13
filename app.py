@@ -33,7 +33,7 @@ HEADERS = {
 
 _cache = {}
 
-# Top competitions to query individually
+# Top competitions
 TOP_COMPETITIONS = {
     'PL': 'Premier League',
     'PD': 'La Liga', 
@@ -71,6 +71,7 @@ def api_request(endpoint, params=None, cache_key=None, ttl=300):
 
     try:
         url = f"{BASE_URL}/{endpoint}"
+        logger.info(f"API CALL: {url} | params: {params}")
         resp = requests.get(url, headers=HEADERS, params=params, timeout=15)
 
         if resp.status_code == 429:
@@ -85,6 +86,7 @@ def api_request(endpoint, params=None, cache_key=None, ttl=300):
 
         resp.raise_for_status()
         data = resp.json()
+        logger.info(f"API RESPONSE: {len(data)} keys, matches: {len(data.get('matches', []))}")
 
         if cache_key:
             set_cache(cache_key, data)
@@ -156,53 +158,85 @@ def matches(date: str = Query(None)):
     if not date:
         date = datetime.now().strftime("%Y-%m-%d")
 
+    logger.info(f"=" * 50)
     logger.info(f"BUSCANDO PARTIDOS PARA: {date}")
 
     all_matches = []
     found_competitions = set()
 
-    # Strategy 1: Query each top competition individually
-    for comp_code, comp_name in TOP_COMPETITIONS.items():
-        try:
-            data = api_request(
-                f'competitions/{comp_code}/matches',
-                {'dateFrom': date, 'dateTo': date},
-                f"comp_{comp_code}_{date}",
-                600
-            )
+    # STRATEGY 1: General /matches endpoint WITHOUT competitions filter
+    # This should return ALL matches the API key has access to for the date range
+    logger.info("STRATEGY 1: General /matches sin filtro de competiciones")
+    data = api_request(
+        'matches',
+        {'dateFrom': date, 'dateTo': date},
+        f"matches_general_{date}",
+        300
+    )
 
-            if data and data.get('matches'):
-                comp_matches = [format_match(m) for m in data['matches']]
-                # Filter to ensure they're actually on the requested date
-                comp_matches = [m for m in comp_matches if m['matchDate'] == date]
-                if comp_matches:
-                    all_matches.extend(comp_matches)
-                    found_competitions.add(comp_name)
-                    logger.info(f"  {comp_name}: {len(comp_matches)} partidos")
+    if data and data.get('matches'):
+        general_matches = [format_match(m) for m in data['matches']]
+        # Filter to exact date
+        general_matches = [m for m in general_matches if m['matchDate'] == date]
+        if general_matches:
+            all_matches.extend(general_matches)
+            for m in general_matches:
+                found_competitions.add(m['competition'].get('name', 'Unknown'))
+            logger.info(f"  General: {len(general_matches)} partidos")
 
-        except Exception as e:
-            logger.error(f"Error en {comp_name}: {e}")
-            continue
-
-    # Strategy 2: Also try the general /matches endpoint as fallback
+    # STRATEGY 2: General /matches WITH competitions filter
     if not all_matches:
-        logger.info("No se encontraron partidos en competiciones individuales, probando /matches general")
-        try:
-            data = api_request(
-                'matches',
-                {'dateFrom': date, 'dateTo': date},
-                f"matches_{date}",
-                300
-            )
-            if data and data.get('matches'):
-                general_matches = [format_match(m) for m in data['matches']]
-                general_matches = [m for m in general_matches if m['matchDate'] == date]
-                all_matches.extend(general_matches)
-                logger.info(f"  /matches general: {len(general_matches)} partidos")
-        except Exception as e:
-            logger.error(f"Error en /matches general: {e}")
+        logger.info("STRATEGY 2: General /matches CON filtro de competiciones")
+        competitions = 'PL,PD,SA,BL1,FL1,CL,EL,EC,PPL,DED'
+        data = api_request(
+            'matches',
+            {'dateFrom': date, 'dateTo': date, 'competitions': competitions},
+            f"matches_filtered_{date}",
+            300
+        )
 
-    # Remove duplicates by match ID
+        if data and data.get('matches'):
+            filtered_matches = [format_match(m) for m in data['matches']]
+            filtered_matches = [m for m in filtered_matches if m['matchDate'] == date]
+            if filtered_matches:
+                all_matches.extend(filtered_matches)
+                for m in filtered_matches:
+                    found_competitions.add(m['competition'].get('name', 'Unknown'))
+                logger.info(f"  Filtrado: {len(filtered_matches)} partidos")
+
+    # STRATEGY 3: Competition-specific endpoints
+    if not all_matches:
+        logger.info("STRATEGY 3: Endpoints especificos por competicion")
+        for comp_code, comp_name in TOP_COMPETITIONS.items():
+            try:
+                # Determine season based on date
+                date_year = int(date[:4])
+                season = date_year - 1 if int(date[5:7]) < 8 else date_year
+
+                data = api_request(
+                    f'competitions/{comp_code}/matches',
+                    {
+                        'dateFrom': date,
+                        'dateTo': date,
+                        'season': season
+                    },
+                    f"comp_{comp_code}_{date}_{season}",
+                    600
+                )
+
+                if data and data.get('matches'):
+                    comp_matches = [format_match(m) for m in data['matches']]
+                    comp_matches = [m for m in comp_matches if m['matchDate'] == date]
+                    if comp_matches:
+                        all_matches.extend(comp_matches)
+                        found_competitions.add(comp_name)
+                        logger.info(f"  {comp_name}: {len(comp_matches)} partidos")
+
+            except Exception as e:
+                logger.error(f"Error en {comp_name}: {e}")
+                continue
+
+    # Remove duplicates
     seen_ids = set()
     unique_matches = []
     for m in all_matches:
@@ -210,8 +244,9 @@ def matches(date: str = Query(None)):
             seen_ids.add(m['id'])
             unique_matches.append(m)
 
-    logger.info(f"TOTAL: {len(unique_matches)} partidos unicos en {date}")
-    logger.info(f"Competiciones encontradas: {', '.join(found_competitions) if found_competitions else 'Ninguna'}")
+    logger.info(f"TOTAL ENCONTRADOS: {len(unique_matches)} partidos unicos")
+    logger.info(f"Competiciones: {', '.join(found_competitions) if found_competitions else 'Ninguna'}")
+    logger.info(f"=" * 50)
 
     if unique_matches:
         return {
@@ -219,27 +254,28 @@ def matches(date: str = Query(None)):
             "requested_date": date,
             "source_date": date,
             "is_exact": True,
-            "competitions_found": list(found_competitions)
+            "competitions_found": list(found_competitions),
+            "search_strategy": "direct"
         }
 
-    # Fallback: search nearby dates
-    logger.info("Buscando en fechas cercanas...")
-    for delta in [-1, 1, -2, 2, -3, 3, -4, 4, -5, 5, -6, 6, -7, 7]:
+    # FALLBACK: Search nearby dates (wider range)
+    logger.info("FALLBACK: Buscando en fechas cercanas...")
+    for delta in [-1, 1, -2, 2, -3, 3]:
         try:
             check_date = (datetime.strptime(date, "%Y-%m-%d") + timedelta(days=delta)).strftime("%Y-%m-%d")
             fallback_matches = []
 
-            for comp_code, comp_name in TOP_COMPETITIONS.items():
-                data = api_request(
-                    f'competitions/{comp_code}/matches',
-                    {'dateFrom': check_date, 'dateTo': check_date},
-                    f"comp_{comp_code}_{check_date}",
-                    600
-                )
-                if data and data.get('matches'):
-                    comp_matches = [format_match(m) for m in data['matches']]
-                    comp_matches = [m for m in comp_matches if m['matchDate'] == check_date]
-                    fallback_matches.extend(comp_matches)
+            # Try general endpoint first for fallback
+            data = api_request(
+                'matches',
+                {'dateFrom': check_date, 'dateTo': check_date},
+                f"matches_general_{check_date}",
+                300
+            )
+            if data and data.get('matches'):
+                fb_matches = [format_match(m) for m in data['matches']]
+                fb_matches = [m for m in fb_matches if m['matchDate'] == check_date]
+                fallback_matches.extend(fb_matches)
 
             if fallback_matches:
                 seen_ids = set()
@@ -249,17 +285,18 @@ def matches(date: str = Query(None)):
                         seen_ids.add(m['id'])
                         unique_fallback.append(m)
 
-                logger.info(f"ENCONTRADOS {len(unique_fallback)} partidos en fecha alternativa {check_date}")
+                logger.info(f"FALLBACK ENCONTRADO: {len(unique_fallback)} partidos en {check_date}")
                 return {
                     "matches": unique_fallback,
                     "requested_date": date,
                     "source_date": check_date,
                     "is_exact": False,
-                    "competitions_found": list(found_competitions)
+                    "competitions_found": list(found_competitions),
+                    "search_strategy": "fallback"
                 }
 
         except Exception as e:
-            logger.error(f"Error buscando {check_date}: {e}")
+            logger.error(f"Error fallback {check_date}: {e}")
             continue
 
     logger.warning(f"NO HAY PARTIDOS para {date}")
@@ -268,33 +305,29 @@ def matches(date: str = Query(None)):
         "requested_date": date,
         "source_date": None,
         "is_exact": True,
-        "competitions_found": []
+        "competitions_found": [],
+        "search_strategy": "none"
     }
 
 @app.get("/api/analyze/{match_id}")
 def analyze(match_id: int):
     logger.info(f"ANALIZANDO PARTIDO {match_id}")
 
-    # Strategy 1: Try the general /matches/{id} endpoint
+    # Strategy 1: Try general endpoint
     data = api_request(f'matches/{match_id}', cache_key=f"match_{match_id}", ttl=300)
 
-    # Strategy 2: If general endpoint fails, search in cached competition data
+    # Strategy 2: Search in cache
     if not data:
         logger.warning(f"Match {match_id} not in general endpoint, searching cache...")
         found_match = None
-        found_comp = None
 
         for cache_key in list(_cache.keys()):
-            if cache_key.startswith('comp_'):
+            if cache_key.startswith('matches_general_') or cache_key.startswith('matches_filtered_') or cache_key.startswith('comp_'):
                 cached_data = get_cache(cache_key)
                 if cached_data and cached_data.get('matches'):
                     for m in cached_data['matches']:
                         if m.get('id') == match_id:
                             found_match = m
-                            # Extract competition code from cache key (comp_PD_2026-05-14)
-                            parts = cache_key.split('_')
-                            if len(parts) >= 2:
-                                found_comp = parts[1]
                             logger.info(f"Found match {match_id} in cache: {cache_key}")
                             break
                 if found_match:
@@ -302,15 +335,11 @@ def analyze(match_id: int):
 
         if found_match:
             data = found_match
-            logger.info(f"Using cached match data for {match_id}")
         else:
             logger.error(f"Match {match_id} not found anywhere")
-            raise HTTPException(404, "Partido no encontrado. Puede que no esté disponible con tu plan API gratuito.")
+            raise HTTPException(404, "Partido no encontrado o no disponible con tu plan API.")
 
-    # Now process the match data
     match = data
-
-    # Safely extract IDs with fallbacks
     home_team = match.get('homeTeam', {})
     away_team = match.get('awayTeam', {})
     competition = match.get('competition', {})
@@ -328,12 +357,12 @@ def analyze(match_id: int):
 
     match_detail = format_match(match)
 
-    # H2H - with error handling
+    # H2H
     h2h_data = None
     try:
         h2h_data = api_request(f'matches/{match_id}/head2head', {'limit': 10}, f"h2h_{match_id}", 3600)
     except Exception as e:
-        logger.warning(f"H2H fetch failed for {match_id}: {e}")
+        logger.warning(f"H2H fetch failed: {e}")
 
     h2h_matches = []
     h2h_stats = {'home_wins': 0, 'away_wins': 0, 'draws': 0, 'home_goals': 0, 'away_goals': 0, 'total_matches': 0}
@@ -358,7 +387,7 @@ def analyze(match_id: int):
                 'competition': m['competition']['name']
             })
 
-    # FORMA - with error handling
+    # FORMA
     def get_form(team_id, comp_id=None):
         if not team_id:
             return []
@@ -369,7 +398,7 @@ def analyze(match_id: int):
         try:
             team_matches = api_request(f'teams/{team_id}/matches', params, f"form_{team_id}_{comp_id}", 1800)
         except Exception as e:
-            logger.warning(f"Form fetch failed for team {team_id}: {e}")
+            logger.warning(f"Form fetch failed: {e}")
             return []
 
         form = []
@@ -401,7 +430,7 @@ def analyze(match_id: int):
     home_form = get_form(home_id, comp_id)
     away_form = get_form(away_id, comp_id)
 
-    # STANDINGS - with error handling
+    # STANDINGS
     def get_standings(team_id, comp_id, season_year):
         if not comp_id:
             return None
@@ -433,7 +462,7 @@ def analyze(match_id: int):
     home_standings = get_standings(home_id, comp_id, season_year)
     away_standings = get_standings(away_id, comp_id, season_year)
 
-    # STATS calculation
+    # STATS
     def calc_from_form(form_list):
         if not form_list:
             return {'avg_scored': 1.5, 'avg_conceded': 1.2, 'matches': 0, 'total_scored': 0, 'total_conceded': 0}
