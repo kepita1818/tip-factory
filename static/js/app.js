@@ -74,9 +74,13 @@ async function loadMatches() {
         allMatches = await response.json();
         if (!Array.isArray(allMatches)) throw new Error('Respuesta invalida');
         
+        if (allMatches.length === 0) {
+            matchesContainer.innerHTML = '<div class="no-matches">No hay partidos disponibles. Intenta con otra fecha.</div>';
+            return;
+        }
+        
         renderMatches();
         
-        // Si es hoy, activar refresh en vivo
         if (isToday && !liveRefreshInterval) {
             liveIndicator.classList.add('active');
             startLiveRefresh();
@@ -99,7 +103,7 @@ function renderMatches() {
     }
     
     if (!matches.length) {
-        matchesContainer.innerHTML = '<div class="no-matches">No hay partidos</div>';
+        matchesContainer.innerHTML = '<div class="no-matches">No hay partidos para este filtro</div>';
         return;
     }
     
@@ -107,7 +111,7 @@ function renderMatches() {
         const home = match.homeTeam;
         const away = match.awayTeam;
         const time = match.utcDate ? match.utcDate.substring(11, 16) : '--:--';
-        const isLive = match.status === 'inprogress';
+        const isLive = match.status === 'inprogress' || match.status === '1H' || match.status === '2H' || match.status === 'HT';
         const scoreText = (match.homeScore !== null && match.awayScore !== null) 
             ? `${match.homeScore} - ${match.awayScore}` 
             : '';
@@ -115,7 +119,7 @@ function renderMatches() {
         return `
             <div class="match-card-main ${isLive ? 'live' : ''}" data-match-id="${match.id}">
                 <div class="match-time">
-                    ${isLive ? `🔴 ${match.minute}'` : time}
+                    ${isLive ? `🔴 ${match.minute || ''}'` : time}
                     ${scoreText ? `<span class="match-score-live">${scoreText}</span>` : ''}
                 </div>
                 <div class="match-teams-row">
@@ -148,7 +152,6 @@ function startLiveRefresh() {
             const liveMatches = await response.json();
             if (!Array.isArray(liveMatches)) return;
             
-            // Actualizar partidos en vivo en la lista
             liveMatches.forEach(live => {
                 const idx = allMatches.findIndex(m => m.id === live.id);
                 if (idx !== -1) {
@@ -160,7 +163,7 @@ function startLiveRefresh() {
         } catch (e) {
             console.error('Live refresh error:', e);
         }
-    }, 30000); // Cada 30 segundos
+    }, 30000);
 }
 
 function stopLiveRefresh() {
@@ -206,7 +209,6 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
 async function analyzeMatch(matchId) {
     showAnalysis();
     
-    // Reset tabs
     document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
     document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
     document.querySelector('[data-tab="summary"]').classList.add('active');
@@ -237,13 +239,11 @@ function renderAnalysis(data) {
     const homeStats = data.home_stats;
     const awayStats = data.away_stats;
     
-    // Header
     document.getElementById('home-name').textContent = info.home_team;
     document.getElementById('away-name').textContent = info.away_team;
     document.getElementById('home-logo').src = info.home_logo;
     document.getElementById('away-logo').src = info.away_logo;
     
-    // Score si está en vivo
     const scoreDisplay = document.getElementById('score-display');
     if (info.home_score !== null && info.away_score !== null) {
         scoreDisplay.textContent = `${info.home_score} - ${info.away_score}`;
@@ -253,7 +253,6 @@ function renderAnalysis(data) {
     
     document.getElementById('match-meta').textContent = `${info.date} | ${info.league} | ${info.time}`;
     
-    // Live status
     const liveStatus = document.getElementById('live-status');
     if (info.minute > 0) {
         liveStatus.textContent = `🔴 EN VIVO ${info.minute}'`;
@@ -262,7 +261,6 @@ function renderAnalysis(data) {
         liveStatus.classList.remove('active');
     }
     
-    // Tab labels
     const homeShort = info.home_short.substring(0, 12);
     const awayShort = info.away_short.substring(0, 12);
     document.getElementById('table-home').textContent = homeShort;
@@ -274,11 +272,9 @@ function renderAnalysis(data) {
     document.getElementById('home-form-name').textContent = info.home_team.substring(0, 15);
     document.getElementById('away-form-name').textContent = info.away_team.substring(0, 15);
     
-    // Form
     renderForm(data.home_form, 'home-form');
     renderForm(data.away_form, 'away-form');
     
-    // Probabilities
     setTimeout(() => {
         setProbBar('prob-over15', probs.over_1_5);
         setProbBar('prob-over25', probs.over_2_5);
@@ -289,12 +285,10 @@ function renderAnalysis(data) {
         setProbBar('prob-cards', Math.min(probs.expected_cards * 12, 100), probs.expected_cards);
     }, 100);
     
-    // Tables
     renderGoalsTable(homeStats, awayStats);
     renderCornersTable(homeStats, awayStats);
     renderCardsTable(homeStats, awayStats);
     
-    // Live incidents
     const incidentsCard = document.getElementById('live-incidents-card');
     const incidentsDiv = document.getElementById('live-incidents');
     if (data.live_incidents && data.live_incidents.length > 0) {
@@ -367,23 +361,4 @@ function renderCornersTable(home, away) {
         <tr><td>Corners/Partido</td><td class="value-high">${(h.avg_corners || 0).toFixed(1)}</td><td class="value-high">${(a.avg_corners || 0).toFixed(1)}</td><td>${(((h.avg_corners || 0) + (a.avg_corners || 0))/2).toFixed(1)}</td></tr>
         <tr><td>Over 8.5</td><td class="value-medium">${h.over_8_5_corners || 0}%</td><td class="value-medium">${a.over_8_5_corners || 0}%</td><td>${Math.round((h.over_8_5_corners + a.over_8_5_corners)/2)}%</td></tr>
         <tr><td>Over 9.5</td><td class="value-low">${h.over_9_5_corners || 0}%</td><td class="value-low">${a.over_9_5_corners || 0}%</td><td>${Math.round((h.over_9_5_corners + a.over_9_5_corners)/2)}%</td></tr>
-        <tr><td>Over 10.5</td><td class="value-low">${h.over_10_5_corners || 0}%</td><td class="value-low">${a.over_10_5_corners || 0}%</td><td>${Math.round((h.over_10_5_corners + a.over_10_5_corners)/2)}%</td></tr>
-    `;
-}
-
-function renderCardsTable(home, away) {
-    const tbody = document.getElementById('cards-table-body');
-    const h = home.home || home;
-    const a = away.away || away;
-    
-    tbody.innerHTML = `
-        <tr><td>Tarjetas/Partido</td><td class="value-high">${(h.avg_cards || 0).toFixed(2)}</td><td class="value-high">${(a.avg_cards || 0).toFixed(2)}</td><td>${(((h.avg_cards || 0) + (a.avg_cards || 0))/2).toFixed(2)}</td></tr>
-        <tr><td>Over 3.5</td><td class="value-high">${h.over_3_5_cards || 0}%</td><td class="value-high">${a.over_3_5_cards || 0}%</td><td>${Math.round((h.over_3_5_cards + a.over_3_5_cards)/2)}%</td></tr>
-        <tr><td>Over 4.5</td><td class="value-medium">${h.over_4_5_cards || 0}%</td><td class="value-medium">${a.over_4_5_cards || 0}%</td><td>${Math.round((h.over_4_5_cards + a.over_4_5_cards)/2)}%</td></tr>
-        <tr><td>Over 5.5</td><td class="value-low">${Math.max(0, (h.over_4_5_cards || 0) - 20)}%</td><td class="value-low">${Math.max(0, (a.over_4_5_cards || 0) - 20)}%</td><td>${Math.max(0, Math.round((h.over_4_5_cards + a.over_4_5_cards)/2) - 20)}%</td></tr>
-    `;
-}
-
-// ============ INIT ============
-updateDateDisplay();
-loadMatches();
+        <tr><td>Over 10.5</td><td class="value-low">${h.over_10_5_corners || 0}%</td><td class="
