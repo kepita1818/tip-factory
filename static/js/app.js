@@ -111,35 +111,40 @@ function loadMatches() {
             return response.json();
         })
         .then(function(data) {
-            // Handle new response format { matches, requested_date, source_date, is_exact }
+            // Handle new response format
             if (data && data.matches && Array.isArray(data.matches)) {
                 allMatches = data.matches;
                 allMatches._meta = {
                     requestedDate: data.requested_date,
                     sourceDate: data.source_date,
                     isExact: data.is_exact,
-                    competitionsFound: data.competitions_found || []
+                    competitionsFound: data.competitions_found || [],
+                    searchStrategy: data.search_strategy || 'unknown'
                 };
             } else if (Array.isArray(data)) {
-                // Fallback for old format
                 allMatches = data;
                 allMatches._meta = { isExact: true };
             } else {
-                throw new Error('Respuesta invalida');
+                throw new Error('Respuesta invalida del servidor');
             }
 
             if (allMatches.length === 0) {
+                var noMatchesHtml = '<div class="no-matches">';
+                noMatchesHtml += '<div style="font-size:16px;font-weight:600;margin-bottom:8px;">No hay partidos para ' + formatDate(currentDate) + '</div>';
+                noMatchesHtml += '<div style="font-size:13px;color:var(--text-muted);">No se encontraron partidos en las principales ligas europeas para esta fecha.</div>';
+                noMatchesHtml += '<div style="font-size:12px;color:var(--text-muted);margin-top:8px;">Prueba con otra fecha usando los botones de navegación.</div>';
+                noMatchesHtml += '</div>';
                 if (matchesContainer) {
-                    matchesContainer.innerHTML = '<div class="no-matches">No hay partidos para ' + formatDate(currentDate) + '<br><small>Prueba con otra fecha</small></div>';
+                    matchesContainer.innerHTML = noMatchesHtml;
                 }
                 return;
             }
             renderMatches();
         })
         .catch(function(e) {
-            console.error('Error:', e);
+            console.error('Error cargando partidos:', e);
             if (matchesContainer) {
-                matchesContainer.innerHTML = '<div class="no-matches">Error: ' + e.message + '<br><small>Intenta recargar</small></div>';
+                matchesContainer.innerHTML = '<div class="no-matches">Error cargando partidos: ' + e.message + '<br><small>Intenta recargar la página</small></div>';
             }
         });
 }
@@ -154,7 +159,13 @@ function renderMatches() {
     if (!meta.isExact && meta.sourceDate) {
         var sourceDateParts = meta.sourceDate.split('-');
         var sourceDateFormatted = sourceDateParts[2] + '/' + sourceDateParts[1] + '/' + sourceDateParts[0];
-        dateNotice = '<div class="date-notice">Mostrando partidos del ' + sourceDateFormatted + ' (no hay partidos para la fecha seleccionada)</div>';
+        var reqDateParts = meta.requestedDate.split('-');
+        var reqDateFormatted = reqDateParts[2] + '/' + reqDateParts[1] + '/' + reqDateParts[0];
+        dateNotice = '<div class="date-notice">';
+        dateNotice += '<div style="font-weight:700;margin-bottom:4px;">📅 Fecha alternativa</div>';
+        dateNotice += 'No hay partidos para el <b>' + reqDateFormatted + '</b>. ';
+        dateNotice += 'Mostrando partidos del <b>' + sourceDateFormatted + '</b>.';
+        dateNotice += '</div>';
     }
 
     if (currentFilter !== 'all') {
@@ -206,7 +217,7 @@ function renderMatches() {
         var currentDateStr = formatDateISO(currentDate);
         if (matchDateStr && matchDateStr !== currentDateStr) {
             var mdParts = matchDateStr.split('-');
-            html += '<span class="match-time">' + mdParts[2] + '/' + mdParts[1] + '</span>';
+            html += '<span class="match-time" style="background:rgba(234,179,8,0.2);color:var(--warning);">' + mdParts[2] + '/' + mdParts[1] + '</span>';
         } else {
             html += '<span class="match-time">' + time + '</span>';
         }
