@@ -9,4 +9,4 @@ services:
       - key: PYTHON_VERSION
         value: 3.11.0
       - key: API_FOOTBALL_KEY
-        sync: false  # Se configura en el dashboard de Render, NO aquí
+        sync: false
