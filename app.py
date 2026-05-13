@@ -275,21 +275,65 @@ def matches(date: str = Query(None)):
 def analyze(match_id: int):
     logger.info(f"ANALIZANDO PARTIDO {match_id}")
 
+    # Strategy 1: Try the general /matches/{id} endpoint
     data = api_request(f'matches/{match_id}', cache_key=f"match_{match_id}", ttl=300)
-    if not data:
-        raise HTTPException(404, "Partido no encontrado")
 
+    # Strategy 2: If general endpoint fails, search in cached competition data
+    if not data:
+        logger.warning(f"Match {match_id} not in general endpoint, searching cache...")
+        found_match = None
+        found_comp = None
+
+        for cache_key in list(_cache.keys()):
+            if cache_key.startswith('comp_'):
+                cached_data = get_cache(cache_key)
+                if cached_data and cached_data.get('matches'):
+                    for m in cached_data['matches']:
+                        if m.get('id') == match_id:
+                            found_match = m
+                            # Extract competition code from cache key (comp_PD_2026-05-14)
+                            parts = cache_key.split('_')
+                            if len(parts) >= 2:
+                                found_comp = parts[1]
+                            logger.info(f"Found match {match_id} in cache: {cache_key}")
+                            break
+                if found_match:
+                    break
+
+        if found_match:
+            data = found_match
+            logger.info(f"Using cached match data for {match_id}")
+        else:
+            logger.error(f"Match {match_id} not found anywhere")
+            raise HTTPException(404, "Partido no encontrado. Puede que no esté disponible con tu plan API gratuito.")
+
+    # Now process the match data
     match = data
-    home_id = match['homeTeam']['id']
-    away_id = match['awayTeam']['id']
-    comp_id = match['competition']['id']
+
+    # Safely extract IDs with fallbacks
+    home_team = match.get('homeTeam', {})
+    away_team = match.get('awayTeam', {})
+    competition = match.get('competition', {})
+
+    home_id = home_team.get('id')
+    away_id = away_team.get('id')
+    comp_id = competition.get('id')
+
+    if not home_id or not away_id:
+        logger.error(f"Missing team IDs for match {match_id}")
+        raise HTTPException(500, "Datos del partido incompletos")
+
     season = match.get('season', {})
     season_year = season.get('startDate', '')[:4] if season.get('startDate') else '2025'
 
     match_detail = format_match(match)
 
-    # H2H
-    h2h_data = api_request(f'matches/{match_id}/head2head', {'limit': 10}, f"h2h_{match_id}", 3600)
+    # H2H - with error handling
+    h2h_data = None
+    try:
+        h2h_data = api_request(f'matches/{match_id}/head2head', {'limit': 10}, f"h2h_{match_id}", 3600)
+    except Exception as e:
+        logger.warning(f"H2H fetch failed for {match_id}: {e}")
 
     h2h_matches = []
     h2h_stats = {'home_wins': 0, 'away_wins': 0, 'draws': 0, 'home_goals': 0, 'away_goals': 0, 'total_matches': 0}
@@ -314,13 +358,19 @@ def analyze(match_id: int):
                 'competition': m['competition']['name']
             })
 
-    # FORMA
+    # FORMA - with error handling
     def get_form(team_id, comp_id=None):
+        if not team_id:
+            return []
         params = {'status': 'FINISHED', 'limit': 5}
         if comp_id:
             params['competitions'] = comp_id
 
-        team_matches = api_request(f'teams/{team_id}/matches', params, f"form_{team_id}_{comp_id}", 1800)
+        try:
+            team_matches = api_request(f'teams/{team_id}/matches', params, f"form_{team_id}_{comp_id}", 1800)
+        except Exception as e:
+            logger.warning(f"Form fetch failed for team {team_id}: {e}")
+            return []
 
         form = []
         if not team_matches or not team_matches.get('matches'):
@@ -351,9 +401,16 @@ def analyze(match_id: int):
     home_form = get_form(home_id, comp_id)
     away_form = get_form(away_id, comp_id)
 
-    # STANDINGS
+    # STANDINGS - with error handling
     def get_standings(team_id, comp_id, season_year):
-        stats_data = api_request(f'competitions/{comp_id}/standings', {'season': season_year}, f"standings_{comp_id}_{season_year}", 3600)
+        if not comp_id:
+            return None
+        try:
+            stats_data = api_request(f'competitions/{comp_id}/standings', {'season': season_year}, f"standings_{comp_id}_{season_year}", 3600)
+        except Exception as e:
+            logger.warning(f"Standings fetch failed: {e}")
+            return None
+
         if not stats_data or not stats_data.get('standings'):
             return None
 
@@ -376,7 +433,7 @@ def analyze(match_id: int):
     home_standings = get_standings(home_id, comp_id, season_year)
     away_standings = get_standings(away_id, comp_id, season_year)
 
-    # STATS
+    # STATS calculation
     def calc_from_form(form_list):
         if not form_list:
             return {'avg_scored': 1.5, 'avg_conceded': 1.2, 'matches': 0, 'total_scored': 0, 'total_conceded': 0}
@@ -454,20 +511,20 @@ def analyze(match_id: int):
 
     return {
         "match_info": {
-            "home_team": match['homeTeam']['name'],
-            "away_team": match['awayTeam']['name'],
-            "home_short": match['homeTeam'].get('shortName', match['homeTeam']['name'][:12]),
-            "away_short": match['awayTeam'].get('shortName', match['awayTeam']['name'][:12]),
-            "home_logo": match['homeTeam'].get('crest', ''),
-            "away_logo": match['awayTeam'].get('crest', ''),
-            "home_formation": match['homeTeam'].get('formation', ''),
-            "away_formation": match['awayTeam'].get('formation', ''),
-            "home_coach": match['homeTeam'].get('coach', {}).get('name', ''),
-            "away_coach": match['awayTeam'].get('coach', {}).get('name', ''),
-            "league": match['competition']['name'],
-            "country": match.get('area', {}).get('name', '') if match.get('area') else match['competition'].get('area', {}).get('name', ''),
-            "date": match['utcDate'][:10] if match.get('utcDate') else 'N/A',
-            "time": match['utcDate'][11:16] if match.get('utcDate') else '--:--',
+            "home_team": home_team.get('name', 'Local'),
+            "away_team": away_team.get('name', 'Visitante'),
+            "home_short": home_team.get('shortName', home_team.get('name', 'Local')[:12]),
+            "away_short": away_team.get('shortName', away_team.get('name', 'Visitante')[:12]),
+            "home_logo": home_team.get('crest', ''),
+            "away_logo": away_team.get('crest', ''),
+            "home_formation": home_team.get('formation', ''),
+            "away_formation": away_team.get('formation', ''),
+            "home_coach": home_team.get('coach', {}).get('name', ''),
+            "away_coach": away_team.get('coach', {}).get('name', ''),
+            "league": competition.get('name', ''),
+            "country": match.get('area', {}).get('name', '') if match.get('area') else competition.get('area', {}).get('name', ''),
+            "date": match.get('utcDate', '')[:10] if match.get('utcDate') else 'N/A',
+            "time": match.get('utcDate', '')[11:16] if match.get('utcDate') else '--:--',
             "venue": match.get('venue', ''),
             "status": match.get('status', 'SCHEDULED'),
             "minute": match_detail.get('minute', 0),
@@ -494,7 +551,7 @@ def analyze(match_id: int):
         "odds": {"home": 0, "draw": 0, "away": 0},
     }
 
-@app.get("/health")
+@app.get("/health")")
 def health():
     return {
         "status": "ok",
