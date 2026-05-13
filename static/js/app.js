@@ -167,7 +167,7 @@ function renderMatches() {
         var isFinished = match.status === 'FT';
 
         var statusBadge = '';
-        if (isLive) statusBadge = '<span class="status-badge live">LIVE ' + (match.minute || '') + ''</span>';
+        if (isLive) statusBadge = '<span class="status-badge live">LIVE ' + (match.minute || '') + '</span>';
         else if (isFinished) statusBadge = '<span class="status-badge finished">FT</span>';
 
         var scoreText = '';
