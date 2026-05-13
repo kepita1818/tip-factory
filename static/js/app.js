@@ -117,7 +117,8 @@ function loadMatches() {
                 allMatches._meta = {
                     requestedDate: data.requested_date,
                     sourceDate: data.source_date,
-                    isExact: data.is_exact
+                    isExact: data.is_exact,
+                    competitionsFound: data.competitions_found || []
                 };
             } else if (Array.isArray(data)) {
                 // Fallback for old format
