@@ -4,18 +4,17 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
     <title>TipFactory</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <link rel="stylesheet" href="/static/css/style.css">
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
+<base target="_blank">
 </head>
 <body>
     <div id="app">
-        <!-- Header -->
         <header class="app-header">
             <h1>TipFactory</h1>
             <p class="subtitle">Analitica de Futbol Profesional</p>
         </header>
 
-        <!-- Selector de Fecha -->
         <div class="date-selector">
             <button class="date-nav" id="prev-date">◀</button>
             <div class="date-display">
@@ -25,29 +24,25 @@
             <button class="date-nav" id="next-date">▶</button>
         </div>
 
-        <!-- Filtros de Liga -->
         <div class="league-filters" id="league-filters">
             <button class="filter-btn active" data-filter="all">Todos</button>
-            <button class="filter-btn" data-filter="Spain">Importar España</button>
-            <button class="filter-btn" data-filter="England">Importar Inglaterra</button>
-            <button class="filter-btn" data-filter="Germany">Importar Alemania</button>
-            <button class="filter-btn" data-filter="Italy">Importar Italia</button>
-            <button class="filter-btn" data-filter="France">Importar Francia</button>
+            <button class="filter-btn" data-filter="Spain">España</button>
+            <button class="filter-btn" data-filter="England">Inglaterra</button>
+            <button class="filter-btn" data-filter="Germany">Alemania</button>
+            <button class="filter-btn" data-filter="Italy">Italia</button>
+            <button class="filter-btn" data-filter="France">Francia</button>
             <button class="filter-btn" data-filter="Europe">Europa</button>
         </div>
 
-        <!-- Lista de Partidos -->
         <div class="matches-container" id="matches-container">
             <div class="loading">Cargando partidos...</div>
         </div>
 
-        <!-- Analisis del Partido -->
         <div class="section hidden" id="analysis-section">
             <div class="section-header">
-                <button class="back-btn" onclick="showMatches()">←</button>
+                <button class="back-btn" id="back-btn-matches">← Volver</button>
             </div>
-            
-            <!-- Info del Partido -->
+
             <div class="match-header">
                 <div class="match-teams">
                     <div class="team">
@@ -63,7 +58,6 @@
                 <div class="match-meta" id="match-meta"></div>
             </div>
 
-            <!-- Tabs -->
             <div class="tabs">
                 <button class="tab-btn active" data-tab="summary">Resumen</button>
                 <button class="tab-btn" data-tab="goals">Goles</button>
@@ -71,11 +65,9 @@
                 <button class="tab-btn" data-tab="cards">Tarjetas</button>
             </div>
 
-            <!-- Tab: Resumen -->
             <div class="tab-content active" id="tab-summary">
-                <!-- Forma Reciente -->
                 <div class="card">
-                    <div class="card-title">Forma Reciente</div>
+                    <div class="card-title">📊 Forma Reciente</div>
                     <div class="form-row">
                         <div class="form-team">
                             <span id="home-form-name">Local</span>
@@ -88,9 +80,8 @@
                     </div>
                 </div>
 
-                <!-- Probabilidades -->
                 <div class="card">
-                    <div class="card-title">Probabilidades</div>
+                    <div class="card-title">🎯 Probabilidades</div>
                     <div class="prob-list">
                         <div class="prob-item">
                             <span class="prob-label">Over 1.5 Goles</span>
@@ -121,7 +112,7 @@
                             </div>
                         </div>
                         <div class="prob-item">
-                            <span class="prob-label">Goles Esperados</span>
+                            <span class="prob-label">Goles Esperados (xG)</span>
                             <div class="prob-bar-container">
                                 <div class="prob-bar prob-bar-info" id="prob-xg" style="width: 0%"></div>
                                 <span class="prob-value" id="prob-xg-val">0</span>
@@ -145,10 +136,9 @@
                 </div>
             </div>
 
-            <!-- Tab: Goles -->
             <div class="tab-content" id="tab-goals">
                 <div class="card">
-                    <div class="card-title">Tendencias de goles</div>
+                    <div class="card-title">⚽ Tendencias de goles</div>
                     <table class="stats-table">
                         <thead>
                             <tr>
@@ -164,10 +154,9 @@
                 </div>
             </div>
 
-            <!-- Tab: Corners -->
             <div class="tab-content" id="tab-corners">
                 <div class="card">
-                    <div class="card-title">Corners en contra</div>
+                    <div class="card-title">🚩 Corners en contra</div>
                     <table class="stats-table">
                         <thead>
                             <tr>
@@ -182,7 +171,7 @@
                     </table>
                 </div>
                 <div class="card">
-                    <div class="card-title">Total de corners</div>
+                    <div class="card-title">📐 Total de corners</div>
                     <table class="stats-table">
                         <thead>
                             <tr>
@@ -198,10 +187,9 @@
                 </div>
             </div>
 
-            <!-- Tab: Tarjetas -->
             <div class="tab-content" id="tab-cards">
                 <div class="card">
-                    <div class="card-title">Tarjetas</div>
+                    <div class="card-title">🟨🟥 Tarjetas</div>
                     <table class="stats-table">
                         <thead>
                             <tr>
@@ -219,6 +207,6 @@
         </div>
     </div>
 
-    <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+    <script src="/static/js/app.js"></script>
 </body>
 </html>
