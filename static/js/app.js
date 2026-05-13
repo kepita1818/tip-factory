@@ -73,38 +73,45 @@ document.querySelectorAll('.filter-btn').forEach(btn => {
 async function loadMatches() {
     const dateStr = formatDateISO(currentDate);
     matchesContainer.innerHTML = '<div class="loading">Cargando partidos...</div>';
-    
+
     try {
         const response = await fetch(`/api/matches?date=${dateStr}`);
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}`);
+        }
         allMatches = await response.json();
+
+        if (!Array.isArray(allMatches)) {
+            throw new Error('Respuesta invalida');
+        }
+
         renderMatches();
     } catch (e) {
-        console.error(e);
-        matchesContainer.innerHTML = '<div class="no-matches">Error cargando partidos</div>';
+        console.error('Error cargando partidos:', e);
+        matchesContainer.innerHTML = '<div class="no-matches">Error cargando partidos. Intenta recargar.</div>';
     }
 }
 
 function renderMatches() {
     let matches = allMatches;
-    
-    // Filtrar por pais/liga
+
     if (currentFilter !== 'all') {
         matches = matches.filter(m => m.country === currentFilter || m.league_name?.includes(currentFilter));
     }
-    
+
     if (!matches || matches.length === 0) {
         matchesContainer.innerHTML = '<div class="no-matches">No hay partidos para esta fecha/filtro</div>';
         return;
     }
-    
+
     matchesContainer.innerHTML = matches.map(match => {
         const home = match.homeTeam;
         const away = match.awayTeam;
         const time = match.utcDate ? match.utcDate.substring(11, 16) : '--:--';
         const leagueName = match.league_name || match.competition?.name || '';
-        
+
         return `
-            <div class="match-card-main" onclick="analyzeMatch(${match.id})">
+            <div class="match-card-main" data-match-id="${match.id}">
                 <div class="match-time">${time}</div>
                 <div class="match-teams-row">
                     <div class="match-team-row">
@@ -120,6 +127,14 @@ function renderMatches() {
             </div>
         `;
     }).join('');
+
+    // Añadir event listeners a los cards
+    document.querySelectorAll('.match-card-main').forEach(card => {
+        card.addEventListener('click', function() {
+            const matchId = this.dataset.matchId;
+            analyzeMatch(matchId);
+        });
+    });
 }
 
 // ============ NAVIGATION ============
@@ -144,26 +159,28 @@ function showAnalysis() {
 // ============ ANALYZE MATCH ============
 async function analyzeMatch(matchId) {
     showAnalysis();
-    
-    // Reset tabs
+
     document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
     document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
     document.querySelector('[data-tab="summary"]').classList.add('active');
     document.getElementById('tab-summary').classList.add('active');
-    
+
     try {
         const response = await fetch(`/api/analyze/${matchId}`);
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}`);
+        }
         const data = await response.json();
-        
+
         if (data.error) {
             alert(data.error);
             showMatches();
             return;
         }
-        
+
         renderAnalysis(data);
     } catch (e) {
-        console.error(e);
+        console.error('Error analizando:', e);
         alert('Error analizando partido');
         showMatches();
     }
@@ -174,29 +191,27 @@ function renderAnalysis(data) {
     const probs = data.probabilities;
     const homeStats = data.home_stats;
     const awayStats = data.away_stats;
-    
-    // Header
+
     document.getElementById('home-name').textContent = info.home_team;
     document.getElementById('away-name').textContent = info.away_team;
     document.getElementById('home-logo').src = info.home_logo || 'https://via.placeholder.com/56?text=?';
     document.getElementById('away-logo').src = info.away_logo || 'https://via.placeholder.com/56?text=?';
     document.getElementById('match-meta').textContent = `${info.date} | ${info.league} | ${info.time}`;
-    
-    // Table headers
-    document.getElementById('table-home').textContent = info.home_short.substring(0, 12);
-    document.getElementById('table-away').textContent = info.away_short.substring(0, 12);
-    document.getElementById('corner-home').textContent = info.home_short.substring(0, 12);
-    document.getElementById('corner-away').textContent = info.away_short.substring(0, 12);
-    document.getElementById('card-home').textContent = info.home_short.substring(0, 12);
-    document.getElementById('card-away').textContent = info.away_short.substring(0, 12);
+
+    const homeShort = info.home_short.substring(0, 12);
+    const awayShort = info.away_short.substring(0, 12);
+    document.getElementById('table-home').textContent = homeShort;
+    document.getElementById('table-away').textContent = awayShort;
+    document.getElementById('corner-home').textContent = homeShort;
+    document.getElementById('corner-away').textContent = awayShort;
+    document.getElementById('card-home').textContent = homeShort;
+    document.getElementById('card-away').textContent = awayShort;
     document.getElementById('home-form-name').textContent = info.home_team.substring(0, 15);
     document.getElementById('away-form-name').textContent = info.away_team.substring(0, 15);
-    
-    // Form
+
     renderForm(data.home_form, 'home-form');
     renderForm(data.away_form, 'away-form');
-    
-    // Probabilidades con animacion
+
     setTimeout(() => {
         setProbBar('prob-over15', probs.over_1_5);
         setProbBar('prob-over25', probs.over_2_5);
@@ -206,14 +221,9 @@ function renderAnalysis(data) {
         setProbBar('prob-corners', Math.min(probs.expected_corners * 5, 100), probs.expected_corners);
         setProbBar('prob-cards', Math.min(probs.expected_cards * 12, 100), probs.expected_cards);
     }, 100);
-    
-    // Goals table
+
     renderGoalsTable(homeStats, awayStats);
-    
-    // Corners table
     renderCornersTable(homeStats, awayStats);
-    
-    // Cards table
     renderCardsTable(homeStats, awayStats);
 }
 
@@ -231,13 +241,13 @@ function renderForm(form, elementId) {
 function setProbBar(id, value, displayValue = null) {
     const bar = document.getElementById(id);
     const val = document.getElementById(id + '-val');
-    const pct = Math.min(value, 100);
-    
+    const pct = Math.min(value || 0, 100);
+
     bar.style.width = pct + '%';
     bar.className = 'prob-bar';
     if (pct < 45) bar.classList.add('low');
     else if (pct < 70) bar.classList.add('medium');
-    
+
     val.textContent = displayValue !== null ? displayValue : pct + '%';
 }
 
@@ -250,16 +260,16 @@ function renderGoalsTable(home, away) {
         { label: 'Over 3.5', home: home.over_3_5_pct || 0, away: away.over_3_5_pct || 0, isPct: true },
         { label: 'BTTS', home: home.btts_pct || 0, away: away.btts_pct || 0, isPct: true },
     ];
-    
+
     tbody.innerHTML = rows.map(r => {
         const avg = ((parseFloat(r.home) + parseFloat(r.away)) / 2).toFixed(1);
-        const homeVal = r.isPct ? r.home + '%' : r.home;
-        const awayVal = r.isPct ? r.away + '%' : r.away;
-        const avgVal = r.isPct ? avg + '%' : avg;
-        
+        const homeVal = r.isPct ? (r.home + '%') : r.home;
+        const awayVal = r.isPct ? (r.away + '%') : r.away;
+        const avgVal = r.isPct ? (avg + '%') : avg;
+
         const homeClass = r.home >= 60 ? 'value-high' : r.home >= 40 ? 'value-medium' : 'value-low';
         const awayClass = r.away >= 60 ? 'value-high' : r.away >= 40 ? 'value-medium' : 'value-low';
-        
+
         return `
             <tr>
                 <td>${r.label}</td>
@@ -274,17 +284,17 @@ function renderGoalsTable(home, away) {
 function renderCornersTable(home, away) {
     const tbody = document.getElementById('corners-table-body');
     const tbodyTotal = document.getElementById('corners-total-body');
-    
+
     const homeCorners = home.avg_corners || 0;
     const awayCorners = away.avg_corners || 0;
-    
+
     tbody.innerHTML = `
         <tr><td>Corners/Partido</td><td class="value-high">${homeCorners.toFixed(1)}</td><td class="value-high">${awayCorners.toFixed(1)}</td><td>${((homeCorners + awayCorners)/2).toFixed(1)}</td></tr>
         <tr><td>Over 8.5</td><td class="value-medium">${home.over_8_5_corners || 0}%</td><td class="value-medium">${away.over_8_5_corners || 0}%</td><td>${Math.round((home.over_8_5_corners + away.over_8_5_corners)/2)}%</td></tr>
         <tr><td>Over 9.5</td><td class="value-low">${home.over_9_5_corners || 0}%</td><td class="value-low">${away.over_9_5_corners || 0}%</td><td>${Math.round((home.over_9_5_corners + away.over_9_5_corners)/2)}%</td></tr>
         <tr><td>Over 10.5</td><td class="value-low">${home.over_10_5_corners || 0}%</td><td class="value-low">${away.over_10_5_corners || 0}%</td><td>${Math.round((home.over_10_5_corners + away.over_10_5_corners)/2)}%</td></tr>
     `;
-    
+
     tbodyTotal.innerHTML = `
         <tr><td>Over 8.5</td><td class="value-high">${home.over_8_5_corners || 0}%</td><td class="value-high">${away.over_8_5_corners || 0}%</td><td>${Math.round((home.over_8_5_corners + away.over_8_5_corners)/2)}%</td></tr>
         <tr><td>Over 9.5</td><td class="value-medium">${home.over_9_5_corners || 0}%</td><td class="value-medium">${away.over_9_5_corners || 0}%</td><td>${Math.round((home.over_9_5_corners + away.over_9_5_corners)/2)}%</td></tr>
@@ -295,7 +305,7 @@ function renderCornersTable(home, away) {
 
 function renderCardsTable(home, away) {
     const tbody = document.getElementById('cards-table-body');
-    
+
     tbody.innerHTML = `
         <tr><td>Tarjetas/Partido</td><td class="value-high">${(home.avg_cards || 0).toFixed(2)}</td><td class="value-high">${(away.avg_cards || 0).toFixed(2)}</td><td>${((home.avg_cards + away.avg_cards)/2).toFixed(2)}</td></tr>
         <tr><td>Over 3.5</td><td class="value-high">${home.over_3_5_cards || 0}%</td><td class="value-high">${away.over_3_5_cards || 0}%</td><td>${Math.round((home.over_3_5_cards + away.over_3_5_cards)/2)}%</td></tr>
