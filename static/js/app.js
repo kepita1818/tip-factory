@@ -361,4 +361,23 @@ function renderCornersTable(home, away) {
         <tr><td>Corners/Partido</td><td class="value-high">${(h.avg_corners || 0).toFixed(1)}</td><td class="value-high">${(a.avg_corners || 0).toFixed(1)}</td><td>${(((h.avg_corners || 0) + (a.avg_corners || 0))/2).toFixed(1)}</td></tr>
         <tr><td>Over 8.5</td><td class="value-medium">${h.over_8_5_corners || 0}%</td><td class="value-medium">${a.over_8_5_corners || 0}%</td><td>${Math.round((h.over_8_5_corners + a.over_8_5_corners)/2)}%</td></tr>
         <tr><td>Over 9.5</td><td class="value-low">${h.over_9_5_corners || 0}%</td><td class="value-low">${a.over_9_5_corners || 0}%</td><td>${Math.round((h.over_9_5_corners + a.over_9_5_corners)/2)}%</td></tr>
-        <tr><td>Over 10.5</td><td class="value-low">${h.over_10_5_corners || 0}%</td><td class="
+        <tr><td>Over 10.5</td><td class="value-low">${h.over_10_5_corners || 0}%</td><td class="value-low">${a.over_10_5_corners || 0}%</td><td>${Math.round((h.over_10_5_corners + a.over_10_5_corners)/2)}%</td></tr>
+    `;
+}
+
+function renderCardsTable(home, away) {
+    const tbody = document.getElementById('cards-table-body');
+    const h = home.home || home;
+    const a = away.away || away;
+    
+    tbody.innerHTML = `
+        <tr><td>Tarjetas/Partido</td><td class="value-high">${(h.avg_cards || 0).toFixed(2)}</td><td class="value-high">${(a.avg_cards || 0).toFixed(2)}</td><td>${(((h.avg_cards || 0) + (a.avg_cards || 0))/2).toFixed(2)}</td></tr>
+        <tr><td>Over 3.5</td><td class="value-high">${h.over_3_5_cards || 0}%</td><td class="value-high">${a.over_3_5_cards || 0}%</td><td>${Math.round((h.over_3_5_cards + a.over_3_5_cards)/2)}%</td></tr>
+        <tr><td>Over 4.5</td><td class="value-medium">${h.over_4_5_cards || 0}%</td><td class="value-medium">${a.over_4_5_cards || 0}%</td><td>${Math.round((h.over_4_5_cards + a.over_4_5_cards)/2)}%</td></tr>
+        <tr><td>Over 5.5</td><td class="value-low">${Math.max(0, (h.over_4_5_cards || 0) - 20)}%</td><td class="value-low">${Math.max(0, (a.over_4_5_cards || 0) - 20)}%</td><td>${Math.max(0, Math.round((h.over_4_5_cards + a.over_4_5_cards)/2) - 20)}%</td></tr>
+    `;
+}
+
+// ============ INIT ============
+updateDateDisplay();
+loadMatches();
