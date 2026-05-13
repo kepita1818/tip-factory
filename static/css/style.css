@@ -302,6 +302,11 @@ body {
     font-weight: 700;
 }
 
+/* ===== DEMO BADGE ===== */
+#demo-badge {
+    animation: fadeIn 0.3s ease;
+}
+
 /* ===== ANALYSIS SECTION ===== */
 .section {
     animation: fadeIn 0.3s ease;
