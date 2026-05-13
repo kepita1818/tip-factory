@@ -84,6 +84,8 @@ def format_match(m):
     score = m.get('score', {})
     ft = score.get('fullTime', {}) if isinstance(score, dict) else {}
     ht = score.get('halfTime', {}) if isinstance(score, dict) else {}
+    # Extract match date from utcDate
+    match_date = m.get('utcDate', '')[:10] if m.get('utcDate') else '' 
 
     status = m.get('status', 'SCHEDULED')
     status_map = {
@@ -99,6 +101,7 @@ def format_match(m):
     return {
         "id": m.get('id'),
         "utcDate": m.get('utcDate'),
+        "matchDate": match_date,
         "status": status_map.get(status, status),
         "statusText": status,
         "minute": minute,
@@ -140,7 +143,21 @@ def matches(date: str = Query(None)):
 
     logger.info(f"BUSCANDO PARTIDOS PARA: {date}")
 
-    for delta in [0, -1, 1, -2, 2, -3, 3, -4, 4, -5, 5, -6, 6, -7, 7]:
+    # First try exact date
+    data = api_request('matches', {'dateFrom': date, 'dateTo': date}, f"matches_{date}", 300)
+
+    if data and data.get('matches'):
+        matches_list = [format_match(m) for m in data['matches']]
+        logger.info(f"ENCONTRADOS {len(matches_list)} partidos en fecha exacta {date}")
+        return {
+            "matches": matches_list,
+            "requested_date": date,
+            "source_date": date,
+            "is_exact": True
+        }
+
+    # Fallback: search nearby dates if no matches on exact date
+    for delta in [-1, 1, -2, 2, -3, 3, -4, 4, -5, 5, -6, 6, -7, 7]:
         try:
             check_date = (datetime.strptime(date, "%Y-%m-%d") + timedelta(days=delta)).strftime("%Y-%m-%d")
 
@@ -148,15 +165,25 @@ def matches(date: str = Query(None)):
 
             if data and data.get('matches'):
                 matches_list = [format_match(m) for m in data['matches']]
-                logger.info(f"ENCONTRADOS {len(matches_list)} partidos en {check_date}")
-                return matches_list
+                logger.info(f"ENCONTRADOS {len(matches_list)} partidos en fecha alternativa {check_date}")
+                return {
+                    "matches": matches_list,
+                    "requested_date": date,
+                    "source_date": check_date,
+                    "is_exact": False
+                }
 
         except Exception as e:
             logger.error(f"Error buscando {check_date}: {e}")
             continue
 
     logger.warning(f"NO HAY PARTIDOS para {date}")
-    return []
+    return {
+        "matches": [],
+        "requested_date": date,
+        "source_date": None,
+        "is_exact": True
+    }
 
 @app.get("/api/analyze/{match_id}")
 def analyze(match_id: int):
