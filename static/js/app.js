@@ -72,10 +72,19 @@ async function loadMatches() {
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
         
         allMatches = await response.json();
-        if (!Array.isArray(allMatches)) throw new Error('Respuesta invalida');
+        
+        if (!Array.isArray(allMatches)) {
+            throw new Error('Respuesta inválida del servidor');
+        }
         
         if (allMatches.length === 0) {
-            matchesContainer.innerHTML = '<div class="no-matches">No hay partidos disponibles. Intenta con otra fecha.</div>';
+            matchesContainer.innerHTML = `
+                <div class="no-matches">
+                    No hay partidos para ${formatDate(currentDate)}<br>
+                    <small>Las ligas europeas han terminado la temporada.<br>
+                    Prueba con fechas de junio-julio (finales de copas)<br>
+                    o agosto (nueva temporada).</small>
+                </div>`;
             return;
         }
         
@@ -88,7 +97,7 @@ async function loadMatches() {
         
     } catch (e) {
         console.error('Error:', e);
-        matchesContainer.innerHTML = `<div class="no-matches">Error: ${e.message}</div>`;
+        matchesContainer.innerHTML = `<div class="no-matches">Error: ${e.message}<br><small>Intenta recargar la página</small></div>`;
     }
 }
 
