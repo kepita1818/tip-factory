@@ -5,34 +5,35 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
     <title>Futbol Stats</title>
     <link rel="stylesheet" href="/static/css/style.css">
+<base target="_blank">
 </head>
 <body>
     <div id="app">
         <header class="app-header">
-            <h1>⚽ Futbol Stats</h1>
-            <p class="subtitle">Análisis completo de partidos</p>
+            <h1>Futbol Stats</h1>
+            <p class="subtitle">Analisis completo de partidos</p>
         </header>
 
         <div class="date-selector">
-            <button class="date-nav" id="prev-date">◀</button>
+            <button class="date-nav" id="prev-date">&#9664;</button>
             <div class="date-display">
                 <span id="current-date">--/--/----</span>
                 <input type="date" id="date-picker" class="hidden">
             </div>
-            <button class="date-nav" id="next-date">▶</button>
+            <button class="date-nav" id="next-date">&#9654;</button>
         </div>
 
         <div class="league-filters" id="league-filters">
             <button class="filter-btn active" data-filter="all">Todos</button>
-            <button class="filter-btn" data-filter="England">🏴󠁧󠁢󠁥󠁮󠁧󠁿 Inglaterra</button>
-            <button class="filter-btn" data-filter="Spain">🇪🇸 España</button>
-            <button class="filter-btn" data-filter="Germany">🇩🇪 Alemania</button>
-            <button class="filter-btn" data-filter="Italy">🇮🇹 Italia</button>
-            <button class="filter-btn" data-filter="France">🇫🇷 Francia</button>
-            <button class="filter-btn" data-filter="Netherlands">🇳🇱 Holanda</button>
-            <button class="filter-btn" data-filter="Portugal">🇵🇹 Portugal</button>
-            <button class="filter-btn" data-filter="Brazil">🇧🇷 Brasil</button>
-            <button class="filter-btn" data-filter="Europe">🇪🇺 Europa</button>
+            <button class="filter-btn" data-filter="England">Inglaterra</button>
+            <button class="filter-btn" data-filter="Spain">Espana</button>
+            <button class="filter-btn" data-filter="Germany">Alemania</button>
+            <button class="filter-btn" data-filter="Italy">Italia</button>
+            <button class="filter-btn" data-filter="France">Francia</button>
+            <button class="filter-btn" data-filter="Netherlands">Holanda</button>
+            <button class="filter-btn" data-filter="Portugal">Portugal</button>
+            <button class="filter-btn" data-filter="Brazil">Brasil</button>
+            <button class="filter-btn" data-filter="Europe">Europa</button>
         </div>
 
         <div class="matches-container" id="matches-container">
@@ -41,8 +42,8 @@
 
         <div class="section hidden" id="analysis-section">
             <div class="section-header">
-                <button class="back-btn" id="back-btn-matches">←</button>
-                <h2>Análisis del Partido</h2>
+                <button class="back-btn" id="back-btn-matches">&#8592;</button>
+                <h2>Analisis del Partido</h2>
             </div>
 
             <div class="match-header">
@@ -67,13 +68,13 @@
                 <button class="tab-btn active" data-tab="summary">Resumen</button>
                 <button class="tab-btn" data-tab="h2h">H2H</button>
                 <button class="tab-btn" data-tab="form">Forma</button>
-                <button class="tab-btn" data-tab="stats">Estadísticas</button>
+                <button class="tab-btn" data-tab="stats">Estadisticas</button>
                 <button class="tab-btn" data-tab="events">Eventos</button>
             </div>
 
             <div class="tab-content active" id="tab-summary">
                 <div class="card">
-                    <div class="card-title">📊 Clasificación</div>
+                    <div class="card-title">Clasificacion</div>
                     <div class="standings-row" id="standings-row">
                         <div class="standing-box" id="home-standing"></div>
                         <div class="standing-vs">VS</div>
@@ -82,7 +83,7 @@
                 </div>
 
                 <div class="card">
-                    <div class="card-title">🎯 Probabilidades</div>
+                    <div class="card-title">Probabilidades</div>
                     <div class="prob-list">
                         <div class="prob-item">
                             <span class="prob-label">Over 1.5 Goles</span>
@@ -137,14 +138,14 @@
                 </div>
 
                 <div class="card" id="odds-card">
-                    <div class="card-title">💰 Cuotas (1X2)</div>
+                    <div class="card-title">Cuotas (1X2)</div>
                     <div class="odds-row" id="odds-row"></div>
                 </div>
             </div>
 
             <div class="tab-content" id="tab-h2h">
                 <div class="card">
-                    <div class="card-title">⚔️ Head to Head</div>
+                    <div class="card-title">Head to Head</div>
                     <div class="h2h-stats" id="h2h-stats"></div>
                     <div class="h2h-matches" id="h2h-matches"></div>
                 </div>
@@ -152,7 +153,7 @@
 
             <div class="tab-content" id="tab-form">
                 <div class="card">
-                    <div class="card-title">📈 Forma Reciente</div>
+                    <div class="card-title">Forma Reciente</div>
                     <div class="form-section">
                         <div class="form-team-block">
                             <h4 id="home-form-title">Local</h4>
@@ -170,11 +171,11 @@
 
             <div class="tab-content" id="tab-stats">
                 <div class="card">
-                    <div class="card-title">📊 Estadísticas del Partido</div>
+                    <div class="card-title">Estadisticas del Partido</div>
                     <table class="stats-table" id="match-stats-table">
                         <thead>
                             <tr>
-                                <th>Estadística</th>
+                                <th>Estadistica</th>
                                 <th id="stats-home">Local</th>
                                 <th id="stats-away">Visitante</th>
                             </tr>
@@ -184,7 +185,7 @@
                 </div>
 
                 <div class="card">
-                    <div class="card-title">🥅 Tendencias de Goles</div>
+                    <div class="card-title">Tendencias de Goles</div>
                     <table class="stats-table">
                         <thead>
                             <tr>
@@ -199,11 +200,11 @@
                 </div>
 
                 <div class="card">
-                    <div class="card-title">⛳ Corners & Tarjetas</div>
+                    <div class="card-title">Corners & Tarjetas</div>
                     <table class="stats-table">
                         <thead>
                             <tr>
-                                <th>Métrica</th>
+                                <th>Metrica</th>
                                 <th id="misc-home">Local</th>
                                 <th id="misc-away">Visitante</th>
                             </tr>
@@ -215,15 +216,15 @@
 
             <div class="tab-content" id="tab-events">
                 <div class="card" id="scorers-card">
-                    <div class="card-title">⚽ Goleadores</div>
+                    <div class="card-title">Goleadores</div>
                     <div id="scorers-list"></div>
                 </div>
                 <div class="card" id="cards-card">
-                    <div class="card-title">🟨🟥 Tarjetas</div>
+                    <div class="card-title">Tarjetas</div>
                     <div id="cards-list"></div>
                 </div>
                 <div class="card" id="subs-card">
-                    <div class="card-title">🔄 Sustituciones</div>
+                    <div class="card-title">Sustituciones</div>
                     <div id="subs-list"></div>
                 </div>
             </div>
