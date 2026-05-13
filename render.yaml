@@ -7,6 +7,6 @@ services:
     startCommand: gunicorn app:app --bind 0.0.0.0:$PORT
     envVars:
       - key: API_FOOTBALL_KEY
-        value: 6c8c1889a9c84616bc3e31ecae00d62f
+        value: 650c819e61df3915394dd45ba62df836
       - key: TELEGRAM_BOT_TOKEN
         value: 8883372208:AAEqL3nx6g14ULVsOSx_zN23b9OHptTMNq4
