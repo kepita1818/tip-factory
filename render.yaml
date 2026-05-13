@@ -8,3 +8,5 @@ services:
     envVars:
       - key: PYTHON_VERSION
         value: 3.11.0
+      - key: API_FOOTBALL_KEY
+        value: 650c819e61df3915394dd45ba62df836
