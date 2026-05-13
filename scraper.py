@@ -137,89 +137,110 @@ class APIFootballFallback:
             'x-rapidapi-key': self.key,
             'x-rapidapi-host': 'v3.football.api-sports.io'
         }
+        # Intentar temporada 2025 (actual) y 2024
+        self.seasons = [2025, 2024]
 
     def get_matches(self, date: str) -> list:
-        leagues = [140, 39, 135, 78, 61, 2, 3, 88, 94, 71, 253]
+        # Más ligas incluyendo amistosos y copas
+        leagues = [140, 39, 135, 78, 61, 2, 3, 88, 94, 71, 253, 292, 307, 148, 149]
         all_matches = []
         
-        for league_id in leagues:
-            try:
-                response = requests.get(
-                    f"{self.BASE_URL}/fixtures",
-                    headers=self.headers,
-                    params={'league': league_id, 'season': 2024, 'date': date},
-                    timeout=10
-                )
-                data = response.json()
-                
-                for match in data.get('response', []):
-                    all_matches.append({
-                        'id': match['fixture']['id'],
-                        'homeTeam': {
-                            'id': match['teams']['home']['id'],
-                            'name': match['teams']['home']['name'],
-                            'shortName': match['teams']['home']['name'][:15],
-                            'crest': match['teams']['home']['logo']
-                        },
-                        'awayTeam': {
-                            'id': match['teams']['away']['id'],
-                            'name': match['teams']['away']['name'],
-                            'shortName': match['teams']['away']['name'][:15],
-                            'crest': match['teams']['away']['logo']
-                        },
-                        'tournament': {
-                            'id': match['league']['id'],
-                            'name': match['league']['name'],
-                            'category': {'name': match['league']['country']}
-                        },
-                        'status': {'type': match['fixture']['status']['short']},
-                        'startTimestamp': int(match['fixture']['timestamp']),
-                        'homeScore': {'current': match['goals']['home']} if match['goals']['home'] is not None else None,
-                        'awayScore': {'current': match['goals']['away']} if match['goals']['away'] is not None else None,
-                        'league_name': match['league']['name'],
-                        'country': match['league']['country']
-                    })
-            except Exception:
-                continue
+        for season in self.seasons:
+            for league_id in leagues:
+                try:
+                    response = requests.get(
+                        f"{self.BASE_URL}/fixtures",
+                        headers=self.headers,
+                        params={'league': league_id, 'season': season, 'date': date, 'timezone': 'Europe/Madrid'},
+                        timeout=10
+                    )
+                    data = response.json()
+                    
+                    for match in data.get('response', []):
+                        all_matches.append({
+                            'id': match['fixture']['id'],
+                            'homeTeam': {
+                                'id': match['teams']['home']['id'],
+                                'name': match['teams']['home']['name'],
+                                'shortName': match['teams']['home']['name'][:15],
+                                'crest': match['teams']['home']['logo']
+                            },
+                            'awayTeam': {
+                                'id': match['teams']['away']['id'],
+                                'name': match['teams']['away']['name'],
+                                'shortName': match['teams']['away']['name'][:15],
+                                'crest': match['teams']['away']['logo']
+                            },
+                            'tournament': {
+                                'id': match['league']['id'],
+                                'name': match['league']['name'],
+                                'category': {'name': match['league']['country']}
+                            },
+                            'status': {
+                                'type': match['fixture']['status']['short'],
+                                'description': match['fixture']['status']['long'],
+                                'minute': match['fixture']['status']['elapsed']
+                            },
+                            'startTimestamp': match['fixture']['timestamp'],
+                            'homeScore': {'current': match['goals']['home']} if match['goals']['home'] is not None else None,
+                            'awayScore': {'current': match['goals']['away']} if match['goals']['away'] is not None else None,
+                            'league_name': match['league']['name'],
+                            'country': match['league']['country']
+                        })
+                    
+                    # Si encontramos partidos, no seguir probando temporadas
+                    if all_matches:
+                        break
+                        
+                except Exception:
+                    continue
+            
+            if all_matches:
+                break
                 
         return all_matches
 
     def get_match_details(self, match_id: int) -> Dict[str, Any]:
-        try:
-            response = requests.get(
-                f"{self.BASE_URL}/fixtures",
-                headers=self.headers,
-                params={'id': match_id},
-                timeout=10
-            )
-            data = response.json()
-            match = data['response'][0]
-            
-            return {
-                'homeTeam': {
-                    'id': match['teams']['home']['id'],
-                    'name': match['teams']['home']['name'],
-                    'shortName': match['teams']['home']['name'][:12]
-                },
-                'awayTeam': {
-                    'id': match['teams']['away']['id'],
-                    'name': match['teams']['away']['name'],
-                    'shortName': match['teams']['away']['name'][:12]
-                },
-                'tournament': {'name': match['league']['name']},
-                'season': {'id': match['league']['season']},
-                'status': {
-                    'type': match['fixture']['status']['short'],
-                    'description': match['fixture']['status']['long'],
-                    'minute': match['fixture']['status']['elapsed'] or 0
-                },
-                'startTimestamp': match['fixture']['timestamp'],
-                'venue': {'stadium': {'name': match['fixture']['venue']['name']}},
-                'homeScore': {'current': match['goals']['home']} if match['goals']['home'] is not None else None,
-                'awayScore': {'current': match['goals']['away']} if match['goals']['away'] is not None else None
-            }
-        except Exception as e:
-            raise Exception(f"API-Football error: {e}")
+        for season in self.seasons:
+            try:
+                response = requests.get(
+                    f"{self.BASE_URL}/fixtures",
+                    headers=self.headers,
+                    params={'id': match_id, 'season': season},
+                    timeout=10
+                )
+                data = response.json()
+                match = data['response'][0]
+                
+                return {
+                    'homeTeam': {
+                        'id': match['teams']['home']['id'],
+                        'name': match['teams']['home']['name'],
+                        'shortName': match['teams']['home']['name'][:12],
+                        'crest': match['teams']['home']['logo']
+                    },
+                    'awayTeam': {
+                        'id': match['teams']['away']['id'],
+                        'name': match['teams']['away']['name'],
+                        'shortName': match['teams']['away']['name'][:12],
+                        'crest': match['teams']['away']['logo']
+                    },
+                    'tournament': {'name': match['league']['name']},
+                    'season': {'id': match['league']['season']},
+                    'status': {
+                        'type': match['fixture']['status']['short'],
+                        'description': match['fixture']['status']['long'],
+                        'minute': match['fixture']['status']['elapsed'] or 0
+                    },
+                    'startTimestamp': match['fixture']['timestamp'],
+                    'venue': {'stadium': {'name': match['fixture']['venue']['name']}},
+                    'homeScore': {'current': match['goals']['home']} if match['goals']['home'] is not None else None,
+                    'awayScore': {'current': match['goals']['away']} if match['goals']['away'] is not None else None
+                }
+            except Exception:
+                continue
+        
+        raise Exception("Partido no encontrado en API-Football")
 
 
 scraper = SofaScoreScraper()
