@@ -3,22 +3,28 @@ import requests
 from datetime import datetime
 from flask import Flask, request, jsonify, send_from_directory
 
-# Configuramos Flask para que lea todo desde la raiz
+# Configuramos Flask para que lea todo desde la raíz actual de tu proyecto
 app = Flask(__name__, static_folder='.', template_folder='.')
 
-# ============ CONFIGURACION ============
+# ============ CONFIGURACIÓN ============
+# Esta es la Key de football-data.org (la nueva)
 API_KEY = os.environ.get('API_FOOTBALL_KEY', '6c8c1889a9c84616bc3e31ecae00d62f')
 API_BASE = 'https://api.football-data.org/v4'
 HEADERS = {'X-Auth-Token': API_KEY}
 
-# Mapeo exacto para que el filtro de "España", "Inglaterra", etc., de tu app.js funcione
+# MAPEO CRÍTICO: Los nombres deben coincidir EXACTAMENTE con los botones de tu app.js
 LEAGUE_MAP = {
-    'PD': 'Spain', 'PL': 'England', 'SA': 'Italy', 
-    'BL1': 'Germany', 'FL1': 'France', 'CL': 'World',
-    'DED': 'Netherlands', 'PPL': 'Portugal'
+    'PD': 'Spain',        # La Liga
+    'PL': 'England',      # Premier League
+    'SA': 'Italy',        # Serie A
+    'BL1': 'Germany',     # Bundesliga
+    'FL1': 'France',      # Ligue 1
+    'CL': 'World',        # Champions
+    'DED': 'Netherlands', # Eredivisie
+    'PPL': 'Portugal'     # Primeira Liga
 }
 
-# ============ SERVIR ARCHIVOS (PARA TU ESTRUCTURA PLANA) ============
+# ============ SERVIR ARCHIVOS (ESTRUCTURA PLANA) ============
 @app.route('/')
 def index():
     return send_from_directory('.', 'index.html')
@@ -36,7 +42,6 @@ def serve_js():
 @app.route('/api/matches')
 def get_matches():
     date_str = request.args.get('date', datetime.now().strftime('%Y-%m-%d'))
-    # Forzamos el rango de un solo dia
     url = f"{API_BASE}/matches?dateFrom={date_str}&dateTo={date_str}"
     
     try:
@@ -44,20 +49,19 @@ def get_matches():
         data = res.json()
         
         matches_list = []
-        # Si la API no devuelve nada o hay error, mandamos lista vacia para que no pete el JS
         if 'matches' not in data:
             return jsonify([])
 
         for m in data['matches']:
             code = m['competition']['code']
-            # Solo incluimos las ligas que tu app.js sabe filtrar
+            # Solo enviamos partidos de las ligas que tu app.js filtra (Spain, England, etc.)
             if code in LEAGUE_MAP:
                 matches_list.append({
                     'id': m['id'],
                     'utcDate': m['utcDate'],
                     'status': m['status'],
-                    'league_name': m['competition']['name'], # Importante para la UI
-                    'country': LEAGUE_MAP[code],             # Importante para el FILTRO
+                    'league_name': m['competition']['name'],
+                    'country': LEAGUE_MAP[code], # <--- ESTO ACTIVA EL FILTRO DE TU APP.JS
                     'homeTeam': {
                         'name': m['homeTeam']['shortName'] or m['homeTeam']['name'],
                         'crest': m['homeTeam']['crest']
@@ -69,7 +73,6 @@ def get_matches():
                 })
         return jsonify(matches_list)
     except Exception as e:
-        print(f"Error: {e}")
         return jsonify([])
 
 @app.route('/api/analyze/<int:match_id>')
@@ -78,7 +81,8 @@ def analyze(match_id):
         url = f"{API_BASE}/matches/{match_id}"
         res = requests.get(url, headers=HEADERS, timeout=10).json()
         
-        # Estructura de analisis que tu app.js espera recibir para llenar las tablas
+        # Enviamos una estructura de datos que NO DE ERROR al app.js
+        # (Con datos estimados porque la API gratuita no da corners/tarjetas)
         return jsonify({
             'match_info': {
                 'home_team': res['homeTeam']['name'],
