@@ -26,7 +26,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="SofaScore Live API",
     description="Datos deportivos en tiempo real con fallback",
-    version="2.2.0",
+    version="2.3.0",
     lifespan=lifespan,
     docs_url="/docs",
     redoc_url="/redoc"
@@ -82,7 +82,7 @@ def format_match(match: dict) -> dict:
         "country": tournament.get("category", {}).get("name", "") if isinstance(tournament.get("category"), dict) else match.get("country", ""),
         "homeScore": home_score.get("current") if isinstance(home_score, dict) else home_score,
         "awayScore": away_score.get("current") if isinstance(away_score, dict) else away_score,
-        "minute": status.get("minute", 0) if status.get("type") == "inprogress" else None
+        "minute": status.get("minute", 0) if status.get("type") in ["inprogress", "1H", "2H", "HT", "ET"] else None
     }
 
 def extract_stats_from_sofascore(stats_data: list) -> dict:
@@ -271,6 +271,78 @@ def get_demo_matches() -> list:
             "homeScore": 2,
             "awayScore": 1,
             "minute": 34
+        },
+        {
+            "id": 22222222,
+            "utcDate": "2026-05-13T19:45:00",
+            "status": "NS",
+            "statusText": "No iniciado",
+            "homeTeam": {
+                "id": 2697,
+                "name": "Juventus",
+                "shortName": "Juventus",
+                "crest": "https://api.sofascore.app/api/v1/team/2697/image"
+            },
+            "awayTeam": {
+                "id": 2687,
+                "name": "AC Milan",
+                "shortName": "AC Milan",
+                "crest": "https://api.sofascore.app/api/v1/team/2687/image"
+            },
+            "competition": {"id": 23, "name": "Serie A"},
+            "league_name": "Serie A",
+            "country": "Italy",
+            "homeScore": None,
+            "awayScore": None,
+            "minute": None
+        },
+        {
+            "id": 33333333,
+            "utcDate": "2026-05-13T20:30:00",
+            "status": "NS",
+            "statusText": "No iniciado",
+            "homeTeam": {
+                "id": 1644,
+                "name": "PSG",
+                "shortName": "PSG",
+                "crest": "https://api.sofascore.app/api/v1/team/1644/image"
+            },
+            "awayTeam": {
+                "id": 1681,
+                "name": "Marseille",
+                "shortName": "Marseille",
+                "crest": "https://api.sofascore.app/api/v1/team/1681/image"
+            },
+            "competition": {"id": 61, "name": "Ligue 1"},
+            "league_name": "Ligue 1",
+            "country": "France",
+            "homeScore": None,
+            "awayScore": None,
+            "minute": None
+        },
+        {
+            "id": 44444444,
+            "utcDate": "2026-05-13T22:00:00",
+            "status": "2H",
+            "statusText": "Segunda mitad",
+            "homeTeam": {
+                "id": 3375,
+                "name": "Atletico Madrid",
+                "shortName": "Atletico",
+                "crest": "https://api.sofascore.app/api/v1/team/3375/image"
+            },
+            "awayTeam": {
+                "id": 2833,
+                "name": "Sevilla",
+                "shortName": "Sevilla",
+                "crest": "https://api.sofascore.app/api/v1/team/2833/image"
+            },
+            "competition": {"id": 8, "name": "La Liga"},
+            "league_name": "La Liga",
+            "country": "Spain",
+            "homeScore": 1,
+            "awayScore": 0,
+            "minute": 67
         }
     ]
 
@@ -333,7 +405,10 @@ def api_live():
     except Exception as e:
         logger.error(f"Fallback live fallo: {e}")
     
-    return []
+    # Demo live
+    demo = get_demo_matches()
+    live_demo = [m for m in demo if m.get("status") in ["1H", "2H", "HT", "ET"]]
+    return live_demo
 
 @app.get("/api/analyze/{match_id}")
 def api_analyze(match_id: int):
