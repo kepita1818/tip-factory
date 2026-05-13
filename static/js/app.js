@@ -1,620 +1,396 @@
-// ============ STATE ============
-let currentDate = new Date();
-let currentFilter = 'all';
-let allMatches = [];
+import os
+import logging
+from datetime import datetime, timedelta
+from fastapi import FastAPI, HTTPException, Query, Request
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse, HTMLResponse
+from fastapi.staticfiles import StaticFiles
+from fastapi.templating import Jinja2Templates
+import requests
+import json
 
-// ============ DOM ELEMENTS ============
-const matchesContainer = document.getElementById('matches-container');
-const analysisSection = document.getElementById('analysis-section');
-const dateDisplay = document.getElementById('current-date');
-const datePicker = document.getElementById('date-picker');
+logging.basicConfig(format='%(asctime)s - %(levelname)s - %(message)s', level=logging.INFO)
+logger = logging.getLogger(__name__)
 
-// ============ DATE HANDLING ============
-function formatDate(date) {
-    const d = date.getDate().toString().padStart(2, '0');
-    const m = (date.getMonth() + 1).toString().padStart(2, '0');
-    const y = date.getFullYear();
-    return d + '/' + m + '/' + y;
+app = FastAPI(title="TipFactory", version="1.0.0")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+app.mount("/static", StaticFiles(directory="static"), name="static")
+templates = Jinja2Templates(directory="templates")
+
+API_KEY = os.environ.get('API_FOOTBALL_KEY', '')
+BASE_URL = "https://api.football-data.org/v4"
+HEADERS = {
+    'X-Auth-Token': API_KEY,
 }
 
-function formatDateISO(date) {
-    return date.toISOString().split('T')[0];
-}
+_cache = {}
 
-function formatLocalTime(utcDateString) {
-    if (!utcDateString) return '--:--';
-    const date = new Date(utcDateString);
-    return date.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit', hour12: false });
-}
+def get_cache(key, ttl=300):
+    if key in _cache:
+        data, ts = _cache[key]
+        if (datetime.now() - ts).seconds < ttl:
+            return data
+    return None
 
-function updateDateDisplay() {
-    if (dateDisplay) dateDisplay.textContent = formatDate(currentDate);
-    if (datePicker) datePicker.value = formatDateISO(currentDate);
-}
+def set_cache(key, data):
+    _cache[key] = (data, datetime.now())
 
-const prevBtn = document.getElementById('prev-date');
-const nextBtn = document.getElementById('next-date');
+def api_request(endpoint, params=None, cache_key=None, ttl=300):
+    if cache_key:
+        cached = get_cache(cache_key, ttl)
+        if cached is not None:
+            return cached
 
-if (prevBtn) {
-    prevBtn.addEventListener('click', () => {
-        currentDate.setDate(currentDate.getDate() - 1);
-        updateDateDisplay();
-        loadMatches();
-    });
-}
+    if not API_KEY:
+        logger.error("API_FOOTBALL_KEY no configurada")
+        return None
 
-if (nextBtn) {
-    nextBtn.addEventListener('click', () => {
-        currentDate.setDate(currentDate.getDate() + 1);
-        updateDateDisplay();
-        loadMatches();
-    });
-}
+    try:
+        url = f"{BASE_URL}/{endpoint}"
+        resp = requests.get(url, headers=HEADERS, params=params, timeout=15)
 
-if (dateDisplay) {
-    dateDisplay.addEventListener('click', () => {
-        if (datePicker) datePicker.showPicker();
-    });
-}
+        if resp.status_code == 429:
+            logger.error("RATE LIMIT")
+            return None
+        if resp.status_code in [403, 401]:
+            logger.error(f"AUTH ERROR {resp.status_code}")
+            return None
+        if resp.status_code == 404:
+            logger.error(f"NOT FOUND {endpoint}")
+            return None
 
-if (datePicker) {
-    datePicker.addEventListener('change', (e) => {
-        currentDate = new Date(e.target.value);
-        updateDateDisplay();
-        loadMatches();
-    });
-}
+        resp.raise_for_status()
+        data = resp.json()
 
-// ============ FILTERS ============
-document.querySelectorAll('.filter-btn').forEach(btn => {
-    btn.addEventListener('click', () => {
-        document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
-        btn.classList.add('active');
-        currentFilter = btn.dataset.filter;
-        renderMatches();
-    });
-});
+        if cache_key:
+            set_cache(cache_key, data)
+        return data
+    except Exception as e:
+        logger.error(f"API error en {endpoint}: {e}")
+        return None
 
-// ============ LOAD MATCHES ============
-async function loadMatches() {
-    const dateStr = formatDateISO(currentDate);
+def format_match(m):
+    home = m.get('homeTeam', {})
+    away = m.get('awayTeam', {})
+    competition = m.get('competition', {})
+    score = m.get('score', {})
+    ft = score.get('fullTime', {}) if isinstance(score, dict) else {}
+    ht = score.get('halfTime', {}) if isinstance(score, dict) else {}
 
-    if (matchesContainer) {
-        matchesContainer.innerHTML = '<div class="loading">Cargando partidos...</div>';
+    status = m.get('status', 'SCHEDULED')
+    status_map = {
+        'SCHEDULED': 'NS', 'LIVE': 'LIVE', 'IN_PLAY': '1H', 'PAUSED': 'HT',
+        'FINISHED': 'FT', 'POSTPONED': 'PST', 'SUSPENDED': 'SUSP', 
+        'CANCELLED': 'CANC', 'AWARDED': 'AWD'
     }
 
-    try {
-        const response = await fetch('/api/matches?date=' + dateStr);
-        if (!response.ok) throw new Error('HTTP ' + response.status);
+    minute = m.get('minute', 0)
+    if isinstance(minute, dict):
+        minute = minute.get('regular', 0)
 
-        allMatches = await response.json();
+    return {
+        "id": m.get('id'),
+        "utcDate": m.get('utcDate'),
+        "status": status_map.get(status, status),
+        "statusText": status,
+        "minute": minute,
+        "venue": m.get('venue', ''),
+        "matchday": m.get('matchday', 0),
+        "homeTeam": {
+            "id": home.get('id'),
+            "name": home.get('name', 'Local'),
+            "shortName": home.get('shortName', home.get('name', 'Local')[:15]),
+            "crest": home.get('crest', ''),
+        },
+        "awayTeam": {
+            "id": away.get('id'),
+            "name": away.get('name', 'Visitante'),
+            "shortName": away.get('shortName', away.get('name', 'Visitante')[:15]),
+            "crest": away.get('crest', ''),
+        },
+        "competition": {
+            "id": competition.get('id'),
+            "name": competition.get('name', ''),
+            "code": competition.get('code', ''),
+        },
+        "league_name": competition.get('name', ''),
+        "country": m.get('area', {}).get('name', ''),
+        "homeScore": ft.get('home') if isinstance(ft, dict) else None,
+        "awayScore": ft.get('away') if isinstance(ft, dict) else None,
+        "halfTimeHome": ht.get('home') if isinstance(ht, dict) else None,
+        "halfTimeAway": ht.get('away') if isinstance(ht, dict) else None,
+    }
 
-        if (!Array.isArray(allMatches)) {
-            throw new Error('Respuesta invalida del servidor');
+@app.get("/", response_class=HTMLResponse)
+def home(request: Request):
+    return templates.TemplateResponse("index.html", {"request": request})
+
+@app.get("/api/matches")
+def matches(date: str = Query(None)):
+    if not date:
+        date = datetime.now().strftime("%Y-%m-%d")
+
+    logger.info(f"BUSCANDO PARTIDOS PARA: {date}")
+
+    for delta in [0, -1, 1, -2, 2, -3, 3, -4, 4, -5, 5, -6, 6, -7, 7]:
+        try:
+            check_date = (datetime.strptime(date, "%Y-%m-%d") + timedelta(days=delta)).strftime("%Y-%m-%d")
+
+            data = api_request('matches', {'dateFrom': check_date, 'dateTo': check_date}, f"matches_{check_date}", 300)
+
+            if data and data.get('matches'):
+                matches_list = [format_match(m) for m in data['matches']]
+                logger.info(f"ENCONTRADOS {len(matches_list)} partidos en {check_date}")
+                return matches_list
+
+        except Exception as e:
+            logger.error(f"Error buscando {check_date}: {e}")
+            continue
+
+    logger.warning(f"NO HAY PARTIDOS para {date}")
+    return []
+
+@app.get("/api/analyze/{match_id}")
+def analyze(match_id: int):
+    logger.info(f"ANALIZANDO PARTIDO {match_id}")
+
+    data = api_request(f'matches/{match_id}', cache_key=f"match_{match_id}", ttl=300)
+    if not data:
+        raise HTTPException(404, "Partido no encontrado")
+
+    match = data
+    home_id = match['homeTeam']['id']
+    away_id = match['awayTeam']['id']
+    comp_id = match['competition']['id']
+    season = match.get('season', {})
+    season_year = season.get('startDate', '')[:4] if season.get('startDate') else '2025'
+
+    match_detail = format_match(match)
+
+    # H2H
+    h2h_data = api_request(f'matches/{match_id}/head2head', {'limit': 10}, f"h2h_{match_id}", 3600)
+
+    h2h_matches = []
+    h2h_stats = {'home_wins': 0, 'away_wins': 0, 'draws': 0, 'home_goals': 0, 'away_goals': 0, 'total_matches': 0}
+
+    if h2h_data and h2h_data.get('aggregates'):
+        agg = h2h_data['aggregates']
+        h2h_stats = {
+            'home_wins': agg.get('homeTeam', {}).get('wins', 0),
+            'away_wins': agg.get('awayTeam', {}).get('wins', 0),
+            'draws': agg.get('homeTeam', {}).get('draws', 0),
+            'home_goals': agg.get('homeTeam', {}).get('goals', 0),
+            'away_goals': agg.get('awayTeam', {}).get('goals', 0),
+            'total_matches': agg.get('numberOfMatches', 0)
+        }
+        for m in h2h_data.get('matches', [])[:5]:
+            h2h_matches.append({
+                'date': m.get('utcDate', '')[:10],
+                'home': m['homeTeam']['name'],
+                'away': m['awayTeam']['name'],
+                'homeScore': m.get('score', {}).get('fullTime', {}).get('home'),
+                'awayScore': m.get('score', {}).get('fullTime', {}).get('away'),
+                'competition': m['competition']['name']
+            })
+
+    # FORMA
+    def get_form(team_id, comp_id=None):
+        params = {'status': 'FINISHED', 'limit': 5}
+        if comp_id:
+            params['competitions'] = comp_id
+
+        team_matches = api_request(f'teams/{team_id}/matches', params, f"form_{team_id}_{comp_id}", 1800)
+
+        form = []
+        if not team_matches or not team_matches.get('matches'):
+            return form
+
+        for m in team_matches['matches'][:5]:
+            is_home = m['homeTeam']['id'] == team_id
+            score = m.get('score', {}).get('fullTime', {})
+            hg = score.get('home', 0) or 0
+            ag = score.get('away', 0) or 0
+
+            if is_home:
+                tg, og, result = hg, ag, 'W' if hg > ag else 'L' if hg < ag else 'D'
+            else:
+                tg, og, result = ag, hg, 'W' if ag > hg else 'L' if ag < hg else 'D'
+
+            form.append({
+                'result': result,
+                'result_text': 'Victoria' if result == 'W' else 'Derrota' if result == 'L' else 'Empate',
+                'team_goals': tg, 'opp_goals': og,
+                'opponent': m['awayTeam']['name'] if is_home else m['homeTeam']['name'],
+                'venue': 'home' if is_home else 'away',
+                'date': m['utcDate'][:10] if m.get('utcDate') else '2024-01-01',
+                'competition': m['competition']['name']
+            })
+        return form
+
+    home_form = get_form(home_id, comp_id)
+    away_form = get_form(away_id, comp_id)
+
+    # STANDINGS
+    def get_standings(team_id, comp_id, season_year):
+        stats_data = api_request(f'competitions/{comp_id}/standings', {'season': season_year}, f"standings_{comp_id}_{season_year}", 3600)
+        if not stats_data or not stats_data.get('standings'):
+            return None
+
+        for standing in stats_data['standings']:
+            for table in standing.get('table', []):
+                if table['team']['id'] == team_id:
+                    return {
+                        'position': table.get('position', 0),
+                        'played': table.get('playedGames', 0),
+                        'won': table.get('won', 0),
+                        'draw': table.get('draw', 0),
+                        'lost': table.get('lost', 0),
+                        'goals_for': table.get('goalsFor', 0),
+                        'goals_against': table.get('goalsAgainst', 0),
+                        'points': table.get('points', 0),
+                        'form': table.get('form', '-----')
+                    }
+        return None
+
+    home_standings = get_standings(home_id, comp_id, season_year)
+    away_standings = get_standings(away_id, comp_id, season_year)
+
+    # STATS
+    def calc_from_form(form_list):
+        if not form_list:
+            return {'avg_scored': 1.5, 'avg_conceded': 1.2, 'matches': 0, 'total_scored': 0, 'total_conceded': 0}
+        scored = sum(f['team_goals'] for f in form_list)
+        conceded = sum(f['opp_goals'] for f in form_list)
+        matches = len(form_list)
+        return {
+            'avg_scored': round(scored / matches, 2),
+            'avg_conceded': round(conceded / matches, 2),
+            'matches': matches,
+            'total_scored': scored,
+            'total_conceded': conceded
         }
 
-        if (allMatches.length === 0) {
-            if (matchesContainer) {
-                matchesContainer.innerHTML = '<div class="no-matches"><div class="no-matches-icon">📅</div>No hay partidos para ' + formatDate(currentDate) + '<br><small>Prueba con otra fecha o filtro.<br>Las ligas europeas vuelven en agosto.</small></div>';
-            }
-            return;
-        }
+    def calc_over(form_list, threshold):
+        if not form_list: return 50
+        return round((sum(1 for f in form_list if (f['team_goals'] + f['opp_goals']) > threshold) / len(form_list)) * 100)
 
-        renderMatches();
+    def calc_btts(form_list):
+        if not form_list: return 50
+        return round((sum(1 for f in form_list if f['team_goals'] > 0 and f['opp_goals'] > 0) / len(form_list)) * 100)
 
-    } catch (e) {
-        console.error('Error:', e);
-        if (matchesContainer) {
-            matchesContainer.innerHTML = '<div class="no-matches"><div class="no-matches-icon">⚠️</div>Error: ' + e.message + '<br><small>Intenta recargar la pagina</small></div>';
-        }
-    }
-}
+    home_calc = calc_from_form(home_form)
+    away_calc = calc_from_form(away_form)
 
-function renderMatches() {
-    let matches = allMatches;
-
-    if (currentFilter !== 'all') {
-        matches = matches.filter(m => {
-            const country = (m.country || '').toLowerCase();
-            const league = (m.league_name || '').toLowerCase();
-            const filter = currentFilter.toLowerCase();
-            return country.includes(filter) || league.includes(filter);
-        });
-    }
-
-    if (!matches.length) {
-        if (matchesContainer) matchesContainer.innerHTML = '<div class="no-matches">No hay partidos para este filtro</div>';
-        return;
+    hstats = {
+        'position': home_standings.get('position', 0) if home_standings else 0,
+        'played': home_standings.get('played', 0) if home_standings else home_calc['matches'],
+        'won': home_standings.get('won', 0) if home_standings else 0,
+        'draw': home_standings.get('draw', 0) if home_standings else 0,
+        'lost': home_standings.get('lost', 0) if home_standings else 0,
+        'goals_for': home_standings.get('goals_for', 0) if home_standings else home_calc['total_scored'],
+        'goals_against': home_standings.get('goals_against', 0) if home_standings else home_calc['total_conceded'],
+        'points': home_standings.get('points', 0) if home_standings else 0,
+        'form_string': home_standings.get('form', '') if home_standings else '',
+        'avg_total_goals': round(home_calc['avg_scored'] + home_calc['avg_conceded'], 2),
+        'avg_team_goals': home_calc['avg_scored'],
+        'avg_conceded': home_calc['avg_conceded'],
+        'btts_pct': calc_btts(home_form),
+        'over_1_5_pct': calc_over(home_form, 1),
+        'over_2_5_pct': calc_over(home_form, 2),
+        'over_3_5_pct': calc_over(home_form, 3),
+        'avg_corners': 5.0,
+        'avg_cards': 2.5,
     }
 
-    // Ordenar: en vivo primero, luego por hora
-    matches.sort((a, b) => {
-        const statusOrder = { '1H': 0, 'HT': 0, 'LIVE': 0, '2H': 0, 'NS': 1, 'FT': 2, 'PST': 3, 'CANC': 4 };
-        const orderA = statusOrder[a.status] !== undefined ? statusOrder[a.status] : 1;
-        const orderB = statusOrder[b.status] !== undefined ? statusOrder[b.status] : 1;
-        if (orderA !== orderB) return orderA - orderB;
-        return (a.utcDate || '').localeCompare(b.utcDate || '');
-    });
-
-    const html = matches.map(match => {
-        const home = match.homeTeam;
-        const away = match.awayTeam;
-        const time = formatLocalTime(match.utcDate);
-        const isLive = ['1H', '2H', 'HT', 'LIVE'].includes(match.status);
-        const isFinished = match.status === 'FT';
-
-        let statusBadge = '';
-        if (isLive) statusBadge = '<span class="status-badge live">LIVE ' + (match.minute || '') + ''</span>';
-        else if (isFinished) statusBadge = '<span class="status-badge finished">FT</span>';
-        else if (match.status === 'PST') statusBadge = '<span class="status-badge postponed">POS</span>';
-
-        const scoreText = (match.homeScore !== null && match.awayScore !== null) 
-            ? match.homeScore + ' - ' + match.awayScore 
-            : '';
-
-        const homeLogo = home.crest || 'https://crests.football-data.org/' + home.id + '.svg';
-        const awayLogo = away.crest || 'https://crests.football-data.org/' + away.id + '.svg';
-
-        return '<div class="match-card-main ' + (isLive ? 'live ' : '') + (isFinished ? 'finished' : '') + '" data-match-id="' + match.id + '">' +
-            '<div class="match-time-row">' +
-                '<span class="match-time">' + time + '</span>' +
-                statusBadge +
-                (scoreText ? '<span class="match-score">' + scoreText + '</span>' : '') +
-            '</div>' +
-            '<div class="match-teams-row">' +
-                '<div class="match-team-row">' +
-                    '<img src="' + homeLogo + '" alt="' + home.name + '" loading="lazy" onerror="this.src='data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%2224%22 height=%2224%22%3E%3Ccircle cx=%2212%22 cy=%2212%22 r=%2210%22 fill=%22%23374151%22/%3E%3C/svg%3E'">' +
-                    '<span>' + (home.shortName || home.name) + '</span>' +
-                    (match.homeScore !== null ? '<span class="team-score">' + match.homeScore + '</span>' : '') +
-                '</div>' +
-                '<div class="match-team-row">' +
-                    '<img src="' + awayLogo + '" alt="' + away.name + '" loading="lazy" onerror="this.src='data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%2224%22 height=%2224%22%3E%3Ccircle cx=%2212%22 cy=%2212%22 r=%2210%22 fill=%22%23374151%22/%3E%3C/svg%3E'">' +
-                    '<span>' + (away.shortName || away.name) + '</span>' +
-                    (match.awayScore !== null ? '<span class="team-score">' + match.awayScore + '</span>' : '') +
-                '</div>' +
-            '</div>' +
-            '<div class="match-footer">' +
-                '<span class="match-league-tag">' + (match.league_name || '') + '</span>' +
-                (match.venue && match.venue !== 'N/A' ? '<span class="match-venue">🏟️ ' + match.venue + '</span>' : '') +
-            '</div>' +
-        '</div>';
-    }).join('');
-
-    if (matchesContainer) matchesContainer.innerHTML = html;
-
-    document.querySelectorAll('.match-card-main').forEach(card => {
-        card.addEventListener('click', () => analyzeMatch(card.dataset.matchId));
-    });
-}
-
-// ============ NAVIGATION ============
-function showMatches() {
-    if (matchesContainer && matchesContainer.parentElement) matchesContainer.parentElement.classList.remove('hidden');
-    const dateSelector = document.querySelector('.date-selector');
-    const leagueFilters = document.querySelector('.league-filters');
-    const appHeader = document.querySelector('.app-header');
-
-    if (dateSelector) dateSelector.classList.remove('hidden');
-    if (leagueFilters) leagueFilters.classList.remove('hidden');
-    if (appHeader) appHeader.classList.remove('hidden');
-    if (analysisSection) analysisSection.classList.add('hidden');
-    window.scrollTo(0, 0);
-}
-
-function showAnalysis() {
-    if (matchesContainer && matchesContainer.parentElement) matchesContainer.parentElement.classList.add('hidden');
-    const dateSelector = document.querySelector('.date-selector');
-    const leagueFilters = document.querySelector('.league-filters');
-    const appHeader = document.querySelector('.app-header');
-
-    if (dateSelector) dateSelector.classList.add('hidden');
-    if (leagueFilters) leagueFilters.classList.add('hidden');
-    if (appHeader) appHeader.classList.add('hidden');
-    if (analysisSection) analysisSection.classList.remove('hidden');
-    window.scrollTo(0, 0);
-}
-
-const backBtn = document.getElementById('back-btn-matches');
-if (backBtn) backBtn.addEventListener('click', showMatches);
-
-// ============ TABS ============
-document.querySelectorAll('.tab-btn').forEach(btn => {
-    btn.addEventListener('click', () => {
-        document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
-        document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
-        btn.classList.add('active');
-        const tabContent = document.getElementById('tab-' + btn.dataset.tab);
-        if (tabContent) tabContent.classList.add('active');
-    });
-});
-
-// ============ ANALYZE MATCH ============
-async function analyzeMatch(matchId) {
-    showAnalysis();
-
-    // Reset tabs
-    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
-    document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
-    const summaryTab = document.querySelector('[data-tab="summary"]');
-    const summaryContent = document.getElementById('tab-summary');
-    if (summaryTab) summaryTab.classList.add('active');
-    if (summaryContent) summaryContent.classList.add('active');
-
-    try {
-        const response = await fetch('/api/analyze/' + matchId);
-        if (!response.ok) throw new Error('HTTP ' + response.status);
-
-        const data = await response.json();
-        if (data.error) {
-            alert(data.error);
-            showMatches();
-            return;
-        }
-
-        renderAnalysis(data);
-    } catch (e) {
-        console.error('Error:', e);
-        alert('Error analizando partido');
-        showMatches();
-    }
-}
-
-function renderAnalysis(data) {
-    const info = data.match_info;
-    const probs = data.probabilities;
-    const homeStats = data.home_stats;
-    const awayStats = data.away_stats;
-
-    // Header
-    const homeNameEl = document.getElementById('home-name');
-    const awayNameEl = document.getElementById('away-name');
-    const homeLogoEl = document.getElementById('home-logo');
-    const awayLogoEl = document.getElementById('away-logo');
-    const homeFormationEl = document.getElementById('home-formation');
-    const awayFormationEl = document.getElementById('away-formation');
-
-    if (homeNameEl) homeNameEl.textContent = info.home_team;
-    if (awayNameEl) awayNameEl.textContent = info.away_team;
-    if (homeLogoEl) homeLogoEl.src = info.home_logo;
-    if (awayLogoEl) awayLogoEl.src = info.away_logo;
-    if (homeFormationEl) homeFormationEl.textContent = info.home_formation || '';
-    if (awayFormationEl) awayFormationEl.textContent = info.away_formation || '';
-
-    const scoreDisplay = document.getElementById('score-display');
-    if (scoreDisplay) {
-        if (info.home_score !== null && info.away_score !== null) {
-            let scoreHtml = '<div class="score-box">' + info.home_score + '</div><div class="score-sep">-</div><div class="score-box">' + info.away_score + '</div>';
-            if (info.halfTimeHome !== null) {
-                scoreHtml += '<div class="ht-score">Descanso: ' + info.halfTimeHome + '-' + info.halfTimeAway + '</div>';
-            }
-            scoreDisplay.innerHTML = scoreHtml;
-        } else {
-            scoreDisplay.textContent = 'VS';
-        }
+    astats = {
+        'position': away_standings.get('position', 0) if away_standings else 0,
+        'played': away_standings.get('played', 0) if away_standings else away_calc['matches'],
+        'won': away_standings.get('won', 0) if away_standings else 0,
+        'draw': away_standings.get('draw', 0) if away_standings else 0,
+        'lost': away_standings.get('lost', 0) if away_standings else 0,
+        'goals_for': away_standings.get('goals_for', 0) if away_standings else away_calc['total_scored'],
+        'goals_against': away_standings.get('goals_against', 0) if away_standings else away_calc['total_conceded'],
+        'points': away_standings.get('points', 0) if away_standings else 0,
+        'form_string': away_standings.get('form', '') if away_standings else '',
+        'avg_total_goals': round(away_calc['avg_scored'] + away_calc['avg_conceded'], 2),
+        'avg_team_goals': away_calc['avg_scored'],
+        'avg_conceded': away_calc['avg_conceded'],
+        'btts_pct': calc_btts(away_form),
+        'over_1_5_pct': calc_over(away_form, 1),
+        'over_2_5_pct': calc_over(away_form, 2),
+        'over_3_5_pct': calc_over(away_form, 3),
+        'avg_corners': 4.5,
+        'avg_cards': 2.3,
     }
 
-    // Meta
-    let metaText = info.date + ' | ' + info.time + ' | ' + info.league;
-    if (info.matchday) metaText += ' | Jornada ' + info.matchday;
-    const matchMeta = document.getElementById('match-meta');
-    if (matchMeta) matchMeta.textContent = metaText;
+    over_1_5 = round((hstats['over_1_5_pct'] + astats['over_1_5_pct']) / 2, 1)
+    over_2_5 = round((hstats['over_2_5_pct'] + astats['over_2_5_pct']) / 2, 1)
+    over_3_5 = round((hstats['over_3_5_pct'] + astats['over_3_5_pct']) / 2, 1)
+    btts = round((hstats['btts_pct'] + astats['btts_pct']) / 2, 1)
+    xg = round(hstats['avg_team_goals'] + astats['avg_team_goals'], 2)
+    corners = round((hstats['avg_corners'] + astats['avg_corners']) * 0.9, 1)
+    cards = round(hstats['avg_cards'] + astats['avg_cards'], 1)
 
-    // Details
-    let detailsHtml = '';
-    if (info.venue && info.venue !== 'N/A') detailsHtml += '<span>🏟️ ' + info.venue + '</span>';
-    if (info.attendance) detailsHtml += '<span>👥 ' + info.attendance.toLocaleString() + '</span>';
-    if (info.home_coach) detailsHtml += '<span>👔 ' + info.home_coach + ' vs ' + info.away_coach + '</span>';
-    if (info.referees && info.referees.length) detailsHtml += '<span>🎺 ' + info.referees[0] + '</span>';
-    const matchDetails = document.getElementById('match-details');
-    if (matchDetails) matchDetails.innerHTML = detailsHtml;
-
-    // Standings
-    renderStandings(homeStats, awayStats, info);
-
-    // Probabilities
-    setTimeout(() => {
-        setProbBar('prob-over15', probs.over_1_5);
-        setProbBar('prob-over25', probs.over_2_5);
-        setProbBar('prob-over35', probs.over_3_5);
-        setProbBar('prob-btts', probs.btts);
-        setProbBar('prob-xg', Math.min(probs.total_expected_goals * 15, 100), probs.total_expected_goals);
-        setProbBar('prob-corners', Math.min(probs.expected_corners * 5, 100), probs.expected_corners);
-        setProbBar('prob-cards', Math.min(probs.expected_cards * 12, 100), probs.expected_cards);
-    }, 100);
-
-    // Odds
-    renderOdds(data.odds);
-
-    // H2H
-    renderH2H(data.h2h);
-
-    // Form
-    const homeFormTitle = document.getElementById('home-form-title');
-    const awayFormTitle = document.getElementById('away-form-title');
-    if (homeFormTitle) homeFormTitle.textContent = info.home_team.substring(0, 20);
-    if (awayFormTitle) awayFormTitle.textContent = info.away_team.substring(0, 20);
-    renderForm(data.home_form, 'home-form', 'home-form-list');
-    renderForm(data.away_form, 'away-form', 'away-form-list');
-
-    // Stats tables
-    const statsHome = document.getElementById('stats-home');
-    const statsAway = document.getElementById('stats-away');
-    const goalsHome = document.getElementById('goals-home');
-    const goalsAway = document.getElementById('goals-away');
-    const miscHome = document.getElementById('misc-home');
-    const miscAway = document.getElementById('misc-away');
-
-    if (statsHome) statsHome.textContent = info.home_short;
-    if (statsAway) statsAway.textContent = info.away_short;
-    if (goalsHome) goalsHome.textContent = info.home_short;
-    if (goalsAway) goalsAway.textContent = info.away_short;
-    if (miscHome) miscHome.textContent = info.home_short;
-    if (miscAway) miscAway.textContent = info.away_short;
-
-    renderMatchStats(homeStats, awayStats);
-    renderGoalsTable(homeStats, awayStats);
-    renderMiscTable(homeStats, awayStats);
-
-    // Events
-    renderEvents(data.match_events, info);
-}
-
-function renderStandings(home, away, info) {
-    const container = document.getElementById('standings-row');
-    if (!container) return;
-
-    if (!home.position && !away.position) {
-        container.innerHTML = '<div class="no-data">Datos de clasificacion no disponibles</div>';
-        return;
+    return {
+        "match_info": {
+            "home_team": match['homeTeam']['name'],
+            "away_team": match['awayTeam']['name'],
+            "home_short": match['homeTeam'].get('shortName', match['homeTeam']['name'][:12]),
+            "away_short": match['awayTeam'].get('shortName', match['awayTeam']['name'][:12]),
+            "home_logo": match['homeTeam'].get('crest', ''),
+            "away_logo": match['awayTeam'].get('crest', ''),
+            "home_formation": match['homeTeam'].get('formation', ''),
+            "away_formation": match['awayTeam'].get('formation', ''),
+            "home_coach": match['homeTeam'].get('coach', {}).get('name', ''),
+            "away_coach": match['awayTeam'].get('coach', {}).get('name', ''),
+            "league": match['competition']['name'],
+            "country": match.get('area', {}).get('name', ''),
+            "date": match['utcDate'][:10] if match.get('utcDate') else 'N/A',
+            "time": match['utcDate'][11:16] if match.get('utcDate') else '--:--',
+            "venue": match.get('venue', ''),
+            "status": match.get('status', 'SCHEDULED'),
+            "minute": match_detail.get('minute', 0),
+            "matchday": match_detail.get('matchday', 0),
+            "home_score": match_detail.get('homeScore'),
+            "away_score": match_detail.get('awayScore'),
+            "halfTimeHome": match_detail.get('halfTimeHome'),
+            "halfTimeAway": match_detail.get('halfTimeAway'),
+        },
+        "home_form": home_form,
+        "away_form": away_form,
+        "home_stats": hstats,
+        "away_stats": astats,
+        "h2h": {"matches": h2h_matches, "stats": h2h_stats},
+        "probabilities": {
+            "over_1_5": over_1_5,
+            "over_2_5": over_2_5,
+            "over_3_5": over_3_5,
+            "btts": btts,
+            "total_expected_goals": xg,
+            "expected_corners": corners,
+            "expected_cards": cards
+        },
+        "odds": {"home": 0, "draw": 0, "away": 0},
     }
 
-    const homeHtml = home.position ? 
-        '<div class="pos-badge" style="background:' + getPosColor(home.position) + '">#' + home.position + '</div>' +
-        '<div class="standing-info">' +
-            '<div>' + home.points + ' pts | ' + home.played + ' PJ</div>' +
-            '<div>' + home.won + 'V ' + home.draw + 'E ' + home.lost + 'D</div>' +
-            '<div>GF:' + home.goals_for + ' GC:' + home.goals_against + '</div>' +
-        '</div>' +
-        '<div class="form-string">' + (home.form_string || '') + '</div>'
-        : '<div class="no-data">Sin datos</div>';
-
-    const awayHtml = away.position ? 
-        '<div class="pos-badge" style="background:' + getPosColor(away.position) + '">#' + away.position + '</div>' +
-        '<div class="standing-info">' +
-            '<div>' + away.points + ' pts | ' + away.played + ' PJ</div>' +
-            '<div>' + away.won + 'V ' + away.draw + 'E ' + away.lost + 'D</div>' +
-            '<div>GF:' + away.goals_for + ' GC:' + away.goals_against + '</div>' +
-        '</div>' +
-        '<div class="form-string">' + (away.form_string || '') + '</div>'
-        : '<div class="no-data">Sin datos</div>';
-
-    const homeStanding = document.getElementById('home-standing');
-    const awayStanding = document.getElementById('away-standing');
-    if (homeStanding) homeStanding.innerHTML = homeHtml;
-    if (awayStanding) awayStanding.innerHTML = awayHtml;
-}
-
-function getPosColor(pos) {
-    if (pos <= 4) return 'var(--success)';
-    if (pos <= 6) return 'var(--info)';
-    if (pos >= 18) return 'var(--danger)';
-    return 'var(--warning)';
-}
-
-function renderOdds(odds) {
-    const card = document.getElementById('odds-card');
-    if (!card) return;
-
-    if (!odds || (!odds.home && !odds.draw && !odds.away)) {
-        card.classList.add('hidden');
-        return;
-    }
-    card.classList.remove('hidden');
-
-    const oddsRow = document.getElementById('odds-row');
-    if (oddsRow) {
-        oddsRow.innerHTML = 
-            '<div class="odd-box"><span class="odd-label">1</span><span class="odd-value">' + (odds.home || '-') + '</span></div>' +
-            '<div class="odd-box"><span class="odd-label">X</span><span class="odd-value">' + (odds.draw || '-') + '</span></div>' +
-            '<div class="odd-box"><span class="odd-label">2</span><span class="odd-value">' + (odds.away || '-') + '</span></div>';
-    }
-}
-
-function renderH2H(h2h) {
-    const statsDiv = document.getElementById('h2h-stats');
-    const matchesDiv = document.getElementById('h2h-matches');
-    if (!statsDiv || !matchesDiv) return;
-
-    const stats = h2h.stats;
-
-    if (!stats.total_matches) {
-        statsDiv.innerHTML = '<div class="no-data">Sin datos H2H</div>';
-        matchesDiv.innerHTML = '';
-        return;
+@app.get("/health")
+def health():
+    return {
+        "status": "ok",
+        "cache_size": len(_cache),
+        "time": datetime.now().isoformat(),
+        "api_key": "configured" if API_KEY else "missing",
     }
 
-    statsDiv.innerHTML = 
-        '<div class="h2h-stat-item"><span class="h2h-number">' + stats.total_matches + '</span><span class="h2h-label">Partidos</span></div>' +
-        '<div class="h2h-stat-item win"><span class="h2h-number">' + stats.home_wins + '</span><span class="h2h-label">Victorias Local</span></div>' +
-        '<div class="h2h-stat-item draw"><span class="h2h-number">' + stats.draws + '</span><span class="h2h-label">Empates</span></div>' +
-        '<div class="h2h-stat-item win"><span class="h2h-number">' + stats.away_wins + '</span><span class="h2h-label">Victorias Visitante</span></div>' +
-        '<div class="h2h-stat-item"><span class="h2h-number">' + stats.home_goals + '-' + stats.away_goals + '</span><span class="h2h-label">Goles</span></div>';
-
-    matchesDiv.innerHTML = h2h.matches.map(m => 
-        '<div class="h2h-match">' +
-            '<span class="h2h-date">' + m.date + '</span>' +
-            '<span class="h2h-comp">' + m.competition + '</span>' +
-            '<span class="h2h-result">' + m.home + ' ' + (m.homeScore !== null ? m.homeScore : '-') + ' - ' + (m.awayScore !== null ? m.awayScore : '-') + ' ' + m.away + '</span>' +
-        '</div>'
-    ).join('');
-}
-
-function renderForm(form, badgesId, listId) {
-    const badgesContainer = document.getElementById(badgesId);
-    const listContainer = document.getElementById(listId);
-
-    if (!badgesContainer || !listContainer) return;
-
-    if (!form || !form.length) {
-        badgesContainer.innerHTML = '<span class="no-data-small">Sin datos</span>';
-        listContainer.innerHTML = '';
-        return;
-    }
-
-    badgesContainer.innerHTML = form.map(f => 
-        '<div class="badge ' + f.result + '" title="' + f.result_text + ': ' + f.team_goals + '-' + f.opp_goals + ' vs ' + f.opponent + ' (' + (f.competition || '') + ')">' + (f.result === 'W' ? 'V' : f.result === 'D' ? 'E' : 'D') + '</div>'
-    ).join('');
-
-    listContainer.innerHTML = form.map(f => 
-        '<div class="form-item">' +
-            '<span class="form-result ' + f.result + '">' + (f.result === 'W' ? '✅' : f.result === 'D' ? '➖' : '❌') + '</span>' +
-            '<span class="form-score">' + f.team_goals + '-' + f.opp_goals + '</span>' +
-            '<span class="form-opp">' + f.opponent.substring(0, 15) + '</span>' +
-            '<span class="form-venue">' + (f.venue === 'home' ? '🏠' : '✈️') + '</span>' +
-            '<span class="form-date">' + f.date + '</span>' +
-        '</div>'
-    ).join('');
-}
-
-function renderMatchStats(home, away) {
-    const tbody = document.getElementById('match-stats-body');
-    if (!tbody) return;
-
-    const stats = [
-        { label: 'Posesion (%)', home: home.possession, away: away.possession, suffix: '%' },
-        { label: 'Tiros', home: home.shots, away: away.shots },
-        { label: 'Tiros a puerta', home: home.shots_on_goal, away: away.shots_on_goal },
-        { label: 'Corners', home: home.avg_corners, away: away.avg_corners },
-        { label: 'Faltas', home: home.fouls, away: away.fouls },
-        { label: 'Fueras de juego', home: home.offsides, away: away.offsides },
-        { label: 'Tarjetas', home: home.avg_cards, away: away.avg_cards },
-    ];
-
-    tbody.innerHTML = stats.map(s => {
-        const hVal = s.home || 0;
-        const aVal = s.away || 0;
-        const hClass = hVal > aVal ? 'value-high' : hVal < aVal ? 'value-low' : 'value-medium';
-        const aClass = aVal > hVal ? 'value-high' : aVal < hVal ? 'value-low' : 'value-medium';
-        const suffix = s.suffix || '';
-
-        return '<tr><td>' + s.label + '</td><td class="' + hClass + '">' + hVal + suffix + '</td><td class="' + aClass + '">' + aVal + suffix + '</td></tr>';
-    }).join('');
-}
-
-function renderGoalsTable(home, away) {
-    const tbody = document.getElementById('goals-table-body');
-    if (!tbody) return;
-
-    const rows = [
-        { label: 'Goles/Partido', home: home.avg_total_goals, away: away.avg_total_goals },
-        { label: 'Goles a Favor', home: home.avg_team_goals, away: away.avg_team_goals },
-        { label: 'Goles en Contra', home: home.avg_conceded, away: away.avg_conceded },
-        { label: 'Over 1.5', home: home.over_1_5_pct, away: away.over_1_5_pct, isPct: true },
-        { label: 'Over 2.5', home: home.over_2_5_pct, away: away.over_2_5_pct, isPct: true },
-        { label: 'Over 3.5', home: home.over_3_5_pct, away: away.over_3_5_pct, isPct: true },
-        { label: 'BTTS', home: home.btts_pct, away: away.btts_pct, isPct: true },
-    ];
-
-    tbody.innerHTML = rows.map(r => {
-        const avg = ((parseFloat(r.home) + parseFloat(r.away)) / 2).toFixed(1);
-        const homeVal = r.isPct ? (r.home + '%') : r.home;
-        const awayVal = r.isPct ? (r.away + '%') : r.away;
-        const avgVal = r.isPct ? (avg + '%') : avg;
-
-        const homeClass = r.home >= 60 ? 'value-high' : r.home >= 40 ? 'value-medium' : 'value-low';
-        const awayClass = r.away >= 60 ? 'value-high' : r.away >= 40 ? 'value-medium' : 'value-low';
-
-        return '<tr><td>' + r.label + '</td><td class="' + homeClass + '">' + homeVal + '</td><td class="' + awayClass + '">' + awayVal + '</td><td>' + avgVal + '</td></tr>';
-    }).join('');
-}
-
-function renderMiscTable(home, away) {
-    const tbody = document.getElementById('misc-table-body');
-    if (!tbody) return;
-
-    tbody.innerHTML = 
-        '<tr><td>Corners/Partido</td><td class="value-high">' + (home.avg_corners || 0).toFixed(1) + '</td><td class="value-high">' + (away.avg_corners || 0).toFixed(1) + '</td></tr>' +
-        '<tr><td>Tarjetas/Partido</td><td class="value-high">' + (home.avg_cards || 0).toFixed(1) + '</td><td class="value-high">' + (away.avg_cards || 0).toFixed(1) + '</td></tr>' +
-        '<tr><td>Posicion Liga</td><td class="value-high">#' + (home.position || '-') + '</td><td class="value-high">#' + (away.position || '-') + '</td></tr>' +
-        '<tr><td>Puntos</td><td class="value-high">' + (home.points || '-') + '</td><td class="value-high">' + (away.points || '-') + '</td></tr>' +
-        '<tr><td>Partidos Jugados</td><td>' + (home.played || '-') + '</td><td>' + (away.played || '-') + '</td></tr>';
-}
-
-function renderEvents(events, info) {
-    // Scorers
-    const scorersCard = document.getElementById('scorers-card');
-    const scorersDiv = document.getElementById('scorers-list');
-    if (scorersCard && scorersDiv) {
-        if (events.scorers && events.scorers.length > 0) {
-            scorersCard.classList.remove('hidden');
-            scorersDiv.innerHTML = events.scorers.map(s => 
-                '<div class="event-item">' +
-                    '<span class="event-minute">' + s.minute + ''</span>' +
-                    '<span class="event-icon goal">⚽</span>' +
-                    '<span class="event-player">' + s.player + '</span>' +
-                    '<span class="event-team">' + (s.team === 'home' ? info.home_short : info.away_short) + '</span>' +
-                    '<span class="event-type">' + (s.type === 'PENALTY' ? '(P)' : s.type === 'OWN_GOAL' ? '(OG)' : '') + '</span>' +
-                '</div>'
-            ).join('');
-        } else {
-            scorersCard.classList.add('hidden');
-        }
-    }
-
-    // Cards
-    const cardsCard = document.getElementById('cards-card');
-    const cardsDiv = document.getElementById('cards-list');
-    if (cardsCard && cardsDiv) {
-        if (events.bookings && events.bookings.length > 0) {
-            cardsCard.classList.remove('hidden');
-            cardsDiv.innerHTML = events.bookings.map(c => 
-                '<div class="event-item">' +
-                    '<span class="event-minute">' + c.minute + ''</span>' +
-                    '<span class="event-icon ' + c.card.toLowerCase() + '">' + (c.card === 'RED' ? '🟥' : '🟨') + '</span>' +
-                    '<span class="event-player">' + c.player + '</span>' +
-                    '<span class="event-team">' + (c.team === 'home' ? info.home_short : info.away_short) + '</span>' +
-                '</div>'
-            ).join('');
-        } else {
-            cardsCard.classList.add('hidden');
-        }
-    }
-
-    // Substitutions
-    const subsCard = document.getElementById('subs-card');
-    const subsDiv = document.getElementById('subs-list');
-    if (subsCard && subsDiv) {
-        if (events.substitutions && events.substitutions.length > 0) {
-            subsCard.classList.remove('hidden');
-            subsDiv.innerHTML = events.substitutions.map(s => 
-                '<div class="event-item">' +
-                    '<span class="event-minute">' + s.minute + ''</span>' +
-                    '<span class="event-icon sub">🔄</span>' +
-                    '<span class="event-player"><span class="sub-out">' + s.out + '</span> → <span class="sub-in">' + s.in + '</span></span>' +
-                    '<span class="event-team">' + (s.team === 'home' ? info.home_short : info.away_short) + '</span>' +
-                '</div>'
-            ).join('');
-        } else {
-            subsCard.classList.add('hidden');
-        }
-    }
-}
-
-function setProbBar(id, value, displayValue) {
-    const bar = document.getElementById(id);
-    const val = document.getElementById(id + '-val');
-    if (!bar || !val) return;
-
-    const pct = Math.min(value || 0, 100);
-
-    bar.style.width = pct + '%';
-    bar.className = 'prob-bar';
-    if (pct < 45) bar.classList.add('low');
-    else if (pct < 70) bar.classList.add('medium');
-
-    val.textContent = displayValue !== undefined && displayValue !== null ? displayValue : (pct + '%');
-}
-
-// ============ INIT ============
-updateDateDisplay();
-loadMatches();
+if __name__ == "__main__":
+    import uvicorn
+    port = int(os.environ.get("PORT", 8000))
+    uvicorn.run("app:app", host="0.0.0.0", port=port)
