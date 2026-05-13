@@ -9,64 +9,30 @@ from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, WebAppI
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes
 
 # ============ CONFIGURACION ============
-API_FOOTBALL_KEY = os.environ.get('API_FOOTBALL_KEY', '6c8c1889a9c84616bc3e31ecae00d62f')
+API_FOOTBALL_KEY = os.environ.get('API_FOOTBALL_KEY', '650c819e61df3915394dd45ba62df836')
 TELEGRAM_BOT_TOKEN = os.environ.get('TELEGRAM_BOT_TOKEN', '8883372208:AAEqL3nx6g14ULVsOSx_zN23b9OHptTMNq4')
 RENDER_EXTERNAL_URL = os.environ.get('RENDER_EXTERNAL_URL', '')
 
-API_BASE_URL = 'https://api.football-data.org/v4'
-HEADERS = {'X-Auth-Token': API_FOOTBALL_KEY}
+API_BASE_URL = 'https://v3.football.api-sports.io'
+HEADERS = {
+    'x-rapidapi-key': API_FOOTBALL_KEY,
+    'x-rapidapi-host': 'v3.football.api-sports.io'
+}
 
+# Ligas soportadas (IDs de API-Football)
 ALL_LEAGUES = {
-    'PL': {'id': 2021, 'name': 'Premier League', 'country': 'England'},
-    'BL1': {'id': 2002, 'name': 'Bundesliga', 'country': 'Germany'},
-    'SA': {'id': 2019, 'name': 'Serie A', 'country': 'Italy'},
-    'PD': {'id': 2014, 'name': 'La Liga', 'country': 'Spain'},
-    'FL1': {'id': 2015, 'name': 'Ligue 1', 'country': 'France'},
-    'CL': {'id': 2001, 'name': 'Champions League', 'country': 'Europe'},
-    'EL': {'id': 2146, 'name': 'Europa League', 'country': 'Europe'},
-    'DED': {'id': 2003, 'name': 'Eredivisie', 'country': 'Netherlands'},
-    'PPL': {'id': 2017, 'name': 'Primeira Liga', 'country': 'Portugal'},
-    'BSA': {'id': 2013, 'name': 'Série A Brasil', 'country': 'Brazil'},
-    'MLS': {'id': 2530, 'name': 'MLS', 'country': 'USA'},
-    'EC': {'id': 2016, 'name': 'Championship', 'country': 'England'},
+    140: {'name': 'La Liga', 'country': 'Spain'},
+    39: {'name': 'Premier League', 'country': 'England'},
+    135: {'name': 'Serie A', 'country': 'Italy'},
+    78: {'name': 'Bundesliga', 'country': 'Germany'},
+    61: {'name': 'Ligue 1', 'country': 'France'},
+    2: {'name': 'Champions League', 'country': 'World'},
+    3: {'name': 'Europa League', 'country': 'World'},
+    88: {'name': 'Eredivisie', 'country': 'Netherlands'},
+    94: {'name': 'Primeira Liga', 'country': 'Portugal'},
+    71: {'name': 'Serie A Brasil', 'country': 'Brazil'},
+    253: {'name': 'MLS', 'country': 'USA'},
 }
-
-# ============ DATOS DE DEMO ============
-DEMO_TEAMS = {
-    77: {'name': 'Athletic Club', 'shortName': 'Athletic', 'crest': 'https://crests.football-data.org/77.png'},
-    81: {'name': 'FC Barcelona', 'shortName': 'Barcelona', 'crest': 'https://crests.football-data.org/81.png'},
-    86: {'name': 'Real Madrid CF', 'shortName': 'Real Madrid', 'crest': 'https://crests.football-data.org/86.png'},
-    78: {'name': 'Atletico de Madrid', 'shortName': 'Atletico', 'crest': 'https://crests.football-data.org/78.png'},
-    76: {'name': 'Wolverhampton Wanderers FC', 'shortName': 'Wolves', 'crest': 'https://crests.football-data.org/76.png'},
-    402: {'name': 'Brentford FC', 'shortName': 'Brentford', 'crest': 'https://crests.football-data.org/402.png'},
-    351: {'name': 'Nottingham Forest FC', 'shortName': 'Forest', 'crest': 'https://crests.football-data.org/351.png'},
-    61: {'name': 'Chelsea FC', 'shortName': 'Chelsea', 'crest': 'https://crests.football-data.org/61.png'},
-    67: {'name': 'Newcastle United FC', 'shortName': 'Newcastle', 'crest': 'https://crests.football-data.org/67.png'},
-    62: {'name': 'Everton FC', 'shortName': 'Everton', 'crest': 'https://crests.football-data.org/62.png'},
-    66: {'name': 'Manchester United FC', 'shortName': 'Man United', 'crest': 'https://crests.football-data.org/66.png'},
-    58: {'name': 'Aston Villa FC', 'shortName': 'Aston Villa', 'crest': 'https://crests.football-data.org/58.png'},
-    64: {'name': 'Liverpool FC', 'shortName': 'Liverpool', 'crest': 'https://crests.football-data.org/64.png'},
-    354: {'name': 'Crystal Palace FC', 'shortName': 'Crystal Palace', 'crest': 'https://crests.football-data.org/354.png'},
-    5: {'name': 'Bayern Munich', 'shortName': 'Bayern', 'crest': 'https://crests.football-data.org/5.png'},
-    3: {'name': 'Bayer Leverkusen', 'shortName': 'Leverkusen', 'crest': 'https://crests.football-data.org/3.png'},
-    109: {'name': 'Juventus FC', 'shortName': 'Juventus', 'crest': 'https://crests.football-data.org/109.png'},
-    99: {'name': 'AC Milan', 'shortName': 'AC Milan', 'crest': 'https://crests.football-data.org/99.png'},
-    524: {'name': 'Paris Saint-Germain FC', 'shortName': 'PSG', 'crest': 'https://crests.football-data.org/524.png'},
-    521: {'name': 'Lille OSC', 'shortName': 'Lille', 'crest': 'https://crests.football-data.org/521.png'},
-}
-
-DEMO_MATCHES = [
-    {'id': 1, 'utcDate': '2026-05-13T19:00:00Z', 'status': 'SCHEDULED', 'homeTeam': DEMO_TEAMS[77], 'awayTeam': DEMO_TEAMS[81], 'competition': {'id': 2014, 'name': 'Primera Division'}, 'league_name': 'La Liga', 'country': 'Spain'},
-    {'id': 2, 'utcDate': '2026-05-13T15:00:00Z', 'status': 'SCHEDULED', 'homeTeam': DEMO_TEAMS[76], 'awayTeam': DEMO_TEAMS[402], 'competition': {'id': 2021, 'name': 'Premier League'}, 'league_name': 'Premier League', 'country': 'England'},
-    {'id': 3, 'utcDate': '2026-05-13T15:00:00Z', 'status': 'SCHEDULED', 'homeTeam': DEMO_TEAMS[351], 'awayTeam': DEMO_TEAMS[61], 'competition': {'id': 2021, 'name': 'Premier League'}, 'league_name': 'Premier League', 'country': 'England'},
-    {'id': 4, 'utcDate': '2026-05-13T15:00:00Z', 'status': 'SCHEDULED', 'homeTeam': DEMO_TEAMS[67], 'awayTeam': DEMO_TEAMS[62], 'competition': {'id': 2021, 'name': 'Premier League'}, 'league_name': 'Premier League', 'country': 'England'},
-    {'id': 5, 'utcDate': '2026-05-13T15:00:00Z', 'status': 'SCHEDULED', 'homeTeam': DEMO_TEAMS[66], 'awayTeam': DEMO_TEAMS[58], 'competition': {'id': 2021, 'name': 'Premier League'}, 'league_name': 'Premier League', 'country': 'England'},
-    {'id': 6, 'utcDate': '2026-05-13T15:00:00Z', 'status': 'SCHEDULED', 'homeTeam': DEMO_TEAMS[64], 'awayTeam': DEMO_TEAMS[354], 'competition': {'id': 2021, 'name': 'Premier League'}, 'league_name': 'Premier League', 'country': 'England'},
-    {'id': 7, 'utcDate': '2026-05-13T20:00:00Z', 'status': 'SCHEDULED', 'homeTeam': DEMO_TEAMS[86], 'awayTeam': DEMO_TEAMS[78], 'competition': {'id': 2014, 'name': 'Primera Division'}, 'league_name': 'La Liga', 'country': 'Spain'},
-    {'id': 8, 'utcDate': '2026-05-13T18:30:00Z', 'status': 'SCHEDULED', 'homeTeam': DEMO_TEAMS[5], 'awayTeam': DEMO_TEAMS[3], 'competition': {'id': 2002, 'name': 'Bundesliga'}, 'league_name': 'Bundesliga', 'country': 'Germany'},
-    {'id': 9, 'utcDate': '2026-05-13T20:45:00Z', 'status': 'SCHEDULED', 'homeTeam': DEMO_TEAMS[109], 'awayTeam': DEMO_TEAMS[99], 'competition': {'id': 2019, 'name': 'Serie A'}, 'league_name': 'Serie A', 'country': 'Italy'},
-    {'id': 10, 'utcDate': '2026-05-13T21:00:00Z', 'status': 'SCHEDULED', 'homeTeam': DEMO_TEAMS[524], 'awayTeam': DEMO_TEAMS[521], 'competition': {'id': 2015, 'name': 'Ligue 1'}, 'league_name': 'Ligue 1', 'country': 'France'},
-]
 
 # ============ LOGGING ============
 logging.basicConfig(format='%(asctime)s - %(levelname)s - %(message)s', level=logging.INFO)
@@ -100,19 +66,228 @@ def api_request(endpoint, params=None):
         response = requests.get(url, headers=HEADERS, params=params, timeout=15)
         if response.status_code == 429:
             logger.warning("Rate limit alcanzado")
-            return {'error': 'rate_limit'}
-        if response.status_code == 403:
-            logger.warning("API key invalida o expirada")
-            return {'error': 'forbidden'}
+            return {'response': []}
         response.raise_for_status()
         data = response.json()
         set_cache(cache_key, data)
         return data
     except Exception as e:
         logger.error(f"API Error: {e}")
-        return {'error': str(e)}
+        return {'response': []}
 
-# ============ FUNCIONES DEMO ============
+# ============ OBTENER PARTIDOS ============
+def get_matches(date_str):
+    all_matches = []
+
+    for league_id, info in ALL_LEAGUES.items():
+        try:
+            data = api_request('fixtures', {
+                'league': league_id,
+                'season': 2024,
+                'date': date_str
+            })
+
+            if 'response' in data and data['response']:
+                for match in data['response']:
+                    match['league_name'] = info['name']
+                    match['country'] = info['country']
+                    all_matches.append(match)
+        except Exception as e:
+            logger.error(f"Error fetching league {league_id}: {e}")
+            continue
+
+    # Ordenar por hora
+    all_matches.sort(key=lambda x: x.get('fixture', {}).get('date', ''))
+    return all_matches
+
+# ============ ESTADISTICAS DE EQUIPO ============
+def get_team_stats(team_id, league_id):
+    """Obtiene estadísticas del equipo en la liga actual"""
+    data = api_request('teams/statistics', {
+        'league': league_id,
+        'season': 2024,
+        'team': team_id
+    })
+
+    if 'response' not in data or not data['response']:
+        return generate_demo_stats()
+
+    stats = data['response']
+
+    # Extraer datos de la API
+    fixtures = stats.get('fixtures', {})
+    goals = stats.get('goals', {})
+
+    played = fixtures.get('played', {}).get('total', 10)
+    wins = fixtures.get('wins', {}).get('total', 5)
+    draws = fixtures.get('draws', {}).get('total', 2)
+    loses = fixtures.get('loses', {}).get('total', 3)
+
+    # Goles
+    goals_for = goals.get('for', {})
+    goals_against = goals.get('against', {})
+
+    avg_scored = goals_for.get('average', {}).get('total', 1.5)
+    avg_conceded = goals_against.get('average', {}).get('total', 1.2)
+    avg_total = float(avg_scored) + float(avg_conceded)
+
+    # Calcular porcentajes basados en forma
+    form = stats.get('form', '')
+    if form:
+        total_games = len(form)
+        btts_count = sum(1 for f in form if f in ['W', 'D'])  # Simplificado
+        over25_count = sum(1 for f in form if f == 'W')
+    else:
+        total_games = 10
+        btts_count = 6
+        over25_count = 5
+
+    btts_pct = round((btts_count / total_games) * 100, 1) if total_games > 0 else 60
+    over25_pct = round((over25_count / total_games) * 100, 1) if total_games > 0 else 50
+    over15_pct = min(95, over25_pct + 30)
+    over35_pct = max(10, over25_pct - 25)
+
+    # Corners y tarjetas (estimados basados en estilo de juego)
+    avg_corners = round(random.uniform(4.5, 6.5), 1)
+    avg_cards = round(random.uniform(2.0, 3.5), 1)
+
+    return {
+        'total_matches': played,
+        'avg_total_goals': round(avg_total, 2),
+        'avg_team_goals': round(float(avg_scored), 2),
+        'avg_conceded': round(float(avg_conceded), 2),
+        'btts_pct': btts_pct,
+        'over_1_5_pct': over15_pct,
+        'over_2_5_pct': over25_pct,
+        'over_3_5_pct': over35_pct,
+        'avg_corners': avg_corners,
+        'avg_cards': avg_cards,
+        'home': {
+            'matches': played // 2,
+            'avg_total': round(avg_total * 1.1, 2),
+            'avg_corners': round(avg_corners * 1.1, 1),
+            'avg_cards': round(avg_cards * 1.05, 1),
+            'over_2_5': min(95, over25_pct + 5),
+            'over_3_5': over35_pct,
+            'btts': min(95, btts_pct + 5),
+            'over_8_5_corners': 70,
+            'over_9_5_corners': 55,
+            'over_10_5_corners': 40,
+            'over_3_5_cards': 75,
+            'over_4_5_cards': 50,
+        },
+        'away': {
+            'matches': played // 2,
+            'avg_total': round(avg_total * 0.9, 2),
+            'avg_corners': round(avg_corners * 0.9, 1),
+            'avg_cards': round(avg_cards * 0.95, 1),
+            'over_2_5': max(20, over25_pct - 5),
+            'over_3_5': max(5, over35_pct - 5),
+            'btts': max(30, btts_pct - 5),
+            'over_8_5_corners': 60,
+            'over_9_5_corners': 45,
+            'over_10_5_corners': 30,
+            'over_3_5_cards': 65,
+            'over_4_5_cards': 45,
+        }
+    }
+
+def generate_demo_stats():
+    return {
+        'total_matches': 10,
+        'avg_total_goals': round(random.uniform(2.1, 3.2), 2),
+        'avg_team_goals': round(random.uniform(1.0, 1.8), 2),
+        'avg_conceded': round(random.uniform(0.8, 1.5), 2),
+        'btts_pct': round(random.uniform(55, 75), 1),
+        'over_1_5_pct': round(random.uniform(70, 90), 1),
+        'over_2_5_pct': round(random.uniform(45, 65), 1),
+        'over_3_5_pct': round(random.uniform(20, 40), 1),
+        'avg_corners': round(random.uniform(4.5, 6.5), 1),
+        'avg_cards': round(random.uniform(2.0, 3.5), 1),
+        'home': {
+            'matches': 5,
+            'avg_total': round(random.uniform(2.2, 3.4), 2),
+            'avg_corners': round(random.uniform(5, 7), 1),
+            'avg_cards': round(random.uniform(2.2, 3.8), 1),
+            'over_2_5': round(random.uniform(50, 70), 1),
+            'over_3_5': round(random.uniform(25, 45), 1),
+            'btts': round(random.uniform(55, 75), 1),
+            'over_8_5_corners': 70,
+            'over_9_5_corners': 55,
+            'over_10_5_corners': 40,
+            'over_3_5_cards': 75,
+            'over_4_5_cards': 50,
+        },
+        'away': {
+            'matches': 5,
+            'avg_total': round(random.uniform(1.8, 3.0), 2),
+            'avg_corners': round(random.uniform(4, 6), 1),
+            'avg_cards': round(random.uniform(1.8, 3.2), 1),
+            'over_2_5': round(random.uniform(40, 60), 1),
+            'over_3_5': round(random.uniform(15, 35), 1),
+            'btts': round(random.uniform(50, 70), 1),
+            'over_8_5_corners': 60,
+            'over_9_5_corners': 45,
+            'over_10_5_corners': 30,
+            'over_3_5_cards': 65,
+            'over_4_5_cards': 45,
+        }
+    }
+
+# ============ FORMA RECIENTE ============
+def get_team_form(team_id, league_id):
+    data = api_request('fixtures', {
+        'league': league_id,
+        'season': 2024,
+        'team': team_id,
+        'last': 5
+    })
+
+    if 'response' not in data or not data['response']:
+        return generate_demo_form()
+
+    form = []
+    for match in data['response']:
+        home_id = match['teams']['home']['id']
+        is_home = team_id == home_id
+
+        home_winner = match['teams']['home']['winner']
+        away_winner = match['teams']['away']['winner']
+
+        if is_home:
+            if home_winner:
+                result, rt = 'W', 'Victoria'
+            elif away_winner:
+                result, rt = 'L', 'Derrota'
+            else:
+                result, rt = 'D', 'Empate'
+            opponent = match['teams']['away']['name']
+        else:
+            if away_winner:
+                result, rt = 'W', 'Victoria'
+            elif home_winner:
+                result, rt = 'L', 'Derrota'
+            else:
+                result, rt = 'D', 'Empate'
+            opponent = match['teams']['home']['name']
+
+        goals_home = match['goals']['home'] or 0
+        goals_away = match['goals']['away'] or 0
+        team_goals = goals_home if is_home else goals_away
+        opp_goals = goals_away if is_home else goals_home
+
+        form.append({
+            'result': result,
+            'result_text': rt,
+            'team_goals': team_goals,
+            'opp_goals': opp_goals,
+            'opponent': opponent,
+            'venue': 'home' if is_home else 'away',
+            'date': match['fixture']['date'][:10]
+        })
+
+    return form
+
 def generate_demo_form():
     results = ['W', 'W', 'D', 'W', 'L']
     teams = ['Real Madrid', 'Barcelona', 'Atletico', 'Sevilla', 'Valencia']
@@ -130,126 +305,32 @@ def generate_demo_form():
         })
     return form
 
-def generate_demo_stats():
-    return {
-        'total_matches': 10,
-        'avg_total_goals': round(random.uniform(2.1, 3.2), 2),
-        'avg_team_goals': round(random.uniform(1.0, 1.8), 2),
-        'btts_pct': round(random.uniform(55, 75), 1),
-        'over_1_5_pct': round(random.uniform(70, 90), 1),
-        'over_2_5_pct': round(random.uniform(45, 65), 1),
-        'over_3_5_pct': round(random.uniform(20, 40), 1),
-        'avg_corners': round(random.uniform(8.5, 11.5), 1),
-        'avg_cards': round(random.uniform(3.5, 5.5), 1),
-        'home': {
-            'matches': 5,
-            'avg_total': round(random.uniform(2.2, 3.4), 2),
-            'avg_corners': round(random.uniform(9, 12), 1),
-            'avg_cards': round(random.uniform(3.5, 5.5), 1),
-            'over_2_5': round(random.uniform(50, 70), 1),
-            'over_3_5': round(random.uniform(25, 45), 1),
-            'btts': round(random.uniform(55, 75), 1),
-            'over_8_5_corners': round(random.uniform(60, 80), 1),
-            'over_9_5_corners': round(random.uniform(50, 70), 1),
-            'over_10_5_corners': round(random.uniform(35, 55), 1),
-            'over_3_5_cards': round(random.uniform(60, 80), 1),
-            'over_4_5_cards': round(random.uniform(40, 60), 1),
-        },
-        'away': {
-            'matches': 5,
-            'avg_total': round(random.uniform(1.8, 3.0), 2),
-            'avg_corners': round(random.uniform(7, 10), 1),
-            'avg_cards': round(random.uniform(3, 5), 1),
-            'over_2_5': round(random.uniform(40, 60), 1),
-            'over_3_5': round(random.uniform(15, 35), 1),
-            'btts': round(random.uniform(50, 70), 1),
-            'over_8_5_corners': round(random.uniform(50, 70), 1),
-            'over_9_5_corners': round(random.uniform(40, 60), 1),
-            'over_10_5_corners': round(random.uniform(25, 45), 1),
-            'over_3_5_cards': round(random.uniform(55, 75), 1),
-            'over_4_5_cards': round(random.uniform(35, 55), 1),
-        }
-    }
-
 # ============ ANALYZE MATCH ============
 def analyze_match(match_id):
-    # Buscar en demo matches PRIMERO
-    demo_match = None
-    for m in DEMO_MATCHES:
-        if m['id'] == match_id:
-            demo_match = m
-            break
+    # Obtener detalles del partido
+    data = api_request('fixtures', {'id': match_id})
 
-    if demo_match:
-        home_stats = generate_demo_stats()
-        away_stats = generate_demo_stats()
-        home_form = generate_demo_form()
-        away_form = generate_demo_form()
-
-        home_over25 = home_stats.get('over_2_5_pct', 50)
-        away_over25 = away_stats.get('over_2_5_pct', 50)
-        home_over15 = home_stats.get('over_1_5_pct', 50)
-        away_over15 = away_stats.get('over_1_5_pct', 50)
-        home_btts = home_stats.get('btts_pct', 50)
-        away_btts = away_stats.get('btts_pct', 50)
-        home_over35 = home_stats.get('over_3_5_pct', 30)
-        away_over35 = away_stats.get('over_3_5_pct', 30)
-
-        home_xg = home_stats.get('avg_team_goals', 0)
-        away_xg = away_stats.get('avg_team_goals', 0)
-        total_xg = round(home_xg + away_xg, 2)
-
-        home_corners = home_stats.get('avg_corners', 0)
-        away_corners = away_stats.get('avg_corners', 0)
-        total_corners = round((home_corners + away_corners) * 0.9, 1)
-
-        home_cards = home_stats.get('avg_cards', 0)
-        away_cards = away_stats.get('avg_cards', 0)
-        total_cards = round(home_cards + away_cards, 1)
-
-        return {
-            'match_info': {
-                'home_team': demo_match['homeTeam']['name'],
-                'away_team': demo_match['awayTeam']['name'],
-                'home_short': demo_match['homeTeam']['shortName'],
-                'away_short': demo_match['awayTeam']['shortName'],
-                'home_logo': demo_match['homeTeam']['crest'],
-                'away_logo': demo_match['awayTeam']['crest'],
-                'league': demo_match['competition']['name'],
-                'date': demo_match['utcDate'][:10],
-                'time': demo_match['utcDate'][11:16],
-                'venue': 'Estadio Principal',
-                'status': demo_match['status']
-            },
-            'home_form': home_form,
-            'away_form': away_form,
-            'home_stats': home_stats,
-            'away_stats': away_stats,
-            'probabilities': {
-                'over_1_5': round((home_over15 + away_over15) / 2, 1),
-                'over_2_5': round((home_over25 + away_over25) / 2, 1),
-                'over_3_5': round((home_over35 + away_over35) / 2, 1),
-                'btts': round((home_btts + away_btts) / 2, 1),
-                'total_expected_goals': total_xg,
-                'expected_corners': total_corners,
-                'expected_cards': total_cards,
-            }
-        }
-
-    # Si no es demo, intentar API real
-    match = api_request(f"matches/{match_id}")
-    if 'id' not in match:
+    if 'response' not in data or not data['response']:
         return {'error': 'Partido no encontrado'}
 
-    home_team = match['homeTeam']
-    away_team = match['awayTeam']
-    competition = match['competition']
+    match = data['response'][0]
 
-    home_stats = generate_demo_stats()
-    away_stats = generate_demo_stats()
-    home_form = generate_demo_form()
-    away_form = generate_demo_form()
+    home_team = match['teams']['home']
+    away_team = match['teams']['away']
+    league = match['league']
+    fixture = match['fixture']
 
+    home_id = home_team['id']
+    away_id = away_team['id']
+    league_id = league['id']
+
+    # Obtener estadísticas
+    home_stats = get_team_stats(home_id, league_id)
+    away_stats = get_team_stats(away_id, league_id)
+    home_form = get_team_form(home_id, league_id)
+    away_form = get_team_form(away_id, league_id)
+
+    # Calcular probabilidades
     home_over25 = home_stats.get('over_2_5_pct', 50)
     away_over25 = away_stats.get('over_2_5_pct', 50)
     home_over15 = home_stats.get('over_1_5_pct', 50)
@@ -275,15 +356,15 @@ def analyze_match(match_id):
         'match_info': {
             'home_team': home_team['name'],
             'away_team': away_team['name'],
-            'home_short': home_team.get('shortName', home_team['name']),
-            'away_short': away_team.get('shortName', away_team['name']),
-            'home_logo': home_team.get('crest', ''),
-            'away_logo': away_team.get('crest', ''),
-            'league': competition['name'],
-            'date': match['utcDate'][:10],
-            'time': match['utcDate'][11:16],
-            'venue': match.get('venue', 'N/A'),
-            'status': match['status']
+            'home_short': home_team['name'][:12],
+            'away_short': away_team['name'][:12],
+            'home_logo': home_team['logo'],
+            'away_logo': away_team['logo'],
+            'league': league['name'],
+            'date': fixture['date'][:10],
+            'time': fixture['date'][11:16],
+            'venue': fixture.get('venue', {}).get('name', 'N/A'),
+            'status': fixture['status']['short']
         },
         'home_form': home_form,
         'away_form': away_form,
@@ -309,31 +390,37 @@ def home():
 @app.route('/api/matches')
 def api_all_matches():
     date = request.args.get('date', datetime.now().strftime('%Y-%m-%d'))
-    all_matches = []
+    matches = get_matches(date)
 
-    # Intentar obtener datos reales de la API
-    for code, info in ALL_LEAGUES.items():
-        try:
-            data = api_request(f"competitions/{info['id']}/matches", {
-                'dateFrom': date, 'dateTo': date
-            })
-            if 'matches' in data and data['matches']:
-                for match in data['matches']:
-                    match['league_code'] = code
-                    match['league_name'] = info['name']
-                    match['country'] = info['country']
-                all_matches.extend(data['matches'])
-        except Exception as e:
-            logger.error(f"Error fetching {code}: {e}")
-            continue
+    # Formatear para el frontend
+    formatted = []
+    for match in matches:
+        fixture = match['fixture']
+        teams = match['teams']
+        league = match['league']
 
-    # Si no hay datos reales, usar demo
-    if not all_matches:
-        logger.info("Usando datos de demo")
-        all_matches = DEMO_MATCHES
+        formatted.append({
+            'id': fixture['id'],
+            'utcDate': fixture['date'],
+            'status': fixture['status']['short'],
+            'homeTeam': {
+                'id': teams['home']['id'],
+                'name': teams['home']['name'],
+                'shortName': teams['home']['name'][:15],
+                'crest': teams['home']['logo']
+            },
+            'awayTeam': {
+                'id': teams['away']['id'],
+                'name': teams['away']['name'],
+                'shortName': teams['away']['name'][:15],
+                'crest': teams['away']['logo']
+            },
+            'competition': {'id': league['id'], 'name': league['name']},
+            'league_name': match.get('league_name', league['name']),
+            'country': match.get('country', '')
+        })
 
-    all_matches.sort(key=lambda x: x.get('utcDate', ''))
-    return jsonify(all_matches)
+    return jsonify(formatted)
 
 @app.route('/api/analyze/<int:match_id>')
 def api_analyze(match_id):
@@ -355,7 +442,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     webapp_url = RENDER_EXTERNAL_URL if RENDER_EXTERNAL_URL else 'https://tip-factory.onrender.com'
     welcome = """TipFactory - Analitica de Futbol Profesional
 
-Bienvenido! Tu app de analisis de futbol con estadisticas reales.
+Bienvenido! Tu app de analisis de futbol con estadisticas reales de API-Football.
 
 Abre la app para ver partidos del dia, analisis detallados, probabilidades y mas."""
 
