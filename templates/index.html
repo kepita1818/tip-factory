@@ -3,231 +3,152 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>Futbol Stats</title>
+    <title>TipFactory</title>
     <link rel="stylesheet" href="/static/css/style.css">
 <base target="_blank">
 </head>
 <body>
     <div id="app">
+        <!-- HEADER -->
         <header class="app-header">
-            <h1>Futbol Stats</h1>
-            <p class="subtitle">Analisis completo de partidos</p>
+            <h1>TipFactory</h1>
+            <p class="subtitle">Analitica de Futbol Profesional</p>
         </header>
 
+        <!-- DATE SELECTOR -->
         <div class="date-selector">
             <button class="date-nav" id="prev-date">&#9664;</button>
             <div class="date-display">
                 <span id="current-date">--/--/----</span>
-                <input type="date" id="date-picker" class="hidden">
+                <input type="date" id="date-picker">
             </div>
             <button class="date-nav" id="next-date">&#9654;</button>
         </div>
 
+        <!-- FILTERS -->
         <div class="league-filters" id="league-filters">
             <button class="filter-btn active" data-filter="all">Todos</button>
-            <button class="filter-btn" data-filter="England">Inglaterra</button>
-            <button class="filter-btn" data-filter="Spain">Espana</button>
-            <button class="filter-btn" data-filter="Germany">Alemania</button>
-            <button class="filter-btn" data-filter="Italy">Italia</button>
-            <button class="filter-btn" data-filter="France">Francia</button>
-            <button class="filter-btn" data-filter="Netherlands">Holanda</button>
-            <button class="filter-btn" data-filter="Portugal">Portugal</button>
-            <button class="filter-btn" data-filter="Brazil">Brasil</button>
-            <button class="filter-btn" data-filter="Europe">Europa</button>
+            <button class="filter-btn" data-filter="Spain">Importar Espana</button>
+            <button class="filter-btn" data-filter="England">Importar Inglaterra</button>
         </div>
 
+        <!-- MATCHES LIST -->
         <div class="matches-container" id="matches-container">
             <div class="loading">Cargando partidos...</div>
         </div>
 
+        <!-- ANALYSIS SECTION -->
         <div class="section hidden" id="analysis-section">
-            <div class="section-header">
-                <button class="back-btn" id="back-btn-matches">&#8592;</button>
-                <h2>Analisis del Partido</h2>
-            </div>
-
-            <div class="match-header">
-                <div class="match-teams">
-                    <div class="team">
-                        <img id="home-logo" src="" alt="" onerror="this.style.display='none'">
-                        <span id="home-name">Local</span>
-                        <small id="home-formation"></small>
-                    </div>
-                    <div class="vs" id="score-display">VS</div>
-                    <div class="team">
-                        <img id="away-logo" src="" alt="" onerror="this.style.display='none'">
-                        <span id="away-name">Visitante</span>
-                        <small id="away-formation"></small>
-                    </div>
-                </div>
-                <div class="match-meta" id="match-meta"></div>
-                <div class="match-details" id="match-details"></div>
+            <!-- Match Header -->
+            <div class="analysis-header">
+                <div class="analysis-title">Analisis del partido</div>
+                <div class="analysis-subtitle" id="analysis-subtitle"></div>
             </div>
 
             <div class="tabs">
-                <button class="tab-btn active" data-tab="summary">Resumen</button>
-                <button class="tab-btn" data-tab="h2h">H2H</button>
-                <button class="tab-btn" data-tab="form">Forma</button>
-                <button class="tab-btn" data-tab="stats">Estadisticas</button>
-                <button class="tab-btn" data-tab="events">Eventos</button>
+                <button class="tab-btn active" data-tab="resumen">Resumen</button>
+                <button class="tab-btn" data-tab="goles">Goles</button>
+                <button class="tab-btn" data-tab="corners">Corners</button>
+                <button class="tab-btn" data-tab="tarjetas">Tarjetas</button>
             </div>
 
-            <div class="tab-content active" id="tab-summary">
-                <div class="card">
-                    <div class="card-title">Clasificacion</div>
-                    <div class="standings-row" id="standings-row">
-                        <div class="standing-box" id="home-standing"></div>
-                        <div class="standing-vs">VS</div>
-                        <div class="standing-box" id="away-standing"></div>
+            <!-- TAB: RESUMEN -->
+            <div class="tab-content active" id="tab-resumen">
+                <!-- Teams + Form -->
+                <div class="card teams-form-card">
+                    <div class="teams-row">
+                        <div class="team-block">
+                            <img id="home-logo" src="" alt="" onerror="this.style.display='none'">
+                            <span id="home-name">Local</span>
+                        </div>
+                        <div class="vs-center">VS</div>
+                        <div class="team-block">
+                            <img id="away-logo" src="" alt="" onerror="this.style.display='none'">
+                            <span id="away-name">Visitante</span>
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-badges" id="home-form-badges"></div>
+                        <div class="form-badges" id="away-form-badges"></div>
                     </div>
                 </div>
 
-                <div class="card">
-                    <div class="card-title">Probabilidades</div>
-                    <div class="prob-list">
-                        <div class="prob-item">
-                            <span class="prob-label">Over 1.5 Goles</span>
-                            <div class="prob-bar-container">
-                                <div class="prob-bar" id="prob-over15" style="width:0%"></div>
-                                <span class="prob-value" id="prob-over15-val">0%</span>
-                            </div>
-                        </div>
-                        <div class="prob-item">
-                            <span class="prob-label">Over 2.5 Goles</span>
-                            <div class="prob-bar-container">
-                                <div class="prob-bar" id="prob-over25" style="width:0%"></div>
-                                <span class="prob-value" id="prob-over25-val">0%</span>
-                            </div>
-                        </div>
-                        <div class="prob-item">
-                            <span class="prob-label">Over 3.5 Goles</span>
-                            <div class="prob-bar-container">
-                                <div class="prob-bar" id="prob-over35" style="width:0%"></div>
-                                <span class="prob-value" id="prob-over35-val">0%</span>
-                            </div>
-                        </div>
-                        <div class="prob-item">
-                            <span class="prob-label">Ambos Marcan (BTTS)</span>
-                            <div class="prob-bar-container">
-                                <div class="prob-bar" id="prob-btts" style="width:0%"></div>
-                                <span class="prob-value" id="prob-btts-val">0%</span>
-                            </div>
-                        </div>
-                        <div class="prob-item">
-                            <span class="prob-label">Goles Esperados (xG)</span>
-                            <div class="prob-bar-container">
-                                <div class="prob-bar prob-bar-info" id="prob-xg" style="width:0%"></div>
-                                <span class="prob-value" id="prob-xg-val">0</span>
-                            </div>
-                        </div>
-                        <div class="prob-item">
-                            <span class="prob-label">Corners Esperados</span>
-                            <div class="prob-bar-container">
-                                <div class="prob-bar prob-bar-info" id="prob-corners" style="width:0%"></div>
-                                <span class="prob-value" id="prob-corners-val">0</span>
-                            </div>
-                        </div>
-                        <div class="prob-item">
-                            <span class="prob-label">Tarjetas Esperadas</span>
-                            <div class="prob-bar-container">
-                                <div class="prob-bar prob-bar-info" id="prob-cards" style="width:0%"></div>
-                                <span class="prob-value" id="prob-cards-val">0</span>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="card" id="odds-card">
-                    <div class="card-title">Cuotas (1X2)</div>
-                    <div class="odds-row" id="odds-row"></div>
+                <!-- Probabilities Grid -->
+                <div class="card prob-grid-card">
+                    <div class="prob-grid" id="prob-grid"></div>
                 </div>
             </div>
 
-            <div class="tab-content" id="tab-h2h">
+            <!-- TAB: GOLES -->
+            <div class="tab-content" id="tab-goles">
                 <div class="card">
-                    <div class="card-title">Head to Head</div>
-                    <div class="h2h-stats" id="h2h-stats"></div>
-                    <div class="h2h-matches" id="h2h-matches"></div>
-                </div>
-            </div>
-
-            <div class="tab-content" id="tab-form">
-                <div class="card">
-                    <div class="card-title">Forma Reciente</div>
-                    <div class="form-section">
-                        <div class="form-team-block">
-                            <h4 id="home-form-title">Local</h4>
-                            <div class="form-badges" id="home-form"></div>
-                            <div class="form-list" id="home-form-list"></div>
-                        </div>
-                        <div class="form-team-block">
-                            <h4 id="away-form-title">Visitante</h4>
-                            <div class="form-badges" id="away-form"></div>
-                            <div class="form-list" id="away-form-list"></div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <div class="tab-content" id="tab-stats">
-                <div class="card">
-                    <div class="card-title">Estadisticas del Partido</div>
-                    <table class="stats-table" id="match-stats-table">
-                        <thead>
-                            <tr>
-                                <th>Estadistica</th>
-                                <th id="stats-home">Local</th>
-                                <th id="stats-away">Visitante</th>
-                            </tr>
-                        </thead>
-                        <tbody id="match-stats-body"></tbody>
-                    </table>
-                </div>
-
-                <div class="card">
-                    <div class="card-title">Tendencias de Goles</div>
-                    <table class="stats-table">
+                    <div class="card-title">Tendencias de goles</div>
+                    <table class="stats-table" id="goals-table">
                         <thead>
                             <tr>
                                 <th>Mercado</th>
-                                <th id="goals-home">Local</th>
-                                <th id="goals-away">Visitante</th>
+                                <th id="goals-home-header">Local</th>
+                                <th id="goals-away-header">Visitante</th>
                                 <th>Media</th>
                             </tr>
                         </thead>
                         <tbody id="goals-table-body"></tbody>
                     </table>
                 </div>
+            </div>
 
+            <!-- TAB: CORNERS -->
+            <div class="tab-content" id="tab-corners">
                 <div class="card">
-                    <div class="card-title">Corners & Tarjetas</div>
-                    <table class="stats-table">
+                    <div class="card-title">Corners en contra</div>
+                    <table class="stats-table" id="corners-table">
                         <thead>
                             <tr>
-                                <th>Metrica</th>
-                                <th id="misc-home">Local</th>
-                                <th id="misc-away">Visitante</th>
+                                <th>Mercado</th>
+                                <th id="corners-home-header">Local</th>
+                                <th id="corners-away-header">Visitante</th>
+                                <th>Media</th>
                             </tr>
                         </thead>
-                        <tbody id="misc-table-body"></tbody>
+                        <tbody id="corners-table-body"></tbody>
+                    </table>
+                </div>
+                <div class="card">
+                    <div class="card-title">Total de corners</div>
+                    <table class="stats-table" id="total-corners-table">
+                        <thead>
+                            <tr>
+                                <th>Linea</th>
+                                <th>Local</th>
+                                <th>Visitante</th>
+                                <th>Media</th>
+                            </tr>
+                        </thead>
+                        <tbody id="total-corners-body"></tbody>
                     </table>
                 </div>
             </div>
 
-            <div class="tab-content" id="tab-events">
-                <div class="card" id="scorers-card">
-                    <div class="card-title">Goleadores</div>
-                    <div id="scorers-list"></div>
-                </div>
-                <div class="card" id="cards-card">
+            <!-- TAB: TARJETAS -->
+            <div class="tab-content" id="tab-tarjetas">
+                <div class="card">
                     <div class="card-title">Tarjetas</div>
-                    <div id="cards-list"></div>
-                </div>
-                <div class="card" id="subs-card">
-                    <div class="card-title">Sustituciones</div>
-                    <div id="subs-list"></div>
+                    <table class="stats-table" id="cards-table">
+                        <thead>
+                            <tr>
+                                <th>Mercado</th>
+                                <th id="cards-home-header">Local</th>
+                                <th id="cards-away-header">Visitante</th>
+                                <th>Media</th>
+                            </tr>
+                        </thead>
+                        <tbody id="cards-table-body"></tbody>
+                    </table>
                 </div>
             </div>
+
+            <!-- Back Button -->
+            <button class="back-btn-bottom" id="back-btn">Volver a partidos</button>
         </div>
     </div>
 
