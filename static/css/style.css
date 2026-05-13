@@ -108,6 +108,43 @@ body {
     cursor: pointer;
 }
 
+.hidden {
+    display: none !important;
+}
+
+/* ============ LIVE INDICATOR ============ */
+.live-indicator {
+    display: none;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    margin-bottom: 16px;
+    padding: 8px 16px;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--danger);
+}
+
+.live-indicator.active {
+    display: flex;
+}
+
+.live-dot {
+    width: 8px;
+    height: 8px;
+    background: var(--danger);
+    border-radius: 50%;
+    animation: pulse 1.5s infinite;
+}
+
+@keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.3; }
+}
+
 /* ============ LEAGUE FILTERS ============ */
 .league-filters {
     display: flex;
@@ -154,7 +191,7 @@ body {
     gap: 10px;
 }
 
-/* ============ MATCH CARD (tipo captura) ============ */
+/* ============ MATCH CARD ============ */
 .match-card-main {
     background: var(--bg-card);
     border: 1px solid var(--border);
@@ -177,10 +214,29 @@ body {
     transform: scale(0.99);
 }
 
+.match-card-main.live {
+    border-color: var(--danger);
+    animation: livePulse 2s infinite;
+}
+
+@keyframes livePulse {
+    0%, 100% { border-color: var(--border); }
+    50% { border-color: var(--danger); }
+}
+
 .match-time {
     font-size: 12px;
     color: var(--text-muted);
     font-weight: 600;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.match-score-live {
+    font-size: 16px;
+    font-weight: 900;
+    color: var(--danger);
 }
 
 .match-teams-row {
@@ -262,7 +318,7 @@ body {
     color: var(--text-primary);
 }
 
-/* ============ MATCH HEADER (analisis) ============ */
+/* ============ MATCH HEADER ============ */
 .match-header {
     background: var(--bg-card);
     border: 1px solid var(--border);
@@ -318,6 +374,21 @@ body {
     font-size: 12px;
     color: var(--text-muted);
     font-weight: 500;
+}
+
+.live-status {
+    margin-top: 12px;
+    padding: 8px 16px;
+    background: var(--danger);
+    color: white;
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 800;
+    display: none;
+}
+
+.live-status.active {
+    display: inline-block;
 }
 
 /* ============ TABS ============ */
@@ -468,12 +539,20 @@ body {
     border-radius: 10px;
     transition: width 0.8s cubic-bezier(0.4, 0, 0.2, 1);
     min-width: 4px;
+    background: linear-gradient(90deg, var(--success), #84cc16);
 }
 
-.prob-bar { background: linear-gradient(90deg, var(--success), #84cc16); }
-.prob-bar.medium { background: linear-gradient(90deg, var(--warning), #f97316); }
-.prob-bar.low { background: linear-gradient(90deg, #f97316, var(--danger)); }
-.prob-bar-info { background: linear-gradient(90deg, var(--info), #8b5cf6); }
+.prob-bar.medium {
+    background: linear-gradient(90deg, var(--warning), #f97316);
+}
+
+.prob-bar.low {
+    background: linear-gradient(90deg, #f97316, var(--danger));
+}
+
+.prob-bar-info {
+    background: linear-gradient(90deg, var(--info), #8b5cf6);
+}
 
 .prob-value {
     font-size: 14px;
@@ -528,81 +607,6 @@ body {
     font-weight: 800;
 }
 
-/* ============ ANIMATIONS ============ */
-@keyframes fadeIn {
-    from { opacity: 0; transform: translateY(12px); }
-    to { opacity: 1; transform: translateY(0); }
-}
-
-/* ============ SCROLLBAR ============ */
-::-webkit-scrollbar {
-    width: 4px;
-}
-
-::-webkit-scrollbar-track {
-    background: var(--bg-primary);
-}
-
-::-webkit-scrollbar-thumb {
-    background: var(--border);
-    border-radius: 4px;
-}
-/* ============ LIVE INDICATOR ============ */
-.live-indicator {
-    display: none;
-    align-items: center;
-    justify-content: center;
-    gap: 8px;
-    margin-bottom: 16px;
-    padding: 8px 16px;
-    background: var(--bg-card);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-sm);
-    font-size: 13px;
-    font-weight: 700;
-    color: var(--danger);
-}
-
-.live-indicator.active {
-    display: flex;
-}
-
-.live-dot {
-    width: 8px;
-    height: 8px;
-    background: var(--danger);
-    border-radius: 50%;
-    animation: pulse 1.5s infinite;
-}
-
-@keyframes pulse {
-    0%, 100% { opacity: 1; }
-    50% { opacity: 0.3; }
-}
-
-/* ============ LIVE STATUS ============ */
-.live-status {
-    margin-top: 12px;
-    padding: 8px 16px;
-    background: var(--danger);
-    color: white;
-    border-radius: 8px;
-    font-size: 14px;
-    font-weight: 800;
-    display: none;
-}
-
-.live-status.active {
-    display: inline-block;
-}
-
-/* ============ SCORE DISPLAY ============ */
-#score-display {
-    font-size: 18px;
-    color: var(--text-primary);
-    background: var(--bg-secondary);
-}
-
 /* ============ LIVE INCIDENTS ============ */
 #live-incidents {
     display: flex;
@@ -639,20 +643,22 @@ body {
 .incident-type.card { background: var(--warning); color: #000; }
 .incident-type.substitution { background: var(--info); color: #fff; }
 
-/* ============ MATCH CARD LIVE ============ */
-.match-card-main.live {
-    border-color: var(--danger);
-    animation: livePulse 2s infinite;
+/* ============ ANIMATIONS ============ */
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(12px); }
+    to { opacity: 1; transform: translateY(0); }
 }
 
-@keyframes livePulse {
-    0%, 100% { border-color: var(--border); }
-    50% { border-color: var(--danger); }
+/* ============ SCROLLBAR ============ */
+::-webkit-scrollbar {
+    width: 4px;
 }
 
-.match-score-live {
-    font-size: 16px;
-    font-weight: 900;
-    color: var(--danger);
-    margin-left: auto;
+::-webkit-scrollbar-track {
+    background: var(--bg-primary);
+}
+
+::-webkit-scrollbar-thumb {
+    background: var(--border);
+    border-radius: 4px;
 }
