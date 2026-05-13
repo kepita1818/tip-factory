@@ -186,11 +186,11 @@ function renderMatches() {
         html += '</div>';
         html += '<div class="match-teams">';
         html += '<div class="match-team">';
-        html += '<img src="' + homeLogo + '" alt="" onerror="this.style.visibility='hidden'">';
+        html += '<img src="' + homeLogo + '" alt="" onerror="this.style.visibility=\'hidden\'">';
         html += '<span>' + (home.shortName || home.name || 'Local') + '</span>';
         html += '</div>';
         html += '<div class="match-team">';
-        html += '<img src="' + awayLogo + '" alt="" onerror="this.style.visibility='hidden'">';
+        html += '<img src="' + awayLogo + '" alt="" onerror="this.style.visibility=\'hidden\'">';
         html += '<span>' + (away.shortName || away.name || 'Visitante') + '</span>';
         html += '</div>';
         html += '</div>';
