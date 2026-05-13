@@ -1,6 +1,6 @@
 import os
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
 from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, HTMLResponse
@@ -11,7 +11,7 @@ import requests
 logging.basicConfig(format='%(asctime)s - %(levelname)s - %(message)s', level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-app = FastAPI(title="Futbol Stats", version="3.1.0")
+app = FastAPI(title="Futbol Stats", version="3.2.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -27,10 +27,10 @@ templates = Jinja2Templates(directory="templates")
 API_KEY = os.environ.get('API_FOOTBALL_KEY', '650c819e61df3915394dd45ba62df836')
 HEADERS = {
     'x-rapidapi-key': API_KEY,
-    'x-rapidapi-host': 'v3.football.api-sports.io'
+    'x-apidapi-host': 'v3.football.api-sports.io'
 }
 
-# Cache simple en memoria
+# Cache simple
 _cache = {}
 
 def get_cache(key, ttl=600):
@@ -101,11 +101,54 @@ def matches(date: str = Query(None)):
     if not date:
         date = datetime.now().strftime("%Y-%m-%d")
     
+    # Buscar en fecha solicitada y ±3 días
+    for delta in [0, -1, 1, -2, 2, -3, 3]:
+        try:
+            check_date = (datetime.strptime(date, "%Y-%m-%d") + timedelta(days=delta)).strftime("%Y-%m-%d")
+            result = _get_matches_for_date(check_date)
+            if result:
+                if delta != 0:
+                    logger.info(f"Partidos encontrados en fecha alternativa: {check_date}")
+                return result
+        except:
+            continue
+    
+    logger.warning(f"No hay partidos para {date} ni fechas cercanas")
+    return []
+
+def _get_matches_for_date(date: str) -> list:
     all_matches = []
-    leagues = [140, 39, 135, 78, 61, 2, 3, 88, 94, 71, 253, 113, 179, 144, 292, 307, 148, 149, 250, 169, 242, 243, 265]
+    
+    # Ligas que JUEGAN en verano (mayo 2026)
+    summer_leagues = {
+        113: 'Allsvenskan',      # Suecia
+        179: 'Eliteserien',      # Noruega
+        144: 'Veikkausliiga',    # Finlandia
+        253: 'MLS',              # USA
+        71: 'Serie A Brasil',    # Brasil
+        292: 'Premier League Rusia',
+        307: 'Premier League Ucrania',
+        250: 'A League Australia',
+        169: 'Liga MX',          # Mexico
+        242: 'Primera Division Chile',
+        243: 'Primera Division Argentina',
+        265: 'Primera Division Colombia',
+        148: 'Super Lig Turquia',
+        149: 'Super Lig Grecia',
+        94: 'Primeira Liga',     # Portugal (termina mayo)
+        88: 'Eredivisie',        # Holanda (termina mayo)
+    }
+    
+    # Finales de copas europeas
+    cup_finals = {
+        2: 'Champions League',
+        3: 'Europa League',
+    }
+    
+    all_leagues = {**summer_leagues, **cup_finals}
     
     for season in [2025, 2024]:
-        for lid in leagues:
+        for lid, name in all_leagues.items():
             data = api_request('fixtures', {
                 'league': lid, 'season': season, 'date': date, 'timezone': 'Europe/Madrid'
             }, f"fix_{lid}_{season}_{date}", 600)
@@ -116,7 +159,6 @@ def matches(date: str = Query(None)):
         if all_matches:
             break
     
-    logger.info(f"Devolviendo {len(all_matches)} partidos para {date}")
     return all_matches
 
 @app.get("/api/live")
@@ -126,7 +168,7 @@ def live():
 
 @app.get("/api/analyze/{match_id}")
 def analyze(match_id: int):
-    # Detalles del partido
+    # Detalles
     data = api_request('fixtures', {'id': match_id}, f"match_{match_id}", 300)
     if not data.get('response'):
         raise HTTPException(404, "Partido no encontrado")
@@ -155,12 +197,8 @@ def analyze(match_id: int):
         'league': league_id, 'season': season, 'team': away_id, 'last': 5
     }, f"form_away_{away_id}_{league_id}_{season}", 1800)
     
-    # Procesar stats
-    hs = home_stats.get('response', {})
-    ags = away_stats.get('response', {})
-    
     def extract_stats(s):
-        if not s:
+        if not s or not s.get('response'):
             return {
                 'avg_total_goals': 2.5, 'avg_team_goals': 1.3, 'avg_conceded': 1.2,
                 'btts_pct': 55, 'over_1_5_pct': 70, 'over_2_5_pct': 50, 'over_3_5_pct': 30,
@@ -175,8 +213,9 @@ def analyze(match_id: int):
                         'over_3_5_cards': 65, 'over_4_5_cards': 45}
             }
         
-        fixtures = s.get('fixtures', {})
-        goals = s.get('goals', {})
+        stats = s['response']
+        fixtures = stats.get('fixtures', {})
+        goals = stats.get('goals', {})
         played = fixtures.get('played', {}).get('total', 10)
         
         avg_scored = float(goals.get('for', {}).get('average', {}).get('total', 1.5))
@@ -208,10 +247,9 @@ def analyze(match_id: int):
                     'over_3_5_cards': 65, 'over_4_5_cards': 45}
         }
     
-    hstats = extract_stats(hs)
-    astats = extract_stats(ags)
+    hstats = extract_stats(home_stats)
+    astats = extract_stats(away_stats)
     
-    # Procesar forma
     def process_form(data, team_id):
         form = []
         for m in data.get('response', []):
@@ -247,7 +285,6 @@ def analyze(match_id: int):
     if not af:
         af = [{'result': 'D', 'result_text': 'Empate', 'team_goals': 1, 'opp_goals': 1, 'opponent': 'Rival', 'venue': 'away', 'date': '2024-05-01'}]
     
-    # Probabilidades
     over_1_5 = round((hstats['over_1_5_pct'] + astats['over_1_5_pct']) / 2, 1)
     over_2_5 = round((hstats['over_2_5_pct'] + astats['over_2_5_pct']) / 2, 1)
     over_3_5 = round((hstats['over_3_5_pct'] + astats['over_3_5_pct']) / 2, 1)
