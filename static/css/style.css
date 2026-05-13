@@ -592,13 +592,3 @@ body {
     color: var(--warning);
     text-align: center;
 }
-
-/* ============ MATCH DATE IN CARD ============ */
-.match-time-row .match-date {
-    font-size: 11px;
-    font-weight: 700;
-    color: var(--warning);
-    background: rgba(234, 179, 8, 0.15);
-    padding: 2px 8px;
-    border-radius: 6px;
-}
