@@ -3,16 +3,14 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>TipFactory</title>
+    <title>SofaScore Live</title>
     <link rel="stylesheet" href="/static/css/style.css">
-    <script src="https://telegram.org/js/telegram-web-app.js"></script>
-<base target="_blank">
 </head>
 <body>
     <div id="app">
         <header class="app-header">
-            <h1>TipFactory</h1>
-            <p class="subtitle">Analitica de Futbol Profesional</p>
+            <h1>⚽ SofaScore Live</h1>
+            <p class="subtitle">Datos en tiempo real</p>
         </header>
 
         <div class="date-selector">
@@ -24,6 +22,10 @@
             <button class="date-nav" id="next-date">▶</button>
         </div>
 
+        <div class="live-indicator" id="live-indicator">
+            <span class="live-dot"></span> En vivo
+        </div>
+
         <div class="league-filters" id="league-filters">
             <button class="filter-btn active" data-filter="all">Todos</button>
             <button class="filter-btn" data-filter="Spain">España</button>
@@ -31,7 +33,6 @@
             <button class="filter-btn" data-filter="Germany">Alemania</button>
             <button class="filter-btn" data-filter="Italy">Italia</button>
             <button class="filter-btn" data-filter="France">Francia</button>
-            <button class="filter-btn" data-filter="Europe">Europa</button>
         </div>
 
         <div class="matches-container" id="matches-container">
@@ -40,7 +41,7 @@
 
         <div class="section hidden" id="analysis-section">
             <div class="section-header">
-                <button class="back-btn" id="back-btn-matches">← Volver</button>
+                <button class="back-btn" id="back-btn-matches">←</button>
             </div>
 
             <div class="match-header">
@@ -49,13 +50,14 @@
                         <img id="home-logo" src="" alt="">
                         <span id="home-name">Local</span>
                     </div>
-                    <div class="vs">VS</div>
+                    <div class="vs" id="score-display">VS</div>
                     <div class="team">
                         <img id="away-logo" src="" alt="">
                         <span id="away-name">Visitante</span>
                     </div>
                 </div>
                 <div class="match-meta" id="match-meta"></div>
+                <div class="live-status" id="live-status"></div>
             </div>
 
             <div class="tabs">
@@ -67,7 +69,7 @@
 
             <div class="tab-content active" id="tab-summary">
                 <div class="card">
-                    <div class="card-title">📊 Forma Reciente</div>
+                    <div class="card-title">Forma Reciente</div>
                     <div class="form-row">
                         <div class="form-team">
                             <span id="home-form-name">Local</span>
@@ -81,64 +83,69 @@
                 </div>
 
                 <div class="card">
-                    <div class="card-title">🎯 Probabilidades</div>
+                    <div class="card-title">Probabilidades</div>
                     <div class="prob-list">
                         <div class="prob-item">
                             <span class="prob-label">Over 1.5 Goles</span>
                             <div class="prob-bar-container">
-                                <div class="prob-bar" id="prob-over15" style="--width: 0%"></div>
+                                <div class="prob-bar" id="prob-over15" style="width: 0%"></div>
                                 <span class="prob-value" id="prob-over15-val">0%</span>
                             </div>
                         </div>
                         <div class="prob-item">
                             <span class="prob-label">Over 2.5 Goles</span>
                             <div class="prob-bar-container">
-                                <div class="prob-bar" id="prob-over25" style="--width: 0%"></div>
+                                <div class="prob-bar" id="prob-over25" style="width: 0%"></div>
                                 <span class="prob-value" id="prob-over25-val">0%</span>
                             </div>
                         </div>
                         <div class="prob-item">
                             <span class="prob-label">Over 3.5 Goles</span>
                             <div class="prob-bar-container">
-                                <div class="prob-bar" id="prob-over35" style="--width: 0%"></div>
+                                <div class="prob-bar" id="prob-over35" style="width: 0%"></div>
                                 <span class="prob-value" id="prob-over35-val">0%</span>
                             </div>
                         </div>
                         <div class="prob-item">
                             <span class="prob-label">Ambos Marcan (BTTS)</span>
                             <div class="prob-bar-container">
-                                <div class="prob-bar" id="prob-btts" style="--width: 0%"></div>
+                                <div class="prob-bar" id="prob-btts" style="width: 0%"></div>
                                 <span class="prob-value" id="prob-btts-val">0%</span>
                             </div>
                         </div>
                         <div class="prob-item">
                             <span class="prob-label">Goles Esperados (xG)</span>
                             <div class="prob-bar-container">
-                                <div class="prob-bar prob-bar-info" id="prob-xg" style="--width: 0%"></div>
+                                <div class="prob-bar prob-bar-info" id="prob-xg" style="width: 0%"></div>
                                 <span class="prob-value" id="prob-xg-val">0</span>
                             </div>
                         </div>
                         <div class="prob-item">
                             <span class="prob-label">Corners Esperados</span>
                             <div class="prob-bar-container">
-                                <div class="prob-bar prob-bar-info" id="prob-corners" style="--width: 0%"></div>
+                                <div class="prob-bar prob-bar-info" id="prob-corners" style="width: 0%"></div>
                                 <span class="prob-value" id="prob-corners-val">0</span>
                             </div>
                         </div>
                         <div class="prob-item">
                             <span class="prob-label">Tarjetas Esperadas</span>
                             <div class="prob-bar-container">
-                                <div class="prob-bar prob-bar-info" id="prob-cards" style="--width: 0%"></div>
+                                <div class="prob-bar prob-bar-info" id="prob-cards" style="width: 0%"></div>
                                 <span class="prob-value" id="prob-cards-val">0</span>
                             </div>
                         </div>
                     </div>
                 </div>
+
+                <div class="card hidden" id="live-incidents-card">
+                    <div class="card-title">Incidentes en Vivo</div>
+                    <div id="live-incidents"></div>
+                </div>
             </div>
 
             <div class="tab-content" id="tab-goals">
                 <div class="card">
-                    <div class="card-title">⚽ Tendencias de goles</div>
+                    <div class="card-title">Tendencias de goles</div>
                     <table class="stats-table">
                         <thead>
                             <tr>
@@ -148,15 +155,14 @@
                                 <th>Media</th>
                             </tr>
                         </thead>
-                        <tbody id="goals-table-body">
-                        </tbody>
+                        <tbody id="goals-table-body"></tbody>
                     </table>
                 </div>
             </div>
 
             <div class="tab-content" id="tab-corners">
                 <div class="card">
-                    <div class="card-title">🚩 Corners en contra</div>
+                    <div class="card-title">Corners</div>
                     <table class="stats-table">
                         <thead>
                             <tr>
@@ -166,30 +172,14 @@
                                 <th>Media</th>
                             </tr>
                         </thead>
-                        <tbody id="corners-table-body">
-                        </tbody>
-                    </table>
-                </div>
-                <div class="card">
-                    <div class="card-title">📐 Total de corners</div>
-                    <table class="stats-table">
-                        <thead>
-                            <tr>
-                                <th>Linea</th>
-                                <th>Local</th>
-                                <th>Visitante</th>
-                                <th>Media</th>
-                            </tr>
-                        </thead>
-                        <tbody id="corners-total-body">
-                        </tbody>
+                        <tbody id="corners-table-body"></tbody>
                     </table>
                 </div>
             </div>
 
             <div class="tab-content" id="tab-cards">
                 <div class="card">
-                    <div class="card-title">🟨🟥 Tarjetas</div>
+                    <div class="card-title">Tarjetas</div>
                     <table class="stats-table">
                         <thead>
                             <tr>
@@ -199,8 +189,7 @@
                                 <th>Media</th>
                             </tr>
                         </thead>
-                        <tbody id="cards-table-body">
-                        </tbody>
+                        <tbody id="cards-table-body"></tbody>
                     </table>
                 </div>
             </div>
