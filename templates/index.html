@@ -20,27 +20,27 @@
             <div class="section-title">Ligas</div>
             <div class="leagues-grid" id="leagues-grid">
                 <div class="league-card" data-id="2014" data-name="La Liga">
-                    <span class="league-flag">🇪🇸</span>
+                    <img src="https://flagcdn.com/w80/es.png" alt="ES" class="league-flag-img">
                     <span class="league-name">La Liga</span>
                 </div>
                 <div class="league-card" data-id="2021" data-name="Premier League">
-                    <span class="league-flag">🏴󠁧󠁢󠁥󠁮󠁧󠁿</span>
+                    <img src="https://flagcdn.com/w80/gb.png" alt="GB" class="league-flag-img">
                     <span class="league-name">Premier</span>
                 </div>
                 <div class="league-card" data-id="2019" data-name="Serie A">
-                    <span class="league-flag">🇮🇹</span>
+                    <img src="https://flagcdn.com/w80/it.png" alt="IT" class="league-flag-img">
                     <span class="league-name">Serie A</span>
                 </div>
                 <div class="league-card" data-id="2002" data-name="Bundesliga">
-                    <span class="league-flag">🇩🇪</span>
+                    <img src="https://flagcdn.com/w80/de.png" alt="DE" class="league-flag-img">
                     <span class="league-name">Bundesliga</span>
                 </div>
                 <div class="league-card" data-id="2015" data-name="Ligue 1">
-                    <span class="league-flag">🇫🇷</span>
+                    <img src="https://flagcdn.com/w80/fr.png" alt="FR" class="league-flag-img">
                     <span class="league-name">Ligue 1</span>
                 </div>
                 <div class="league-card" data-id="2001" data-name="Champions League">
-                    <span class="league-flag">🇪🇺</span>
+                    <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/b/bf/UEFA_Champions_League_logo_2.svg/80px-UEFA_Champions_League_logo_2.svg.png" alt="UCL" class="league-flag-img">
                     <span class="league-name">Champions</span>
                 </div>
             </div>
@@ -49,8 +49,8 @@
         <!-- Lista de Partidos -->
         <div class="section hidden" id="matches-section">
             <div class="section-header">
+                <button class="back-btn" onclick="showLeagues()">←</button>
                 <div class="section-title" id="matches-title">Partidos de hoy</div>
-                <button class="back-btn" onclick="showLeagues()">← Volver</button>
             </div>
             <div class="matches-list" id="matches-list">
                 <div class="loading">Cargando partidos...</div>
@@ -60,9 +60,9 @@
         <!-- Analisis del Partido -->
         <div class="section hidden" id="analysis-section">
             <div class="section-header">
-                <button class="back-btn" onclick="showMatches()">← Volver</button>
+                <button class="back-btn" onclick="showMatches()">←</button>
             </div>
-
+            
             <!-- Info del Partido -->
             <div class="match-header">
                 <div class="match-teams">
