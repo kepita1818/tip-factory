@@ -26,7 +26,7 @@ class SofaScoreScraper:
             headers=self.HEADERS,
             timeout=self.timeout,
             follow_redirects=True,
-            http2=True
+             http2=False
         )
 
     def _get(self, endpoint: str, cache_key: Optional[str] = None, cache_ttl: int = 60) -> Dict[str, Any]:
