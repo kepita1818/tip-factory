@@ -84,8 +84,6 @@ def format_match(m):
     score = m.get('score', {})
     ft = score.get('fullTime', {}) if isinstance(score, dict) else {}
     ht = score.get('halfTime', {}) if isinstance(score, dict) else {}
-    # Extract match date from utcDate
-    match_date = m.get('utcDate', '')[:10] if m.get('utcDate') else '' 
 
     status = m.get('status', 'SCHEDULED')
     status_map = {
@@ -101,7 +99,6 @@ def format_match(m):
     return {
         "id": m.get('id'),
         "utcDate": m.get('utcDate'),
-        "matchDate": match_date,
         "status": status_map.get(status, status),
         "statusText": status,
         "minute": minute,
@@ -143,8 +140,15 @@ def matches(date: str = Query(None)):
 
     logger.info(f"BUSCANDO PARTIDOS PARA: {date}")
 
-    # First try exact date
-    data = api_request('matches', {'dateFrom': date, 'dateTo': date}, f"matches_{date}", 300)
+    # Top competitions: PL, PD (La Liga), SA, BL1, FL1, CL, EL, EC, PPL, DED
+    competitions = 'PL,PD,SA,BL1,FL1,CL,EL,EC,PPL,DED'
+
+    # First: try exact date with competitions filter
+    data = api_request('matches', {
+        'dateFrom': date,
+        'dateTo': date,
+        'competitions': competitions
+    }, f"matches_{date}", 300)
 
     if data and data.get('matches'):
         matches_list = [format_match(m) for m in data['matches']]
@@ -156,12 +160,16 @@ def matches(date: str = Query(None)):
             "is_exact": True
         }
 
-    # Fallback: search nearby dates if no matches on exact date
+    # Fallback: search nearby dates
     for delta in [-1, 1, -2, 2, -3, 3, -4, 4, -5, 5, -6, 6, -7, 7]:
         try:
             check_date = (datetime.strptime(date, "%Y-%m-%d") + timedelta(days=delta)).strftime("%Y-%m-%d")
 
-            data = api_request('matches', {'dateFrom': check_date, 'dateTo': check_date}, f"matches_{check_date}", 300)
+            data = api_request('matches', {
+                'dateFrom': check_date,
+                'dateTo': check_date,
+                'competitions': competitions
+            }, f"matches_{check_date}", 300)
 
             if data and data.get('matches'):
                 matches_list = [format_match(m) for m in data['matches']]
