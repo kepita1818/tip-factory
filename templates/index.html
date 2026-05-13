@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>Futbol Analyzer</title>
+    <title>TipFactory</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
 </head>
@@ -11,50 +11,34 @@
     <div id="app">
         <!-- Header -->
         <header class="app-header">
-            <h1>Analisis del partido</h1>
-            <p class="subtitle">Selecciona liga y partido para analizar</p>
+            <h1>TipFactory</h1>
+            <p class="subtitle">Analitica de Futbol Profesional</p>
         </header>
 
-        <!-- Selector de Liga -->
-        <div class="section" id="league-section">
-            <div class="section-title">Ligas</div>
-            <div class="leagues-grid" id="leagues-grid">
-                <div class="league-card" data-id="2014" data-name="La Liga">
-                    <img src="https://flagcdn.com/w80/es.png" alt="ES" class="league-flag-img">
-                    <span class="league-name">La Liga</span>
-                </div>
-                <div class="league-card" data-id="2021" data-name="Premier League">
-                    <img src="https://flagcdn.com/w80/gb.png" alt="GB" class="league-flag-img">
-                    <span class="league-name">Premier</span>
-                </div>
-                <div class="league-card" data-id="2019" data-name="Serie A">
-                    <img src="https://flagcdn.com/w80/it.png" alt="IT" class="league-flag-img">
-                    <span class="league-name">Serie A</span>
-                </div>
-                <div class="league-card" data-id="2002" data-name="Bundesliga">
-                    <img src="https://flagcdn.com/w80/de.png" alt="DE" class="league-flag-img">
-                    <span class="league-name">Bundesliga</span>
-                </div>
-                <div class="league-card" data-id="2015" data-name="Ligue 1">
-                    <img src="https://flagcdn.com/w80/fr.png" alt="FR" class="league-flag-img">
-                    <span class="league-name">Ligue 1</span>
-                </div>
-                <div class="league-card" data-id="2001" data-name="Champions League">
-                    <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/b/bf/UEFA_Champions_League_logo_2.svg/80px-UEFA_Champions_League_logo_2.svg.png" alt="UCL" class="league-flag-img">
-                    <span class="league-name">Champions</span>
-                </div>
+        <!-- Selector de Fecha -->
+        <div class="date-selector">
+            <button class="date-nav" id="prev-date">◀</button>
+            <div class="date-display">
+                <span id="current-date">--/--/----</span>
+                <input type="date" id="date-picker" class="hidden">
             </div>
+            <button class="date-nav" id="next-date">▶</button>
+        </div>
+
+        <!-- Filtros de Liga -->
+        <div class="league-filters" id="league-filters">
+            <button class="filter-btn active" data-filter="all">Todos</button>
+            <button class="filter-btn" data-filter="Spain">Importar España</button>
+            <button class="filter-btn" data-filter="England">Importar Inglaterra</button>
+            <button class="filter-btn" data-filter="Germany">Importar Alemania</button>
+            <button class="filter-btn" data-filter="Italy">Importar Italia</button>
+            <button class="filter-btn" data-filter="France">Importar Francia</button>
+            <button class="filter-btn" data-filter="Europe">Europa</button>
         </div>
 
         <!-- Lista de Partidos -->
-        <div class="section hidden" id="matches-section">
-            <div class="section-header">
-                <button class="back-btn" onclick="showLeagues()">←</button>
-                <div class="section-title" id="matches-title">Partidos de hoy</div>
-            </div>
-            <div class="matches-list" id="matches-list">
-                <div class="loading">Cargando partidos...</div>
-            </div>
+        <div class="matches-container" id="matches-container">
+            <div class="loading">Cargando partidos...</div>
         </div>
 
         <!-- Analisis del Partido -->
@@ -123,6 +107,13 @@
                             </div>
                         </div>
                         <div class="prob-item">
+                            <span class="prob-label">Over 3.5 Goles</span>
+                            <div class="prob-bar-container">
+                                <div class="prob-bar" id="prob-over35" style="width: 0%"></div>
+                                <span class="prob-value" id="prob-over35-val">0%</span>
+                            </div>
+                        </div>
+                        <div class="prob-item">
                             <span class="prob-label">Ambos Marcan (BTTS)</span>
                             <div class="prob-bar-container">
                                 <div class="prob-bar" id="prob-btts" style="width: 0%"></div>
@@ -134,6 +125,20 @@
                             <div class="prob-bar-container">
                                 <div class="prob-bar prob-bar-info" id="prob-xg" style="width: 0%"></div>
                                 <span class="prob-value" id="prob-xg-val">0</span>
+                            </div>
+                        </div>
+                        <div class="prob-item">
+                            <span class="prob-label">Corners Esperados</span>
+                            <div class="prob-bar-container">
+                                <div class="prob-bar prob-bar-info" id="prob-corners" style="width: 0%"></div>
+                                <span class="prob-value" id="prob-corners-val">0</span>
+                            </div>
+                        </div>
+                        <div class="prob-item">
+                            <span class="prob-label">Tarjetas Esperadas</span>
+                            <div class="prob-bar-container">
+                                <div class="prob-bar prob-bar-info" id="prob-cards" style="width: 0%"></div>
+                                <span class="prob-value" id="prob-cards-val">0</span>
                             </div>
                         </div>
                     </div>
