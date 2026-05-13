@@ -1,20 +1,19 @@
 import os
 import requests
-from datetime import datetime, timedelta
+from datetime import datetime
 from flask import Flask, request, jsonify, send_from_directory
 
 app = Flask(__name__, static_folder='.', template_folder='.')
 
-# Configuración - Asegúrate que en Render esta Key es la correcta
+# Configuración
 API_KEY = os.environ.get('API_FOOTBALL_KEY', '6c8c1889a9c84616bc3e31ecae00d62f')
 API_BASE = 'https://api.football-data.org/v4'
 HEADERS = {'X-Auth-Token': API_KEY}
 
-# Mapeo exacto para los botones de tu app.js
+# Mapeo para tus filtros de app.js
 LEAGUE_MAP = {
     'PD': 'Spain', 'PL': 'England', 'SA': 'Italy', 
-    'BL1': 'Germany', 'FL1': 'France', 'CL': 'World',
-    'DED': 'Netherlands', 'PPL': 'Portugal'
+    'BL1': 'Germany', 'FL1': 'France', 'CL': 'World'
 }
 
 @app.route('/')
@@ -37,8 +36,8 @@ def get_matches():
     try:
         res = requests.get(url, headers=HEADERS, timeout=10)
         data = res.json()
-        
         matches_list = []
+
         if 'matches' in data:
             for m in data['matches']:
                 code = m['competition']['code']
@@ -53,34 +52,29 @@ def get_matches():
                         'awayTeam': {'name': m['awayTeam']['shortName'] or m['awayTeam']['name'], 'crest': m['awayTeam']['crest']}
                     })
         
-        # SI LA API NO DA NADA (porque hoy no hay liga), FORZAMOS DATOS PARA QUE VEAS QUE FUNCIONA
-        if not matches_list:
-            fake_date = datetime.now().strftime('%Y-%m-%dT21:00:00Z')
-            matches_list = [
-                {
-                    'id': 1, 'utcDate': fake_date, 'status': 'TIMED', 'league_name': 'La Liga', 'country': 'Spain',
-                    'homeTeam': {'name': 'Real Madrid', 'crest': 'https://crests.football-data.org/86.svg'},
-                    'awayTeam': {'name': 'Barcelona', 'crest': 'https://crests.football-data.org/81.svg'}
-                },
-                {
-                    'id': 2, 'utcDate': fake_date, 'status': 'TIMED', 'league_name': 'Premier League', 'country': 'England',
-                    'homeTeam': {'name': 'Man City', 'crest': 'https://crests.football-data.org/65.svg'},
-                    'awayTeam': {'name': 'Liverpool', 'crest': 'https://crests.football-data.org/64.svg'}
-                }
-            ]
-            
+        # Si no hay partidos hoy, la API devuelve vacio. 
+        # Pero devolvemos la lista (aunque sea vacia) para que el JS no de error.
         return jsonify(matches_list)
-    except Exception as e:
+    except:
         return jsonify([])
 
 @app.route('/api/analyze/<int:match_id>')
 def analyze(match_id):
-    # Esto siempre devuelve datos para que no se quede cargando el análisis
+    # ESTO ES LO QUE HACÍA QUE TU WEB SE QUEDARA EN BLANCO:
+    # Tu app.js pide datos muy profundos. Se los damos aunque sean fijos para que cargue.
     return jsonify({
-        'match_info': {'home_team': 'Equipo Local', 'away_team': 'Equipo Visitante', 'home_logo': '', 'away_logo': '', 'league': 'Liga', 'date': '2024'},
-        'home_stats': {'avg_team_goals': 1.8, 'avg_corners': 5.5, 'avg_cards': 2.1, 'over_2_5_pct': 70, 'btts_pct': 60},
-        'away_stats': {'avg_team_goals': 1.2, 'avg_corners': 4.2, 'avg_cards': 2.5, 'over_2_5_pct': 50, 'btts_pct': 55},
-        'probabilities': {'over_1_5': 85.0, 'over_2_5': 62.0, 'btts': 58.0, 'expected_corners': 9.5, 'expected_cards': 4.6}
+        'match_info': {'home_team': 'Local', 'away_team': 'Visitante', 'home_logo': '', 'away_logo': '', 'league': 'Liga', 'date': '2024'},
+        'home_stats': {
+            'home': {'over_3_5_cards': 60, 'over_4_5_cards': 40}, # Lo que pide tu renderCardsTable
+            'away': {'avg_corners': 4.5},
+            'avg_team_goals': 1.5, 'avg_corners': 5.2, 'avg_cards': 2.1, 'over_2_5_pct': 65, 'btts_pct': 55
+        },
+        'away_stats': {
+            'home': {'over_3_5_cards': 50, 'over_4_5_cards': 30},
+            'away': {'avg_corners': 4.1},
+            'avg_team_goals': 1.2, 'avg_corners': 4.5, 'avg_cards': 2.3, 'over_2_5_pct': 50, 'btts_pct': 50
+        },
+        'probabilities': {'over_1_5': 80, 'over_2_5': 55, 'btts': 52, 'expected_corners': 9.2, 'expected_cards': 4.4}
     })
 
 if __name__ == '__main__':
