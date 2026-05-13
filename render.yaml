@@ -10,3 +10,5 @@ services:
         value: 6c8c1889a9c84616bc3e31ecae00d62f
       - key: TELEGRAM_BOT_TOKEN
         value: 8883372208:AAEqL3nx6g14ULVsOSx_zN23b9OHptTMNq4
+      - key: RENDER_EXTERNAL_URL
+        value: https://tip-factory.onrender.com
