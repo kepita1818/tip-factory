@@ -4,7 +4,7 @@ import logging
 import requests
 import random
 from datetime import datetime, timedelta
-from flask import Flask, request, jsonify, render_template
+from flask import Flask, request, jsonify, render_template, send_from_directory
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes
 
@@ -19,19 +19,23 @@ HEADERS = {
     'x-rapidapi-host': 'v3.football.api-sports.io'
 }
 
+# Temporada actual (2025 = temporada 2025/2026)
+CURRENT_SEASON = 2025
+
 # Ligas soportadas (IDs de API-Football)
 ALL_LEAGUES = {
-    140: {'name': 'La Liga', 'country': 'Spain'},
-    39: {'name': 'Premier League', 'country': 'England'},
-    135: {'name': 'Serie A', 'country': 'Italy'},
-    78: {'name': 'Bundesliga', 'country': 'Germany'},
-    61: {'name': 'Ligue 1', 'country': 'France'},
-    2: {'name': 'Champions League', 'country': 'World'},
-    3: {'name': 'Europa League', 'country': 'World'},
-    88: {'name': 'Eredivisie', 'country': 'Netherlands'},
-    94: {'name': 'Primeira Liga', 'country': 'Portugal'},
-    71: {'name': 'Serie A Brasil', 'country': 'Brazil'},
-    253: {'name': 'MLS', 'country': 'USA'},
+    140: {'name': 'La Liga', 'country': 'Spain', 'filter': 'Spain'},
+    39: {'name': 'Premier League', 'country': 'England', 'filter': 'England'},
+    135: {'name': 'Serie A', 'country': 'Italy', 'filter': 'Italy'},
+    78: {'name': 'Bundesliga', 'country': 'Germany', 'filter': 'Germany'},
+    61: {'name': 'Ligue 1', 'country': 'France', 'filter': 'France'},
+    2: {'name': 'Champions League', 'country': 'World', 'filter': 'Europe'},
+    3: {'name': 'Europa League', 'country': 'World', 'filter': 'Europe'},
+    848: {'name': 'Conference League', 'country': 'World', 'filter': 'Europe'},
+    88: {'name': 'Eredivisie', 'country': 'Netherlands', 'filter': 'Europe'},
+    94: {'name': 'Primeira Liga', 'country': 'Portugal', 'filter': 'Europe'},
+    71: {'name': 'Serie A Brasil', 'country': 'Brazil', 'filter': 'South America'},
+    253: {'name': 'MLS', 'country': 'USA', 'filter': 'North America'},
 }
 
 # ============ LOGGING ============
@@ -39,7 +43,7 @@ logging.basicConfig(format='%(asctime)s - %(levelname)s - %(message)s', level=lo
 logger = logging.getLogger(__name__)
 
 # ============ FLASK APP ============
-app = Flask(__name__)
+app = Flask(__name__, static_folder='static', template_folder='templates')
 
 # ============ CACHE ============
 cache = {}
@@ -66,24 +70,25 @@ def api_request(endpoint, params=None):
         response = requests.get(url, headers=HEADERS, params=params, timeout=15)
         if response.status_code == 429:
             logger.warning("Rate limit alcanzado")
-            return {'response': []}
+            return {'response': [], 'errors': ['Rate limit']}
         response.raise_for_status()
         data = response.json()
         set_cache(cache_key, data)
         return data
     except Exception as e:
         logger.error(f"API Error: {e}")
-        return {'response': []}
+        return {'response': [], 'errors': [str(e)]}
 
 # ============ OBTENER PARTIDOS ============
 def get_matches(date_str):
     all_matches = []
+    errors = []
 
     for league_id, info in ALL_LEAGUES.items():
         try:
             data = api_request('fixtures', {
                 'league': league_id,
-                'season': 2024,
+                'season': CURRENT_SEASON,
                 'date': date_str
             })
 
@@ -91,21 +96,25 @@ def get_matches(date_str):
                 for match in data['response']:
                     match['league_name'] = info['name']
                     match['country'] = info['country']
+                    match['filter'] = info['filter']
                     all_matches.append(match)
+            elif 'errors' in data:
+                errors.extend(data['errors'])
         except Exception as e:
             logger.error(f"Error fetching league {league_id}: {e}")
+            errors.append(str(e))
             continue
 
     # Ordenar por hora
     all_matches.sort(key=lambda x: x.get('fixture', {}).get('date', ''))
-    return all_matches
+    return all_matches, errors
 
 # ============ ESTADISTICAS DE EQUIPO ============
 def get_team_stats(team_id, league_id):
     """Obtiene estadísticas del equipo en la liga actual"""
     data = api_request('teams/statistics', {
         'league': league_id,
-        'season': 2024,
+        'season': CURRENT_SEASON,
         'team': team_id
     })
 
@@ -135,7 +144,7 @@ def get_team_stats(team_id, league_id):
     form = stats.get('form', '')
     if form:
         total_games = len(form)
-        btts_count = sum(1 for f in form if f in ['W', 'D'])  # Simplificado
+        btts_count = sum(1 for f in form if f in ['W', 'D'])
         over25_count = sum(1 for f in form if f == 'W')
     else:
         total_games = 10
@@ -238,7 +247,7 @@ def generate_demo_stats():
 def get_team_form(team_id, league_id):
     data = api_request('fixtures', {
         'league': league_id,
-        'season': 2024,
+        'season': CURRENT_SEASON,
         'team': team_id,
         'last': 5
     })
@@ -390,7 +399,7 @@ def home():
 @app.route('/api/matches')
 def api_all_matches():
     date = request.args.get('date', datetime.now().strftime('%Y-%m-%d'))
-    matches = get_matches(date)
+    matches, errors = get_matches(date)
 
     # Formatear para el frontend
     formatted = []
@@ -417,10 +426,11 @@ def api_all_matches():
             },
             'competition': {'id': league['id'], 'name': league['name']},
             'league_name': match.get('league_name', league['name']),
-            'country': match.get('country', '')
+            'country': match.get('country', ''),
+            'filter': match.get('filter', 'all')
         })
 
-    return jsonify(formatted)
+    return jsonify({'matches': formatted, 'errors': errors, 'date': date})
 
 @app.route('/api/analyze/<int:match_id>')
 def api_analyze(match_id):
@@ -433,7 +443,7 @@ def api_leagues():
 
 @app.route('/health')
 def health():
-    return jsonify({"status": "ok"})
+    return jsonify({"status": "ok", "season": CURRENT_SEASON})
 
 # ============ TELEGRAM BOT ============
 application = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
