@@ -51,7 +51,7 @@ def api_request(endpoint, params=None):
     cached = get_cache(cache_key)
     if cached:
         return cached
-
+    
     url = f"{API_BASE_URL}/{endpoint}"
     try:
         response = requests.get(url, headers=HEADERS, params=params, timeout=30)
@@ -68,14 +68,14 @@ def get_team_form(team_id, last_n=5):
     date_from = (datetime.now() - timedelta(days=90)).strftime('%Y-%m-%d')
     date_to = datetime.now().strftime('%Y-%m-%d')
     matches = api_request(f"teams/{team_id}/matches", {'dateFrom': date_from, 'dateTo': date_to, 'limit': 50})
-
+    
     if 'matches' not in matches:
         return []
-
+    
     finished = [m for m in matches['matches'] if m['status'] == 'FINISHED']
     finished.sort(key=lambda x: x['utcDate'], reverse=True)
     finished = finished[:last_n]
-
+    
     form = []
     for match in finished:
         home_id = match['homeTeam']['id']
@@ -84,14 +84,14 @@ def get_team_form(team_id, last_n=5):
         is_home = team_id == home_id
         team_goals = home_goals if is_home else away_goals
         opp_goals = away_goals if is_home else home_goals
-
+        
         if team_goals > opp_goals:
             result = 'W'
         elif team_goals < opp_goals:
             result = 'L'
         else:
             result = 'D'
-
+        
         form.append({
             'result': result,
             'team_goals': team_goals, 'opp_goals': opp_goals,
@@ -105,23 +105,23 @@ def calculate_goal_stats(team_id, competition_id=None):
     date_from = (datetime.now() - timedelta(days=180)).strftime('%Y-%m-%d')
     date_to = datetime.now().strftime('%Y-%m-%d')
     matches = api_request(f"teams/{team_id}/matches", {'dateFrom': date_from, 'dateTo': date_to, 'limit': 50})
-
+    
     if 'matches' not in matches:
         return {}
-
+    
     team_matches = []
     for match in matches['matches']:
         if match['status'] != 'FINISHED':
             continue
         if competition_id and match['competition']['id'] != competition_id:
             continue
-
+        
         home_goals = match['score']['fullTime']['home'] or 0
         away_goals = match['score']['fullTime']['away'] or 0
         total_goals = home_goals + away_goals
         is_home = team_id == match['homeTeam']['id']
         team_goals = home_goals if is_home else away_goals
-
+        
         team_matches.append({
             'total_goals': total_goals,
             'team_goals': team_goals,
@@ -130,14 +130,14 @@ def calculate_goal_stats(team_id, competition_id=None):
             'over_2_5': total_goals > 2.5,
             'is_home': is_home
         })
-
+    
     if not team_matches:
         return {}
-
+    
     total = len(team_matches)
     home_matches = [m for m in team_matches if m['is_home']]
     away_matches = [m for m in team_matches if not m['is_home']]
-
+    
     return {
         'total_matches': total,
         'avg_total_goals': round(sum(m['total_goals'] for m in team_matches) / total, 2),
@@ -163,25 +163,25 @@ def analyze_match(match_id):
     match = api_request(f"matches/{match_id}")
     if 'id' not in match:
         return {'error': 'Partido no encontrado'}
-
+    
     home_team = match['homeTeam']
     away_team = match['awayTeam']
     competition = match['competition']
     home_id = home_team['id']
     away_id = away_team['id']
     competition_id = competition['id']
-
+    
     h2h = api_request(f"matches/{match_id}/head2head", {'limit': 10})
     home_form = get_team_form(home_id, 5)
     away_form = get_team_form(away_id, 5)
     home_goal_stats = calculate_goal_stats(home_id, competition_id)
     away_goal_stats = calculate_goal_stats(away_id, competition_id)
-
+    
     home_over25 = home_goal_stats.get('over_2_5_pct', 50)
     away_over25 = away_goal_stats.get('over_2_5_pct', 50)
     home_btts = home_goal_stats.get('btts_pct', 50)
     away_btts = away_goal_stats.get('btts_pct', 50)
-
+    
     return {
         'match_info': {
             'home_team': home_team['name'],
@@ -243,7 +243,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 Bienvenido! Tu app de analisis de futbol.
 
 Abre la app para ver analisis detallados con estadisticas, probabilidades y mas."""
-
+    
     keyboard = [[InlineKeyboardButton("Abrir App", web_app=WebAppInfo(url=webapp_url))]]
     await update.message.reply_text(welcome, reply_markup=InlineKeyboardMarkup(keyboard))
 
