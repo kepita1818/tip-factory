@@ -11,7 +11,7 @@ import requests
 logging.basicConfig(format='%(asctime)s - %(levelname)s - %(message)s', level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-app = FastAPI(title="Futbol Stats", version="4.0.0")
+app = FastAPI(title="Futbol Stats", version="5.0.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -31,17 +31,20 @@ HEADERS = {
     'Accept-Encoding': ''
 }
 
-# IDs de competiciones soportadas por football-data.org (plan gratuito)
+# IDs de competiciones del plan gratuito
 COMPETITIONS = {
-    'PL': 'Premier League',      # Inglaterra
-    'BL1': 'Bundesliga',         # Alemania
-    'SA': 'Serie A',             # Italia
-    'PD': 'La Liga',             # España
-    'FL1': 'Ligue 1',            # Francia
-    'CL': 'Champions League',
-    'EL': 'Europa League',
-    'EC': 'Euro Championship',
-    'WC': 'World Cup',
+    'PL': 2021,    # Premier League
+    'BL1': 2002,   # Bundesliga
+    'SA': 2019,    # Serie A
+    'PD': 2014,    # La Liga
+    'FL1': 2015,   # Ligue 1
+    'CL': 2001,    # Champions League
+    'EL': 2146,    # Europa League
+    'EC': 2018,    # European Championship
+    'WC': 2000,    # World Cup
+    'DED': 2003,   # Eredivisie
+    'PPL': 2017,   # Primeira Liga
+    'BSA': 2013,   # Brasileirão Serie A
 }
 
 # Cache
@@ -72,13 +75,10 @@ def api_request(endpoint, params=None, cache_key=None, ttl=600):
         resp = requests.get(url, headers=HEADERS, params=params, timeout=15)
         
         if resp.status_code == 429:
-            logger.error("RATE LIMIT - espera un minuto")
+            logger.error("RATE LIMIT")
             return None
-        if resp.status_code == 403:
-            logger.error("FORBIDDEN - API key inválida o sin créditos")
-            return None
-        if resp.status_code == 401:
-            logger.error("UNAUTHORIZED - API key incorrecta")
+        if resp.status_code in [403, 401]:
+            logger.error(f"AUTH ERROR {resp.status_code}")
             return None
             
         resp.raise_for_status()
@@ -92,51 +92,116 @@ def api_request(endpoint, params=None, cache_key=None, ttl=600):
         return None
 
 def format_match(m):
-    """Adapta el formato de football-data.org al que espera el frontend"""
     home = m.get('homeTeam', {})
     away = m.get('awayTeam', {})
     competition = m.get('competition', {})
+    score = m.get('score', {})
+    full_time = score.get('fullTime', {}) if isinstance(score, dict) else {}
+    half_time = score.get('halfTime', {}) if isinstance(score, dict) else {}
     
-    # Estado del partido
-    status = m.get('status', '')
+    status = m.get('status', 'SCHEDULED')
     status_map = {
-        'SCHEDULED': 'NS',
-        'LIVE': '1H',
-        'IN_PLAY': '1H',
-        'PAUSED': 'HT',
-        'FINISHED': 'FT',
-        'POSTPONED': 'PST',
-        'SUSPENDED': 'SUSP',
-        'CANCELLED': 'CANC',
+        'SCHEDULED': 'NS', 'LIVE': 'LIVE', 'IN_PLAY': '1H', 'PAUSED': 'HT',
+        'FINISHED': 'FT', 'POSTPONED': 'PST', 'SUSPENDED': 'SUSP', 'CANCELLED': 'CANC', 'AWARDED': 'AWD'
     }
-    status_short = status_map.get(status, status)
     
-    # Minuto (football-data no siempre lo da en partidos en vivo)
-    minute = m.get('minute', {}).get('regular', 0) if isinstance(m.get('minute'), dict) else 0
+    minute = m.get('minute', 0)
+    if isinstance(minute, dict):
+        minute = minute.get('regular', 0)
+    
+    # Extraer goleadores reales
+    goals = m.get('goals', [])
+    scorers = []
+    for g in goals:
+        if isinstance(g, dict):
+            scorers.append({
+                'minute': g.get('minute', 0),
+                'player': g.get('scorer', {}).get('name', 'Desconocido'),
+                'team': 'home' if g.get('team', {}).get('id') == home.get('id') else 'away',
+                'type': g.get('type', 'REGULAR')
+            })
+    
+    # Extraer tarjetas reales
+    bookings = m.get('bookings', [])
+    cards_list = []
+    for b in bookings:
+        if isinstance(b, dict):
+            cards_list.append({
+                'minute': b.get('minute', 0),
+                'player': b.get('player', {}).get('name', 'Desconocido'),
+                'team': 'home' if b.get('team', {}).get('id') == home.get('id') else 'away',
+                'card': b.get('card', 'YELLOW')
+            })
+    
+    # Extraer sustituciones reales
+    substitutions = m.get('substitutions', [])
+    subs_list = []
+    for s in substitutions:
+        if isinstance(s, dict):
+            subs_list.append({
+                'minute': s.get('minute', 0),
+                'team': 'home' if s.get('team', {}).get('id') == home.get('id') else 'away',
+                'out': s.get('playerOut', {}).get('name', ''),
+                'in': s.get('playerIn', {}).get('name', '')
+            })
+    
+    # Estadísticas reales del partido (si está terminado o en vivo)
+    home_stats = {}
+    away_stats = {}
+    if 'homeTeam' in m and 'statistics' in m['homeTeam']:
+        home_stats = m['homeTeam']['statistics']
+    if 'awayTeam' in m and 'statistics' in m['awayTeam']:
+        away_stats = m['awayTeam']['statistics']
     
     return {
         "id": m.get('id'),
         "utcDate": m.get('utcDate'),
-        "status": status_short,
+        "status": status_map.get(status, status),
         "statusText": status,
+        "minute": minute,
+        "injuryTime": m.get('injuryTime', 0),
+        "venue": m.get('venue', 'N/A'),
+        "matchday": m.get('matchday', 0),
+        "attendance": m.get('attendance', 0),
         "homeTeam": {
             "id": home.get('id'),
             "name": home.get('name', 'Local'),
             "shortName": home.get('shortName', home.get('name', 'Local')[:15]),
-            "crest": home.get('crest', home.get('logo', ''))
+            "tla": home.get('tla', ''),
+            "crest": home.get('crest', ''),
+            "coach": home.get('coach', {}).get('name', ''),
+            "formation": home.get('formation', ''),
+            "leagueRank": home.get('leagueRank', None),
         },
         "awayTeam": {
             "id": away.get('id'),
             "name": away.get('name', 'Visitante'),
             "shortName": away.get('shortName', away.get('name', 'Visitante')[:15]),
-            "crest": away.get('crest', away.get('logo', ''))
+            "tla": away.get('tla', ''),
+            "crest": away.get('crest', ''),
+            "coach": away.get('coach', {}).get('name', ''),
+            "formation": away.get('formation', ''),
+            "leagueRank": away.get('leagueRank', None),
         },
-        "competition": {"id": competition.get('id'), "name": competition.get('name', '')},
+        "competition": {
+            "id": competition.get('id'),
+            "name": competition.get('name', ''),
+            "code": competition.get('code', ''),
+            "emblem": competition.get('emblem', '')
+        },
         "league_name": competition.get('name', ''),
-        "country": competition.get('area', {}).get('name', ''),
-        "homeScore": m.get('score', {}).get('fullTime', {}).get('home'),
-        "awayScore": m.get('score', {}).get('fullTime', {}).get('away'),
-        "minute": minute
+        "country": m.get('area', {}).get('name', ''),
+        "homeScore": full_time.get('home') if isinstance(full_time, dict) else None,
+        "awayScore": full_time.get('away') if isinstance(full_time, dict) else None,
+        "halfTimeHome": half_time.get('home') if isinstance(half_time, dict) else None,
+        "halfTimeAway": half_time.get('away') if isinstance(half_time, dict) else None,
+        "scorers": scorers,
+        "bookings": cards_list,
+        "substitutions": subs_list,
+        "homeStatistics": home_stats,
+        "awayStatistics": away_stats,
+        "referees": [r.get('name', '') for r in m.get('referees', []) if isinstance(r, dict)],
+        "odds": m.get('odds', {})
     }
 
 @app.get("/", response_class=HTMLResponse)
@@ -150,9 +215,8 @@ def matches(date: str = Query(None)):
     
     logger.info(f"=== BUSCANDO PARTIDOS PARA: {date} ===")
     
-    # football-data.org usa dateFrom/dateTo (formato YYYY-MM-DD)
-    # Buscamos en la fecha exacta y ±3 días
-    for delta in [0, -1, 1, -2, 2, -3, 3]:
+    # Buscar en fecha exacta y ±7 días
+    for delta in [0, -1, 1, -2, 2, -3, 3, -4, 4, -5, 5, -6, 6, -7, 7]:
         try:
             check_date = (datetime.strptime(date, "%Y-%m-%d") + timedelta(days=delta)).strftime("%Y-%m-%d")
             
@@ -172,34 +236,15 @@ def matches(date: str = Query(None)):
             logger.error(f"Error buscando {check_date}: {e}")
             continue
     
-    logger.warning(f"❌ NO HAY PARTIDOS para {date} ni fechas cercanas")
+    logger.warning(f"❌ NO HAY PARTIDOS para {date}")
     return []
-
-@app.get("/api/live")
-def live():
-    logger.info("=== BUSCANDO PARTIDOS EN VIVO ===")
-    
-    # football-data.org: filtrar por status=LIVE o IN_PLAY
-    data = api_request(
-        'matches',
-        {'status': 'LIVE,IN_PLAY'},
-        "live_matches",
-        60
-    )
-    
-    if not data:
-        return []
-    
-    matches = [format_match(m) for m in data.get('matches', [])]
-    logger.info(f"✅ {len(matches)} partidos en vivo")
-    return matches
 
 @app.get("/api/analyze/{match_id}")
 def analyze(match_id: int):
     logger.info(f"=== ANALIZANDO PARTIDO {match_id} ===")
     
-    # Obtener detalle del partido
-    data = api_request(f'matches/{match_id}', cache_key=f"match_{match_id}", ttl=300)
+    # Obtener detalle completo del partido
+    data = api_request(f'matches/{match_id}', cache_key=f"match_detail_{match_id}", ttl=300)
     if not data:
         raise HTTPException(404, "Partido no encontrado")
     
@@ -207,28 +252,59 @@ def analyze(match_id: int):
     home_id = match['homeTeam']['id']
     away_id = match['awayTeam']['id']
     comp_id = match['competition']['id']
+    season = match.get('season', {})
+    season_year = season.get('startDate', '')[:4] if season.get('startDate') else '2025'
     
-    logger.info(f"Partido: {match['homeTeam']['name']} vs {match['awayTeam']['name']}")
+    logger.info(f"Partido: {match['homeTeam']['name']} vs {match['awayTeam']['name']} | Comp: {match['competition']['name']}")
     
-    # football-data.org no tiene endpoint de estadísticas detalladas como API-Football
-    # Usamos datos básicos del partido y generamos estimaciones
+    # === DATOS REALES DEL PARTIDO ===
+    match_detail = format_match(match)
     
-    # Intentar obtener partidos recientes del equipo local
-    home_matches = api_request(
-        f'teams/{home_id}/matches',
-        {'status': 'FINISHED', 'limit': 5},
-        f"team_{home_id}_last5",
-        1800
+    # === H2H (HEAD TO HEAD) ===
+    h2h_data = api_request(
+        f'matches/{match_id}/head2head',
+        {'limit': 10},
+        f"h2h_{match_id}",
+        3600
     )
     
-    away_matches = api_request(
-        f'teams/{away_id}/matches',
-        {'status': 'FINISHED', 'limit': 5},
-        f"team_{away_id}_last5",
-        1800
-    )
+    h2h_matches = []
+    h2h_stats = {'home_wins': 0, 'away_wins': 0, 'draws': 0, 'home_goals': 0, 'away_goals': 0, 'total_matches': 0}
     
-    def process_form(team_matches, team_id):
+    if h2h_data and h2h_data.get('aggregates'):
+        agg = h2h_data['aggregates']
+        h2h_stats = {
+            'home_wins': agg.get('homeTeam', {}).get('wins', 0),
+            'away_wins': agg.get('awayTeam', {}).get('wins', 0),
+            'draws': agg.get('homeTeam', {}).get('draws', 0),
+            'home_goals': agg.get('homeTeam', {}).get('goals', 0),
+            'away_goals': agg.get('awayTeam', {}).get('goals', 0),
+            'total_matches': agg.get('numberOfMatches', 0)
+        }
+        
+        for m in h2h_data.get('matches', [])[:5]:
+            h2h_matches.append({
+                'date': m.get('utcDate', '')[:10],
+                'home': m['homeTeam']['name'],
+                'away': m['awayTeam']['name'],
+                'homeScore': m.get('score', {}).get('fullTime', {}).get('home'),
+                'awayScore': m.get('score', {}).get('fullTime', {}).get('away'),
+                'competition': m['competition']['name']
+            })
+    
+    # === FORMA RECIENTE (últimos 5 partidos de cada equipo) ===
+    def get_team_form(team_id, comp_id=None):
+        params = {'status': 'FINISHED', 'limit': 5}
+        if comp_id:
+            params['competitions'] = comp_id
+        
+        team_matches = api_request(
+            f'teams/{team_id}/matches',
+            params,
+            f"form_{team_id}_{comp_id}",
+            1800
+        )
+        
         form = []
         if not team_matches or not team_matches.get('matches'):
             return form
@@ -255,70 +331,137 @@ def analyze(match_id: int):
             form.append({
                 'result': result, 'result_text': result_text,
                 'team_goals': team_goals, 'opp_goals': opp_goals,
-                'opponent': opponent, 'venue': 'home' if is_home else 'away',
-                'date': m['utcDate'][:10] if m.get('utcDate') else '2024-01-01'
+                'opponent': opponent,
+                'venue': 'home' if is_home else 'away',
+                'date': m['utcDate'][:10] if m.get('utcDate') else '2024-01-01',
+                'competition': m['competition']['name']
             })
         return form
     
-    hf = process_form(home_matches, home_id)
-    af = process_form(away_matches, away_id)
+    home_form = get_team_form(home_id, comp_id)
+    away_form = get_team_form(away_id, comp_id)
     
-    # Datos por defecto si no hay forma
-    if not hf:
-        hf = [{'result': 'W', 'result_text': 'Victoria', 'team_goals': 2, 'opp_goals': 1, 'opponent': 'Rival', 'venue': 'home', 'date': '2024-05-01'}]
-    if not af:
-        af = [{'result': 'D', 'result_text': 'Empate', 'team_goals': 1, 'opp_goals': 1, 'opponent': 'Rival', 'venue': 'away', 'date': '2024-05-01'}]
+    # === ESTADÍSTICAS DE EQUIPO EN LA COMPETICIÓN ===
+    def get_team_stats(team_id, comp_id, season_year):
+        stats_data = api_request(
+            f'competitions/{comp_id}/standings',
+            {'season': season_year},
+            f"standings_{comp_id}_{season_year}",
+            3600
+        )
+        
+        if not stats_data or not stats_data.get('standings'):
+            return None
+        
+        # Buscar el equipo en la clasificación
+        for standing in stats_data['standings']:
+            for table in standing.get('table', []):
+                if table['team']['id'] == team_id:
+                    return {
+                        'position': table.get('position', 0),
+                        'played': table.get('playedGames', 0),
+                        'won': table.get('won', 0),
+                        'draw': table.get('draw', 0),
+                        'lost': table.get('lost', 0),
+                        'goals_for': table.get('goalsFor', 0),
+                        'goals_against': table.get('goalsAgainst', 0),
+                        'goal_difference': table.get('goalDifference', 0),
+                        'points': table.get('points', 0),
+                        'form': table.get('form', '-----')
+                    }
+        return None
     
-    # Estadísticas estimadas (football-data.org free no da stats detalladas)
-    # Usamos promedios básicos de los últimos partidos
-    def calc_avg_goals(form_list):
+    home_standings = get_team_stats(home_id, comp_id, season_year)
+    away_standings = get_team_stats(away_id, comp_id, season_year)
+    
+    # === ESTADÍSTICAS CALCULADAS REALES ===
+    def calc_stats_from_form(form_list):
         if not form_list:
-            return 1.5, 1.2
-        scored = sum(f['team_goals'] for f in form_list) / len(form_list)
-        conceded = sum(f['opp_goals'] for f in form_list) / len(form_list)
-        return round(scored, 2), round(conceded, 2)
+            return {'avg_scored': 1.5, 'avg_conceded': 1.2, 'matches': 0}
+        
+        scored = sum(f['team_goals'] for f in form_list)
+        conceded = sum(f['opp_goals'] for f in form_list)
+        matches = len(form_list)
+        
+        return {
+            'avg_scored': round(scored / matches, 2) if matches > 0 else 1.5,
+            'avg_conceded': round(conceded / matches, 2) if matches > 0 else 1.2,
+            'matches': matches,
+            'total_scored': scored,
+            'total_conceded': conceded
+        }
     
-    home_scored, home_conceded = calc_avg_goals(hf)
-    away_scored, away_conceded = calc_avg_goals(af)
+    home_calc = calc_stats_from_form(home_form)
+    away_calc = calc_stats_from_form(away_form)
     
-    avg_total = home_scored + away_scored
+    # Over calculations basadas en forma real
+    def calc_over_prob(form_list, threshold):
+        if not form_list:
+            return 50
+        overs = sum(1 for f in form_list if (f['team_goals'] + f['opp_goals']) > threshold)
+        return round((overs / len(form_list)) * 100)
     
+    def calc_btts(form_list):
+        if not form_list:
+            return 50
+        btts_count = sum(1 for f in form_list if f['team_goals'] > 0 and f['opp_goals'] > 0)
+        return round((btts_count / len(form_list)) * 100)
+    
+    # Estadísticas reales del partido si existen
+    home_match_stats = match_detail.get('homeStatistics', {})
+    away_match_stats = match_detail.get('awayStatistics', {})
+    
+    # Construir estadísticas completas
     hstats = {
-        'avg_total_goals': round(avg_total, 2),
-        'avg_team_goals': home_scored,
-        'avg_conceded': home_conceded,
-        'btts_pct': min(90, int(home_scored * 15 + home_conceded * 15)),
-        'over_1_5_pct': min(95, int(avg_total * 25 + 20)),
-        'over_2_5_pct': min(90, int(avg_total * 20 + 10)),
-        'over_3_5_pct': max(10, int(avg_total * 12)),
-        'avg_corners': 5.0, 'avg_cards': 2.5,
-        'home': {'matches': len(hf), 'avg_total': round(avg_total * 1.1, 2),
-                'avg_corners': 5.5, 'avg_cards': 2.6,
-                'over_2_5': min(95, int(avg_total * 20 + 15)),
-                'over_3_5': max(10, int(avg_total * 12)),
-                'btts': min(95, int(home_scored * 15 + home_conceded * 15) + 5),
-                'over_8_5_corners': 70, 'over_9_5_corners': 55, 'over_10_5_corners': 40,
-                'over_3_5_cards': 75, 'over_4_5_cards': 50},
-        'away': {'matches': len(af), 'avg_total': round(avg_total * 0.9, 2),
-                'avg_corners': 4.0, 'avg_cards': 2.1,
-                'over_2_5': max(20, int(avg_total * 20 + 10) - 10),
-                'over_3_5': max(5, int(avg_total * 12) - 5),
-                'btts': max(30, int(away_scored * 15 + away_conceded * 15) - 5),
-                'over_8_5_corners': 60, 'over_9_5_corners': 45, 'over_10_5_corners': 30,
-                'over_3_5_cards': 65, 'over_4_5_cards': 45}
+        'position': home_standings.get('position', 0) if home_standings else 0,
+        'played': home_standings.get('played', 0) if home_standings else home_calc['matches'],
+        'won': home_standings.get('won', 0) if home_standings else 0,
+        'draw': home_standings.get('draw', 0) if home_standings else 0,
+        'lost': home_standings.get('lost', 0) if home_standings else 0,
+        'goals_for': home_standings.get('goals_for', 0) if home_standings else home_calc['total_scored'],
+        'goals_against': home_standings.get('goals_against', 0) if home_standings else home_calc['total_conceded'],
+        'points': home_standings.get('points', 0) if home_standings else 0,
+        'form_string': home_standings.get('form', '-----') if home_standings else '',
+        'avg_total_goals': round(home_calc['avg_scored'] + home_calc['avg_conceded'], 2),
+        'avg_team_goals': home_calc['avg_scored'],
+        'avg_conceded': home_calc['avg_conceded'],
+        'btts_pct': calc_btts(home_form),
+        'over_1_5_pct': calc_over_prob(home_form, 1),
+        'over_2_5_pct': calc_over_prob(home_form, 2),
+        'over_3_5_pct': calc_over_prob(home_form, 3),
+        'avg_corners': round((home_match_stats.get('corner_kicks', 5) if home_match_stats else 5), 1),
+        'avg_cards': round((home_match_stats.get('yellow_cards', 2) + home_match_stats.get('red_cards', 0)) if home_match_stats else 2.5, 1),
+        'possession': home_match_stats.get('ball_possession', 50) if home_match_stats else 50,
+        'shots': home_match_stats.get('shots', 0) if home_match_stats else 0,
+        'shots_on_goal': home_match_stats.get('shots_on_goal', 0) if home_match_stats else 0,
+        'fouls': home_match_stats.get('fouls', 0) if home_match_stats else 0,
+        'offsides': home_match_stats.get('offsides', 0) if home_match_stats else 0,
     }
     
     astats = {
-        'avg_total_goals': round(avg_total, 2),
-        'avg_team_goals': away_scored,
-        'avg_conceded': away_conceded,
-        'btts_pct': min(90, int(away_scored * 15 + away_conceded * 15)),
-        'over_1_5_pct': min(95, int(avg_total * 25 + 20)),
-        'over_2_5_pct': min(90, int(avg_total * 20 + 10)),
-        'over_3_5_pct': max(10, int(avg_total * 12)),
-        'avg_corners': 4.5, 'avg_cards': 2.3,
-        'home': hstats['home'],  # Reutilizamos para simplificar
-        'away': hstats['away']
+        'position': away_standings.get('position', 0) if away_standings else 0,
+        'played': away_standings.get('played', 0) if away_standings else away_calc['matches'],
+        'won': away_standings.get('won', 0) if away_standings else 0,
+        'draw': away_standings.get('draw', 0) if away_standings else 0,
+        'lost': away_standings.get('lost', 0) if away_standings else 0,
+        'goals_for': away_standings.get('goals_for', 0) if away_standings else away_calc['total_scored'],
+        'goals_against': away_standings.get('goals_against', 0) if away_standings else away_calc['total_conceded'],
+        'points': away_standings.get('points', 0) if away_standings else 0,
+        'form_string': away_standings.get('form', '-----') if away_standings else '',
+        'avg_total_goals': round(away_calc['avg_scored'] + away_calc['avg_conceded'], 2),
+        'avg_team_goals': away_calc['avg_scored'],
+        'avg_conceded': away_calc['avg_conceded'],
+        'btts_pct': calc_btts(away_form),
+        'over_1_5_pct': calc_over_prob(away_form, 1),
+        'over_2_5_pct': calc_over_prob(away_form, 2),
+        'over_3_5_pct': calc_over_prob(away_form, 3),
+        'avg_corners': round((away_match_stats.get('corner_kicks', 5) if away_match_stats else 5), 1),
+        'avg_cards': round((away_match_stats.get('yellow_cards', 2) + away_match_stats.get('red_cards', 0)) if away_match_stats else 2.3, 1),
+        'possession': away_match_stats.get('ball_possession', 50) if away_match_stats else 50,
+        'shots': away_match_stats.get('shots', 0) if away_match_stats else 0,
+        'shots_on_goal': away_match_stats.get('shots_on_goal', 0) if away_match_stats else 0,
+        'fouls': away_match_stats.get('fouls', 0) if away_match_stats else 0,
+        'offsides': away_match_stats.get('offsides', 0) if away_match_stats else 0,
     }
     
     # Probabilidades combinadas
@@ -326,9 +469,12 @@ def analyze(match_id: int):
     over_2_5 = round((hstats['over_2_5_pct'] + astats['over_2_5_pct']) / 2, 1)
     over_3_5 = round((hstats['over_3_5_pct'] + astats['over_3_5_pct']) / 2, 1)
     btts = round((hstats['btts_pct'] + astats['btts_pct']) / 2, 1)
-    xg = round(home_scored + away_scored, 2)
+    xg = round(hstats['avg_team_goals'] + astats['avg_team_goals'], 2)
     corners = round((hstats['avg_corners'] + astats['avg_corners']) * 0.9, 1)
     cards = round(hstats['avg_cards'] + astats['avg_cards'], 1)
+    
+    # Cuotas reales si existen
+    odds = match_detail.get('odds', {})
     
     return {
         "match_info": {
@@ -336,21 +482,43 @@ def analyze(match_id: int):
             "away_team": match['awayTeam']['name'],
             "home_short": match['homeTeam'].get('shortName', match['homeTeam']['name'][:12]),
             "away_short": match['awayTeam'].get('shortName', match['awayTeam']['name'][:12]),
+            "home_tla": match['homeTeam'].get('tla', ''),
+            "away_tla": match['awayTeam'].get('tla', ''),
             "home_logo": match['homeTeam'].get('crest', ''),
             "away_logo": match['awayTeam'].get('crest', ''),
+            "home_formation": match['homeTeam'].get('formation', ''),
+            "away_formation": match['awayTeam'].get('formation', ''),
+            "home_coach": match['homeTeam'].get('coach', {}).get('name', ''),
+            "away_coach": match['awayTeam'].get('coach', {}).get('name', ''),
             "league": match['competition']['name'],
+            "league_emblem": match['competition'].get('emblem', ''),
+            "country": match.get('area', {}).get('name', ''),
             "date": match['utcDate'][:10] if match.get('utcDate') else 'N/A',
             "time": match['utcDate'][11:16] if match.get('utcDate') else '--:--',
             "venue": match.get('venue', 'N/A'),
             "status": match.get('status', 'SCHEDULED'),
-            "minute": match.get('minute', {}).get('regular', 0) if isinstance(match.get('minute'), dict) else 0,
-            "home_score": match.get('score', {}).get('fullTime', {}).get('home'),
-            "away_score": match.get('score', {}).get('fullTime', {}).get('away')
+            "minute": match_detail.get('minute', 0),
+            "matchday": match_detail.get('matchday', 0),
+            "attendance": match_detail.get('attendance', 0),
+            "home_score": match_detail.get('homeScore'),
+            "away_score": match_detail.get('awayScore'),
+            "halfTimeHome": match_detail.get('halfTimeHome'),
+            "halfTimeAway": match_detail.get('halfTimeAway'),
+            "referees": match_detail.get('referees', []),
         },
-        "home_form": hf,
-        "away_form": af,
+        "home_form": home_form,
+        "away_form": away_form,
         "home_stats": hstats,
         "away_stats": astats,
+        "h2h": {
+            "matches": h2h_matches,
+            "stats": h2h_stats
+        },
+        "match_events": {
+            "scorers": match_detail.get('scorers', []),
+            "bookings": match_detail.get('bookings', []),
+            "substitutions": match_detail.get('substitutions', [])
+        },
         "probabilities": {
             "over_1_5": over_1_5,
             "over_2_5": over_2_5,
@@ -359,6 +527,11 @@ def analyze(match_id: int):
             "total_expected_goals": xg,
             "expected_corners": corners,
             "expected_cards": cards
+        },
+        "odds": {
+            "home": odds.get('homeWin', 0),
+            "draw": odds.get('draw', 0),
+            "away": odds.get('awayWin', 0)
         },
         "source": "football-data.org"
     }
@@ -370,7 +543,7 @@ def health():
         "cache_size": len(_cache),
         "time": datetime.now().isoformat(),
         "api_key": "configured" if API_KEY else "missing",
-        "api_source": "football-data.org"
+        "api_source": "football-data.org v4"
     }
 
 if __name__ == "__main__":
