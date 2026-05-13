@@ -1,1 +1,219 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Futbol Analyzer</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+</head>
+<body>
+    <div id="app">
+        <!-- Header -->
+        <header class="app-header">
+            <h1>Analisis del partido</h1>
+            <p class="subtitle">Selecciona liga y partido para analizar</p>
+        </header>
 
+        <!-- Selector de Liga -->
+        <div class="section" id="league-section">
+            <div class="section-title">Ligas</div>
+            <div class="leagues-grid" id="leagues-grid">
+                <div class="league-card" data-id="2014" data-name="La Liga">
+                    <span class="league-flag">🇪🇸</span>
+                    <span class="league-name">La Liga</span>
+                </div>
+                <div class="league-card" data-id="2021" data-name="Premier League">
+                    <span class="league-flag">🏴󠁧󠁢󠁥󠁮󠁧󠁿</span>
+                    <span class="league-name">Premier</span>
+                </div>
+                <div class="league-card" data-id="2019" data-name="Serie A">
+                    <span class="league-flag">🇮🇹</span>
+                    <span class="league-name">Serie A</span>
+                </div>
+                <div class="league-card" data-id="2002" data-name="Bundesliga">
+                    <span class="league-flag">🇩🇪</span>
+                    <span class="league-name">Bundesliga</span>
+                </div>
+                <div class="league-card" data-id="2015" data-name="Ligue 1">
+                    <span class="league-flag">🇫🇷</span>
+                    <span class="league-name">Ligue 1</span>
+                </div>
+                <div class="league-card" data-id="2001" data-name="Champions League">
+                    <span class="league-flag">🇪🇺</span>
+                    <span class="league-name">Champions</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Lista de Partidos -->
+        <div class="section hidden" id="matches-section">
+            <div class="section-header">
+                <div class="section-title" id="matches-title">Partidos de hoy</div>
+                <button class="back-btn" onclick="showLeagues()">← Volver</button>
+            </div>
+            <div class="matches-list" id="matches-list">
+                <div class="loading">Cargando partidos...</div>
+            </div>
+        </div>
+
+        <!-- Analisis del Partido -->
+        <div class="section hidden" id="analysis-section">
+            <div class="section-header">
+                <button class="back-btn" onclick="showMatches()">← Volver</button>
+            </div>
+
+            <!-- Info del Partido -->
+            <div class="match-header">
+                <div class="match-teams">
+                    <div class="team">
+                        <img id="home-logo" src="" alt="">
+                        <span id="home-name">Local</span>
+                    </div>
+                    <div class="vs">VS</div>
+                    <div class="team">
+                        <img id="away-logo" src="" alt="">
+                        <span id="away-name">Visitante</span>
+                    </div>
+                </div>
+                <div class="match-meta" id="match-meta"></div>
+            </div>
+
+            <!-- Tabs -->
+            <div class="tabs">
+                <button class="tab-btn active" data-tab="summary">Resumen</button>
+                <button class="tab-btn" data-tab="goals">Goles</button>
+                <button class="tab-btn" data-tab="corners">Corners</button>
+                <button class="tab-btn" data-tab="cards">Tarjetas</button>
+            </div>
+
+            <!-- Tab: Resumen -->
+            <div class="tab-content active" id="tab-summary">
+                <!-- Forma Reciente -->
+                <div class="card">
+                    <div class="card-title">Forma Reciente</div>
+                    <div class="form-row">
+                        <div class="form-team">
+                            <span id="home-form-name">Local</span>
+                            <div class="form-badges" id="home-form"></div>
+                        </div>
+                        <div class="form-team">
+                            <span id="away-form-name">Visitante</span>
+                            <div class="form-badges" id="away-form"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Probabilidades -->
+                <div class="card">
+                    <div class="card-title">Probabilidades</div>
+                    <div class="prob-list">
+                        <div class="prob-item">
+                            <span class="prob-label">Over 1.5 Goles</span>
+                            <div class="prob-bar-container">
+                                <div class="prob-bar" id="prob-over15" style="width: 0%"></div>
+                                <span class="prob-value" id="prob-over15-val">0%</span>
+                            </div>
+                        </div>
+                        <div class="prob-item">
+                            <span class="prob-label">Over 2.5 Goles</span>
+                            <div class="prob-bar-container">
+                                <div class="prob-bar" id="prob-over25" style="width: 0%"></div>
+                                <span class="prob-value" id="prob-over25-val">0%</span>
+                            </div>
+                        </div>
+                        <div class="prob-item">
+                            <span class="prob-label">Ambos Marcan (BTTS)</span>
+                            <div class="prob-bar-container">
+                                <div class="prob-bar" id="prob-btts" style="width: 0%"></div>
+                                <span class="prob-value" id="prob-btts-val">0%</span>
+                            </div>
+                        </div>
+                        <div class="prob-item">
+                            <span class="prob-label">Goles Esperados</span>
+                            <div class="prob-bar-container">
+                                <div class="prob-bar prob-bar-info" id="prob-xg" style="width: 0%"></div>
+                                <span class="prob-value" id="prob-xg-val">0</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Tab: Goles -->
+            <div class="tab-content" id="tab-goals">
+                <div class="card">
+                    <div class="card-title">Tendencias de goles</div>
+                    <table class="stats-table">
+                        <thead>
+                            <tr>
+                                <th>Mercado</th>
+                                <th id="table-home">Local</th>
+                                <th id="table-away">Visitante</th>
+                                <th>Media</th>
+                            </tr>
+                        </thead>
+                        <tbody id="goals-table-body">
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Tab: Corners -->
+            <div class="tab-content" id="tab-corners">
+                <div class="card">
+                    <div class="card-title">Corners en contra</div>
+                    <table class="stats-table">
+                        <thead>
+                            <tr>
+                                <th>Mercado</th>
+                                <th id="corner-home">Local</th>
+                                <th id="corner-away">Visitante</th>
+                                <th>Media</th>
+                            </tr>
+                        </thead>
+                        <tbody id="corners-table-body">
+                        </tbody>
+                    </table>
+                </div>
+                <div class="card">
+                    <div class="card-title">Total de corners</div>
+                    <table class="stats-table">
+                        <thead>
+                            <tr>
+                                <th>Linea</th>
+                                <th>Local</th>
+                                <th>Visitante</th>
+                                <th>Media</th>
+                            </tr>
+                        </thead>
+                        <tbody id="corners-total-body">
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Tab: Tarjetas -->
+            <div class="tab-content" id="tab-cards">
+                <div class="card">
+                    <div class="card-title">Tarjetas</div>
+                    <table class="stats-table">
+                        <thead>
+                            <tr>
+                                <th>Mercado</th>
+                                <th id="card-home">Local</th>
+                                <th id="card-away">Visitante</th>
+                                <th>Media</th>
+                            </tr>
+                        </thead>
+                        <tbody id="cards-table-body">
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+</body>
+</html>
