@@ -551,7 +551,7 @@ def analyze(match_id: int):
         "odds": {"home": 0, "draw": 0, "away": 0},
     }
 
-@app.get("/health")")
+@app.get("/health")
 def health():
     return {
         "status": "ok",
