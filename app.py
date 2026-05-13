@@ -1,26 +1,33 @@
 import os
 import requests
 from datetime import datetime
-from flask import Flask, request, jsonify, render_template, send_from_directory
+from flask import Flask, request, jsonify, send_from_directory
 
-# Configuramos Flask para que busque el HTML en la raíz (.)
-app = Flask(__name__, template_folder='.')
+# Configuramos Flask para que busque los archivos en la raíz (.) en lugar de en carpetas
+app = Flask(__name__, static_folder='.', template_folder='.')
 
 # ============ CONFIGURACIÓN ============
+# Usamos tu nueva API Key de football-data.org
 API_KEY = os.environ.get('API_FOOTBALL_KEY', '6c8c1889a9c84616bc3e31ecae00d62f')
 API_BASE = 'https://api.football-data.org/v4'
 HEADERS = {'X-Auth-Token': API_KEY}
 
-# Ligas del plan gratuito de football-data.org
+# Mapeo de ligas para que el filtro de "España", "Inglaterra", etc. funcione en tu app.js
 LEAGUE_MAP = {
     'PD': 'Spain', 'PL': 'England', 'SA': 'Italy', 
     'BL1': 'Germany', 'FL1': 'France', 'CL': 'World',
     'DED': 'Netherlands', 'PPL': 'Portugal'
 }
 
-# ============ EL "TRUCO" PARA TUS CARPETAS ============
-# Como tienes los archivos sueltos, estos ruteos engañan al HTML
-# para que encuentre el CSS y el JS sin moverlos de sitio.
+# ============ MANEJO DE ARCHIVOS (ESTRUCTURA PLANA) ============
+
+@app.route('/')
+def index():
+    # Carga el index.html directamente desde la raíz
+    return send_from_directory('.', 'index.html')
+
+# Estos ruteos interceptan las llamadas que hace tu index.html a /static/...
+# y devuelven tus archivos sueltos para que no tengas que moverlos a carpetas.
 @app.route('/static/css/style.css')
 def serve_css():
     return send_from_directory('.', 'style.css')
@@ -29,11 +36,7 @@ def serve_css():
 def serve_js():
     return send_from_directory('.', 'app.js')
 
-# ============ RUTAS DE LA APP ============
-
-@app.route('/')
-def index():
-    return render_template('index.html')
+# ============ API ENDPOINTS (LÓGICA NUEVA API) ============
 
 @app.route('/api/matches')
 def get_matches():
@@ -62,15 +65,15 @@ def get_matches():
                     }
                 })
         return jsonify(matches)
-    except:
+    except Exception as e:
         return jsonify([])
 
 @app.route('/api/analyze/<int:match_id>')
 def analyze(match_id):
     try:
         res = requests.get(f"{API_BASE}/matches/{match_id}", headers=HEADERS, timeout=10).json()
-        # Mandamos datos simulados de corners/tarjetas porque la API free no los da,
-        # así evitamos que tu tabla se quede vacía o de error.
+        # Generamos datos de análisis compatibles con tu app.js 
+        # (ya que football-data.org free no da corners/tarjetas reales)
         return jsonify({
             'match_info': {
                 'home_team': res['homeTeam']['name'],
@@ -98,7 +101,7 @@ def analyze(match_id):
             }
         })
     except:
-        return jsonify({'error': 'No se pudo cargar'})
+        return jsonify({'error': 'No se pudo cargar el análisis'})
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
