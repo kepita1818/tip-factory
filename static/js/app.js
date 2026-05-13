@@ -3,6 +3,7 @@ const API_BASE = window.location.origin;
 let currentDate = new Date();
 let currentFilter = 'all';
 let matchesData = [];
+let isDemoMode = false;
 
 // ===== UTILS =====
 function formatDate(date) {
@@ -99,8 +100,15 @@ async function loadMatches() {
 
     try {
         const dateStr = formatDateAPI(currentDate);
-        const response = await fetch(`${API_BASE}/api/matches?date=${dateStr}`);
+        const response = await fetch(`${API_BASE}/api/matches?date=${dateStr}&filter=${currentFilter}`);
+
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}`);
+        }
+
         const data = await response.json();
+
+        isDemoMode = data.demo || false;
 
         if (data.errors && data.errors.length > 0) {
             console.warn('API Errors:', data.errors);
@@ -108,15 +116,49 @@ async function loadMatches() {
 
         matchesData = data.matches || [];
         renderMatches();
+
+        // Show demo badge if in demo mode
+        if (isDemoMode) {
+            showDemoBadge();
+        } else {
+            hideDemoBadge();
+        }
     } catch (error) {
         console.error('Error loading matches:', error);
         matchesContainer.innerHTML = `
             <div class="empty-state">
                 <div class="empty-state-icon">⚠️</div>
-                <div class="empty-state-text">Error al cargar los partidos</div>
+                <div class="empty-state-text">Error al cargar los partidos. Intenta recargar.</div>
+                <div style="margin-top: 12px; font-size: 12px; color: var(--text-muted);">${error.message}</div>
             </div>
         `;
     }
+}
+
+function showDemoBadge() {
+    let badge = document.getElementById('demo-badge');
+    if (!badge) {
+        badge = document.createElement('div');
+        badge.id = 'demo-badge';
+        badge.style.cssText = `
+            background: rgba(245, 158, 11, 0.15);
+            border: 1px solid var(--warning);
+            color: var(--warning);
+            padding: 8px 12px;
+            border-radius: 8px;
+            font-size: 12px;
+            font-weight: 600;
+            text-align: center;
+            margin-bottom: 12px;
+        `;
+        badge.textContent = '⚡ Modo Demo - Datos de ejemplo';
+        document.getElementById('app').insertBefore(badge, leagueFilters);
+    }
+}
+
+function hideDemoBadge() {
+    const badge = document.getElementById('demo-badge');
+    if (badge) badge.remove();
 }
 
 // ===== RENDER MATCHES =====
@@ -151,10 +193,11 @@ function renderMatches() {
             <div class="match-league">
                 <span class="match-league-flag">🏆</span>
                 ${match.league_name}
+                ${isDemoMode ? '<span style="margin-left: auto; font-size: 10px; color: var(--warning);">DEMO</span>' : ''}
             </div>
             <div class="match-teams-row">
                 <div class="team-info">
-                    <img src="${match.homeTeam.crest}" alt="${match.homeTeam.name}" class="team-logo" onerror="this.style.display='none'">
+                    <img src="${match.homeTeam.crest}" alt="${match.homeTeam.name}" class="team-logo" onerror="this.src='data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>⚽</text></svg>'">
                     <span class="team-name">${match.homeTeam.shortName}</span>
                 </div>
                 <div class="match-center">
@@ -163,7 +206,7 @@ function renderMatches() {
                     <div class="match-status">${getStatusText(match.status)}</div>
                 </div>
                 <div class="team-info away">
-                    <img src="${match.awayTeam.crest}" alt="${match.awayTeam.name}" class="team-logo" onerror="this.style.display='none'">
+                    <img src="${match.awayTeam.crest}" alt="${match.awayTeam.name}" class="team-logo" onerror="this.src='data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>⚽</text></svg>'">
                     <span class="team-name">${match.awayTeam.shortName}</span>
                 </div>
             </div>
@@ -192,6 +235,11 @@ async function showAnalysis(matchId) {
 
     try {
         const response = await fetch(`${API_BASE}/api/analyze/${matchId}`);
+
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}`);
+        }
+
         const data = await response.json();
 
         if (data.error) {
@@ -202,7 +250,7 @@ async function showAnalysis(matchId) {
         renderAnalysis(data);
     } catch (error) {
         console.error('Error loading analysis:', error);
-        alert('Error al cargar el análisis');
+        alert('Error al cargar el análisis: ' + error.message);
     }
 }
 
