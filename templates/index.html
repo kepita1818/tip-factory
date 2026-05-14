@@ -2,7 +2,7 @@
 <html lang="es">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>TipFactory</title>
   <link rel="stylesheet" href="/static/css/style.css">
 </head>
@@ -15,21 +15,31 @@
 
     <div class="date-selector">
       <button class="date-nav" id="prev-date">&#9664;</button>
+
       <div class="date-display">
         <span id="current-date">--/--/----</span>
         <input type="date" id="date-picker">
       </div>
+
       <button class="date-nav" id="next-date">&#9654;</button>
     </div>
 
-    <div class="league-filters" id="league-filters">
+    <div class="league-filters">
       <button class="filter-btn active" data-filter="all">Todos</button>
       <button class="filter-btn" data-filter="Spain">Importar España</button>
       <button class="filter-btn" data-filter="England">Importar Inglaterra</button>
+      <button class="filter-btn" data-filter="Italy">Importar Italia</button>
+      <button class="filter-btn" data-filter="Germany">Importar Alemania</button>
+      <button class="filter-btn" data-filter="France">Importar Francia</button>
+      <button class="filter-btn" data-filter="Portugal">Importar Portugal</button>
+      <button class="filter-btn" data-filter="Netherlands">Importar Holanda</button>
+      <button class="filter-btn" data-filter="Brazil">Importar Brasil</button>
     </div>
 
-    <div class="matches-container" id="matches-container">
-      <div class="loading">Cargando partidos...</div>
+    <div class="matches-section" id="matches-section">
+      <div class="matches-container" id="matches-container">
+        <div class="loading">Cargando partidos...</div>
+      </div>
     </div>
 
     <div class="section hidden" id="analysis-section">
@@ -49,14 +59,14 @@
         <div class="card teams-form-card">
           <div class="teams-row">
             <div class="team-block">
-              <img id="home-logo" src="" alt="" onerror="this.style.display='none'">
+              <img id="home-logo" src="" alt="Home Logo" onerror="this.style.display='none'">
               <span id="home-name">Local</span>
             </div>
 
             <div class="vs-center">VS</div>
 
             <div class="team-block">
-              <img id="away-logo" src="" alt="" onerror="this.style.display='none'">
+              <img id="away-logo" src="" alt="Away Logo" onerror="this.style.display='none'">
               <span id="away-name">Visitante</span>
             </div>
           </div>
@@ -75,7 +85,7 @@
       <div class="tab-content" id="tab-goles">
         <div class="card">
           <div class="card-title">Tendencias de goles</div>
-          <table class="stats-table" id="goals-table">
+          <table class="stats-table">
             <thead>
               <tr>
                 <th>Mercado</th>
@@ -92,7 +102,7 @@
       <div class="tab-content" id="tab-corners">
         <div class="card">
           <div class="card-title">Corners en contra</div>
-          <table class="stats-table" id="corners-table">
+          <table class="stats-table">
             <thead>
               <tr>
                 <th>Mercado</th>
@@ -107,7 +117,7 @@
 
         <div class="card">
           <div class="card-title">Total de corners</div>
-          <table class="stats-table" id="total-corners-table">
+          <table class="stats-table">
             <thead>
               <tr>
                 <th>Línea</th>
@@ -124,7 +134,7 @@
       <div class="tab-content" id="tab-tarjetas">
         <div class="card">
           <div class="card-title">Tarjetas</div>
-          <table class="stats-table" id="cards-table">
+          <table class="stats-table">
             <thead>
               <tr>
                 <th>Mercado</th>
