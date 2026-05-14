@@ -1,11 +1,11 @@
 import os
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
 
 import requests
-from fastapi import FastAPI, Query, Request
+from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import JSONResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
@@ -15,7 +15,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-app = FastAPI(title="TipFactory", version="8.0.0")
+app = FastAPI(title="TipFactory", version="9.0.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -28,74 +28,99 @@ app.add_middleware(
 app.mount("/static", StaticFiles(directory="static"), name="static")
 templates = Jinja2Templates(directory="templates")
 
-FOOTBALLDATA_IO_KEY = os.environ.get("FOOTBALLDATA_IO_KEY", "").strip()
-FOOTBALL_DATA_ORG_KEY = os.environ.get("API_FOOTBALL_KEY", "").strip()
+API_KEY = os.environ.get("API_FOOTBALL_KEY", "").strip()
+BASE_URL = "https://api.football-data.org/v4"
+HEADERS = {"X-Auth-Token": API_KEY} if API_KEY else {}
 
-FDIO_BASE = "https://footballdata.io/api/v1"
-FDORG_BASE = "https://api.football-data.org/v4"
+_cache = {}
 
-FDIO_HEADERS = {"Authorization": f"Bearer {FOOTBALLDATA_IO_KEY}"} if FOOTBALLDATA_IO_KEY else {}
-FDORG_HEADERS = {"X-Auth-Token": FOOTBALL_DATA_ORG_KEY} if FOOTBALL_DATA_ORG_KEY else {}
+TOP_COMPETITIONS = {
+    "PL": "Premier League",
+    "PD": "La Liga",
+    "SA": "Serie A",
+    "BL1": "Bundesliga",
+    "FL1": "Ligue 1",
+    "CL": "Champions League",
+    "EL": "Europa League",
+    "EC": "European Championship",
+    "PPL": "Primeira Liga",
+    "DED": "Eredivisie",
+    "BSA": "Serie A Brazil",
+    "CLI": "Copa Libertadores",
+    "SD": "Segunda Division"
+}
 
-CACHE = {}
+LEAGUE_CODE_MAP = {
+    "la liga": "PD",
+    "laliga": "PD",
+    "primera division": "PD",
+    "spanish primera division": "PD",
+    "spain la liga": "PD",
+    "segunda division": "SD",
+    "laliga 2": "SD",
+    "premier league": "PL",
+    "bundesliga": "BL1",
+    "serie a": "SA",
+    "ligue 1": "FL1",
+    "primeira liga": "PPL",
+    "eredivisie": "DED",
+    "champions league": "CL",
+    "uefa champions league": "CL",
+    "europa league": "EL",
+    "uefa europa league": "EL",
+    "campeonato brasileiro série a": "BSA",
+    "campeonato brasileiro serie a": "BSA",
+    "serie a brazil": "BSA",
+    "copa libertadores": "CLI"
+}
 
 
-def cache_get(key, ttl=300):
-    if key in CACHE:
-        data, ts = CACHE[key]
+def get_cache(key, ttl=300):
+    if key in _cache:
+        data, ts = _cache[key]
         if (datetime.now() - ts).seconds < ttl:
             return data
     return None
 
 
-def cache_set(key, data):
-    CACHE[key] = (data, datetime.now())
+def set_cache(key, data):
+    _cache[key] = (data, datetime.now())
 
 
-def api_get(base_url, endpoint, headers=None, params=None, cache_key=None, ttl=300):
+def api_request(endpoint, params=None, cache_key=None, ttl=300):
     if cache_key:
-        cached = cache_get(cache_key, ttl)
+        cached = get_cache(cache_key, ttl)
         if cached is not None:
             return cached
 
-    try:
-        url = f"{base_url}/{endpoint.lstrip('/')}"
-        resp = requests.get(url, headers=headers or {}, params=params, timeout=20)
+    if not API_KEY:
+        logger.error("API_FOOTBALL_KEY no configurada")
+        return None
 
-        if resp.status_code in (401, 403):
-            logger.error(f"AUTH ERROR {resp.status_code} {url}")
+    try:
+        url = f"{BASE_URL}/{endpoint.lstrip('/')}"
+        resp = requests.get(url, headers=HEADERS, params=params, timeout=20)
+
+        if resp.status_code == 429:
+            logger.error("RATE LIMIT")
+            return None
+        if resp.status_code in [401, 403]:
+            logger.error(f"AUTH ERROR {resp.status_code}")
             return None
         if resp.status_code == 404:
-            logger.warning(f"NOT FOUND {url}")
-            return None
-        if resp.status_code == 429:
-            logger.error(f"RATE LIMIT {url}")
+            logger.error(f"NOT FOUND {endpoint}")
             return None
 
         resp.raise_for_status()
         data = resp.json()
 
         if cache_key:
-            cache_set(cache_key, data)
+            set_cache(cache_key, data)
 
         return data
     except Exception as e:
-        logger.error(f"API error {base_url}/{endpoint}: {e}")
+        logger.error(f"API error en {endpoint}: {e}")
         return None
-
-
-def fdio_request(endpoint, params=None, cache_key=None, ttl=300):
-    if not FOOTBALLDATA_IO_KEY:
-        logger.error("FOOTBALLDATA_IO_KEY missing")
-        return None
-    return api_get(FDIO_BASE, endpoint, FDIO_HEADERS, params, cache_key, ttl)
-
-
-def fdorg_request(endpoint, params=None, cache_key=None, ttl=300):
-    if not FOOTBALL_DATA_ORG_KEY:
-        logger.error("API_FOOTBALL_KEY missing")
-        return None
-    return api_get(FDORG_BASE, endpoint, FDORG_HEADERS, params, cache_key, ttl)
 
 
 def safe_get(d, *keys, default=None):
@@ -107,106 +132,26 @@ def safe_get(d, *keys, default=None):
     return cur if cur is not None else default
 
 
-def extract_list_payload(data):
-    if isinstance(data, list):
-        return data
-
-    if isinstance(data, dict):
-        for key in ["data", "fixtures", "matches", "response"]:
-            value = data.get(key)
-            if isinstance(value, list):
-                return value
-
-        if isinstance(data.get("data"), dict):
-            for key in ["fixtures", "matches", "response"]:
-                value = data["data"].get(key)
-                if isinstance(value, list):
-                    return value
-
-    return []
-
-
-def normalize_match(raw):
-    league = raw.get("league", {}) or {}
-    home = raw.get("home_team", {}) or {}
-    away = raw.get("away_team", {}) or {}
-    venue = raw.get("venue", {}) or {}
-    score = raw.get("score", {}) or {}
-    xg = raw.get("xg", {}) or {}
-    odds = raw.get("odds", {}) or {}
-    probabilities = raw.get("probabilities", {}) or {}
-
-    utc_date = raw.get("match_date", "") or ""
-
-    return {
-        "id": raw.get("match_id") or raw.get("id") or 0,
-        "utcDate": utc_date,
-        "matchDate": utc_date[:10] if utc_date else "",
-        "status": raw.get("status", "NS"),
-        "statusText": raw.get("status", "NS"),
-        "minute": 0,
-        "venue": venue.get("stadium_name", "") or "",
-        "matchday": raw.get("game_week", 0) or 0,
-        "homeTeam": {
-            "id": home.get("team_id"),
-            "name": home.get("team_name", "Local"),
-            "shortName": home.get("team_name", "Local")[:15],
-            "crest": home.get("team_logo", "") or ""
-        },
-        "awayTeam": {
-            "id": away.get("team_id"),
-            "name": away.get("team_name", "Visitante"),
-            "shortName": away.get("team_name", "Visitante")[:15],
-            "crest": away.get("team_logo", "") or ""
-        },
-        "competition": {
-            "id": league.get("league_id"),
-            "name": league.get("competition_name", "") or league.get("name", ""),
-            "code": ""
-        },
-        "league_name": league.get("competition_name", "") or league.get("name", ""),
-        "country": league.get("country", ""),
-        "homeScore": score.get("home"),
-        "awayScore": score.get("away"),
-        "halfTimeHome": None,
-        "halfTimeAway": None,
-        "xg_home": xg.get("home"),
-        "xg_away": xg.get("away"),
-        "xg_total": xg.get("total"),
-        "odds_home": odds.get("home_win"),
-        "odds_draw": odds.get("draw"),
-        "odds_away": odds.get("away_win"),
-        "prob_home": probabilities.get("home_win"),
-        "prob_draw": probabilities.get("draw"),
-        "prob_away": probabilities.get("away_win")
-    }
-
-
-def fetch_fdio_matches(date_str):
-    raw = fdio_request("fixtures/today", cache_key=f"fdio_today_{date_str}", ttl=180)
-    items = extract_list_payload(raw)
-    matches = [normalize_match(x) for x in items]
-
-    if date_str:
-        matches = [m for m in matches if m["matchDate"] == date_str]
-
-    return matches
-
-
 def normalize_name(name):
     if not name:
         return ""
-    text = name.strip().lower()
+    text = str(name).strip().lower()
     replacements = {
         " cf": "",
         " fc": "",
         " sad": "",
+        " club de futbol": "",
         " de futbol": "",
-        " fútbol": "",
-        " balompié": " balompie",
+        " fútbol": " futbol",
+        "á": "a",
+        "é": "e",
+        "í": "i",
+        "ó": "o",
+        "ú": "u",
         ".": "",
         ",": "",
         "-": " ",
+        "_": " ",
         "  ": " "
     }
     for old, new in replacements.items():
@@ -214,8 +159,69 @@ def normalize_name(name):
     return " ".join(text.split())
 
 
+def format_match(m):
+    home = m.get("homeTeam", {}) or {}
+    away = m.get("awayTeam", {}) or {}
+    competition = m.get("competition", {}) or {}
+    score = m.get("score", {}) or {}
+    ft = score.get("fullTime", {}) if isinstance(score, dict) else {}
+    ht = score.get("halfTime", {}) if isinstance(score, dict) else {}
+    match_date = m.get("utcDate", "")[:10] if m.get("utcDate") else ""
+
+    status = m.get("status", "SCHEDULED")
+    status_map = {
+        "SCHEDULED": "NS",
+        "LIVE": "LIVE",
+        "IN_PLAY": "1H",
+        "PAUSED": "HT",
+        "FINISHED": "FT",
+        "POSTPONED": "PST",
+        "SUSPENDED": "SUSP",
+        "CANCELLED": "CANC",
+        "AWARDED": "AWD"
+    }
+
+    minute = m.get("minute", 0)
+    if isinstance(minute, dict):
+        minute = minute.get("regular", 0)
+
+    return {
+        "id": m.get("id"),
+        "utcDate": m.get("utcDate"),
+        "matchDate": match_date,
+        "status": status_map.get(status, status),
+        "statusText": status,
+        "minute": minute,
+        "venue": m.get("venue", ""),
+        "matchday": m.get("matchday", 0),
+        "homeTeam": {
+            "id": home.get("id"),
+            "name": home.get("name", "Local"),
+            "shortName": home.get("shortName", home.get("name", "Local")[:15]),
+            "crest": home.get("crest", "")
+        },
+        "awayTeam": {
+            "id": away.get("id"),
+            "name": away.get("name", "Visitante"),
+            "shortName": away.get("shortName", away.get("name", "Visitante")[:15]),
+            "crest": away.get("crest", "")
+        },
+        "competition": {
+            "id": competition.get("id"),
+            "name": competition.get("name", ""),
+            "code": competition.get("code", "")
+        },
+        "league_name": competition.get("name", ""),
+        "country": safe_get(m, "area", "name", default="") or safe_get(competition, "area", "name", default=""),
+        "homeScore": ft.get("home") if isinstance(ft, dict) else None,
+        "awayScore": ft.get("away") if isinstance(ft, dict) else None,
+        "halfTimeHome": ht.get("home") if isinstance(ht, dict) else None,
+        "halfTimeAway": ht.get("away") if isinstance(ht, dict) else None
+    }
+
+
 def get_fdorg_competitions():
-    data = fdorg_request("competitions", cache_key="fdorg_competitions", ttl=86400)
+    data = api_request("competitions", cache_key="all_competitions", ttl=86400)
     if not data or not isinstance(data, dict):
         return []
     return data.get("competitions", [])
@@ -226,19 +232,31 @@ def resolve_competition(league_name, country_name=""):
     target_league = normalize_name(league_name)
     target_country = normalize_name(country_name)
 
+    mapped_code = LEAGUE_CODE_MAP.get(target_league)
+    if mapped_code:
+        for comp in comps:
+            if comp.get("code") == mapped_code:
+                area_name = normalize_name(safe_get(comp, "area", "name", default=""))
+                if not target_country or area_name == target_country or mapped_code in ["CL", "EL", "EC", "CLI"]:
+                    return {
+                        "id": comp.get("id"),
+                        "code": comp.get("code"),
+                        "name": comp.get("name")
+                    }
+
     for comp in comps:
         comp_name = normalize_name(comp.get("name", ""))
+        comp_code = comp.get("code", "")
         area_name = normalize_name(safe_get(comp, "area", "name", default=""))
-        code = comp.get("code", "")
-        if comp_name == target_league and (not target_country or area_name == target_country):
-            return {"id": comp.get("id"), "code": code, "name": comp.get("name")}
-    for comp in comps:
-        comp_name = normalize_name(comp.get("name", ""))
-        area_name = normalize_name(safe_get(comp, "area", "name", default=""))
-        code = comp.get("code", "")
-        if target_league in comp_name or comp_name in target_league:
+
+        if comp_name == target_league:
             if not target_country or area_name == target_country:
-                return {"id": comp.get("id"), "code": code, "name": comp.get("name")}
+                return {
+                    "id": comp.get("id"),
+                    "code": comp_code,
+                    "name": comp.get("name")
+                }
+
     return None
 
 
@@ -249,7 +267,7 @@ def find_team_id(team_name, competition_id=None):
     target = normalize_name(team_name)
 
     if competition_id:
-        comp_data = fdorg_request(
+        comp_data = api_request(
             f"competitions/{competition_id}/teams",
             cache_key=f"comp_teams_{competition_id}",
             ttl=86400
@@ -274,7 +292,7 @@ def find_team_id(team_name, competition_id=None):
                 if any(target == opt or target in opt or opt in target for opt in options if opt):
                     return team.get("id")
 
-    data = fdorg_request("teams", params={"limit": 500}, cache_key="fdorg_all_teams_500", ttl=86400)
+    data = api_request("teams", params={"limit": 500}, cache_key="all_teams_500", ttl=86400)
     if not data or not isinstance(data, dict):
         return None
 
@@ -312,20 +330,20 @@ def get_team_recent_matches(team_id, competition_id=None, limit=10):
     if competition_id:
         params["competitions"] = str(competition_id)
 
-    data = fdorg_request(
+    data = api_request(
         f"teams/{team_id}/matches",
         params=params,
-        cache_key=f"fdorg_recent_{team_id}_{competition_id}_{limit}",
+        cache_key=f"team_matches_{team_id}_{competition_id}_{limit}",
         ttl=1800
     )
 
     matches = data.get("matches", []) if isinstance(data, dict) else []
 
     if not matches:
-        data = fdorg_request(
+        data = api_request(
             f"teams/{team_id}/matches",
             params={"status": "FINISHED", "limit": limit},
-            cache_key=f"fdorg_recent_fallback_{team_id}_{limit}",
+            cache_key=f"team_matches_fallback_{team_id}_{limit}",
             ttl=1800
         )
         matches = data.get("matches", []) if isinstance(data, dict) else []
@@ -333,7 +351,37 @@ def get_team_recent_matches(team_id, competition_id=None, limit=10):
     return matches
 
 
-def build_form_and_stats(team_id, matches):
+def get_standings(team_id, competition_id, season_year):
+    if not competition_id:
+        return None
+
+    data = api_request(
+        f"competitions/{competition_id}/standings",
+        {"season": season_year},
+        f"standings_{competition_id}_{season_year}",
+        3600
+    )
+    if not data or not data.get("standings"):
+        return None
+
+    for standing in data.get("standings", []):
+        for row in standing.get("table", []):
+            if safe_get(row, "team", "id") == team_id:
+                return {
+                    "position": row.get("position", 0),
+                    "played": row.get("playedGames", 0),
+                    "won": row.get("won", 0),
+                    "draw": row.get("draw", 0),
+                    "lost": row.get("lost", 0),
+                    "goals_for": row.get("goalsFor", 0),
+                    "goals_against": row.get("goalsAgainst", 0),
+                    "points": row.get("points", 0),
+                    "form": row.get("form", "")
+                }
+    return None
+
+
+def build_form_and_stats(team_id, matches, standings=None):
     played = won = draw = lost = 0
     gf = ga = 0
     over15 = over25 = over35 = btts = clean_sheet = failed_to_score = 0
@@ -397,48 +445,28 @@ def build_form_and_stats(team_id, matches):
                 "competition": safe_get(m, "competition", "name", default="")
             })
 
-    if played == 0:
-        return [], {
-            "position": 0,
-            "played": 0,
-            "won": 0,
-            "draw": 0,
-            "lost": 0,
-            "goals_for": 0,
-            "goals_against": 0,
-            "points": 0,
-            "form_string": "",
-            "avg_total_goals": 0,
-            "avg_team_goals": 0,
-            "avg_conceded": 0,
-            "btts_pct": 0,
-            "over_1_5_pct": 0,
-            "over_2_5_pct": 0,
-            "over_3_5_pct": 0,
-            "clean_sheet_pct": 0,
-            "failed_to_score_pct": 0
-        }
-
-    return form, {
-        "position": 0,
-        "played": played,
-        "won": won,
-        "draw": draw,
-        "lost": lost,
-        "goals_for": gf,
-        "goals_against": ga,
-        "points": won * 3 + draw,
-        "form_string": "".join([f["result"] for f in form]),
-        "avg_total_goals": round((gf + ga) / played, 2),
-        "avg_team_goals": round(gf / played, 2),
-        "avg_conceded": round(ga / played, 2),
-        "btts_pct": round((btts / played) * 100, 1),
-        "over_1_5_pct": round((over15 / played) * 100, 1),
-        "over_2_5_pct": round((over25 / played) * 100, 1),
-        "over_3_5_pct": round((over35 / played) * 100, 1),
-        "clean_sheet_pct": round((clean_sheet / played) * 100, 1),
-        "failed_to_score_pct": round((failed_to_score / played) * 100, 1)
+    stats = {
+        "position": standings.get("position", 0) if standings else 0,
+        "played": standings.get("played", played) if standings else played,
+        "won": standings.get("won", won) if standings else won,
+        "draw": standings.get("draw", draw) if standings else draw,
+        "lost": standings.get("lost", lost) if standings else lost,
+        "goals_for": standings.get("goals_for", gf) if standings else gf,
+        "goals_against": standings.get("goals_against", ga) if standings else ga,
+        "points": standings.get("points", won * 3 + draw) if standings else (won * 3 + draw),
+        "form_string": standings.get("form", "".join([x["result"] for x in form])) if standings else "".join([x["result"] for x in form]),
+        "avg_total_goals": round((gf + ga) / played, 2) if played else 0,
+        "avg_team_goals": round(gf / played, 2) if played else 0,
+        "avg_conceded": round(ga / played, 2) if played else 0,
+        "btts_pct": round((btts / played) * 100, 1) if played else 0,
+        "over_1_5_pct": round((over15 / played) * 100, 1) if played else 0,
+        "over_2_5_pct": round((over25 / played) * 100, 1) if played else 0,
+        "over_3_5_pct": round((over35 / played) * 100, 1) if played else 0,
+        "clean_sheet_pct": round((clean_sheet / played) * 100, 1) if played else 0,
+        "failed_to_score_pct": round((failed_to_score / played) * 100, 1) if played else 0
     }
+
+    return form, stats
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -449,110 +477,282 @@ def home(request: Request):
 @app.get("/api/matches")
 def matches(date: str = Query(None)):
     if not date:
-        date = datetime.utcnow().strftime("%Y-%m-%d")
+        date = datetime.now().strftime("%Y-%m-%d")
 
-    matches = fetch_fdio_matches(date)
+    logger.info(f"BUSCANDO PARTIDOS PARA: {date}")
+
+    all_matches = []
+    found_competitions = set()
+
+    for comp_code, comp_name in TOP_COMPETITIONS.items():
+        try:
+            data = api_request(
+                f"competitions/{comp_code}/matches",
+                {"dateFrom": date, "dateTo": date},
+                f"comp_{comp_code}_{date}",
+                600
+            )
+
+            if data and data.get("matches"):
+                comp_matches = [format_match(m) for m in data["matches"]]
+                comp_matches = [m for m in comp_matches if m["matchDate"] == date]
+                if comp_matches:
+                    all_matches.extend(comp_matches)
+                    found_competitions.add(comp_name)
+                    logger.info(f"{comp_name}: {len(comp_matches)} partidos")
+        except Exception as e:
+            logger.error(f"Error en {comp_name}: {e}")
+            continue
+
+    if not all_matches:
+        logger.info("No se encontraron partidos en competiciones individuales, probando /matches general")
+        try:
+            data = api_request(
+                "matches",
+                {"dateFrom": date, "dateTo": date},
+                f"matches_{date}",
+                300
+            )
+
+            if data and data.get("matches"):
+                general_matches = [format_match(m) for m in data["matches"]]
+                general_matches = [m for m in general_matches if m["matchDate"] == date]
+                all_matches.extend(general_matches)
+                logger.info(f"/matches general: {len(general_matches)} partidos")
+        except Exception as e:
+            logger.error(f"Error en /matches general: {e}")
+
+    seen_ids = set()
+    unique_matches = []
+    for m in all_matches:
+        if m["id"] not in seen_ids:
+            seen_ids.add(m["id"])
+            unique_matches.append(m)
+
+    logger.info(f"TOTAL: {len(unique_matches)} partidos unicos en {date}")
+
+    if unique_matches:
+        return {
+            "matches": unique_matches,
+            "requested_date": date,
+            "source_date": date,
+            "is_exact": True,
+            "competitions_found": list(found_competitions)
+        }
+
+    logger.info("Buscando en fechas cercanas...")
+    for delta in [-1, 1, -2, 2, -3, 3, -4, 4, -5, 5, -6, 6, -7, 7]:
+        try:
+            check_date = (datetime.strptime(date, "%Y-%m-%d") + timedelta(days=delta)).strftime("%Y-%m-%d")
+            fallback_matches = []
+
+            for comp_code, comp_name in TOP_COMPETITIONS.items():
+                data = api_request(
+                    f"competitions/{comp_code}/matches",
+                    {"dateFrom": check_date, "dateTo": check_date},
+                    f"comp_{comp_code}_{check_date}",
+                    600
+                )
+                if data and data.get("matches"):
+                    comp_matches = [format_match(m) for m in data["matches"]]
+                    comp_matches = [m for m in comp_matches if m["matchDate"] == check_date]
+                    fallback_matches.extend(comp_matches)
+
+            if fallback_matches:
+                seen_fb = set()
+                unique_fallback = []
+                for m in fallback_matches:
+                    if m["id"] not in seen_fb:
+                        seen_fb.add(m["id"])
+                        unique_fallback.append(m)
+
+                return {
+                    "matches": unique_fallback,
+                    "requested_date": date,
+                    "source_date": check_date,
+                    "is_exact": False,
+                    "competitions_found": list(found_competitions)
+                }
+
+        except Exception as e:
+            logger.error(f"Error buscando {check_date}: {e}")
+            continue
 
     return {
-        "matches": matches,
+        "matches": [],
         "requested_date": date,
-        "source_date": date if matches else None,
+        "source_date": None,
         "is_exact": True,
-        "source": "footballdata.io"
+        "competitions_found": []
     }
 
 
 @app.get("/api/analyze/{match_id}")
 def analyze(
     match_id: int,
-    home_team: str = Query("Local"),
-    away_team: str = Query("Visitante"),
+    home_team: str = Query(None),
+    away_team: str = Query(None),
     home_logo: str = Query(""),
     away_logo: str = Query(""),
     league: str = Query(""),
     date: str = Query(""),
     time: str = Query("--:--"),
     country: str = Query(""),
-    venue: str = Query(""),
-    home_score: float = Query(None),
-    away_score: float = Query(None),
-    xg_home: float = Query(None),
-    xg_away: float = Query(None),
-    xg_total: float = Query(None),
-    odds_home: float = Query(None),
-    odds_draw: float = Query(None),
-    odds_away: float = Query(None),
-    prob_home: float = Query(None),
-    prob_draw: float = Query(None),
-    prob_away: float = Query(None)
+    venue: str = Query("")
 ):
-    competition = resolve_competition(league, country)
-    competition_id = competition["id"] if competition else None
+    logger.info(f"ANALIZANDO PARTIDO {match_id}")
 
-    home_id = find_team_id(home_team, competition_id)
-    away_id = find_team_id(away_team, competition_id)
+    match_data = api_request(f"matches/{match_id}", cache_key=f"match_{match_id}", ttl=300)
+    if not match_data:
+        raise HTTPException(404, "Partido no encontrado")
+
+    match = match_data
+    match_detail = format_match(match)
+
+    real_home_name = safe_get(match, "homeTeam", "name", default="Local")
+    real_away_name = safe_get(match, "awayTeam", "name", default="Visitante")
+    real_league = safe_get(match, "competition", "name", default="")
+    real_country = safe_get(match, "area", "name", default="") or safe_get(match, "competition", "area", "name", default="")
+    comp_id = safe_get(match, "competition", "id", default=None)
+    season = match.get("season", {}) or {}
+    season_year = int(season.get("startDate", "2025-01-01")[:4])
+
+    resolved_competition = None
+    if comp_id:
+        resolved_competition = {
+            "id": comp_id,
+            "code": safe_get(match, "competition", "code", default=""),
+            "name": real_league
+        }
+    else:
+        resolved_competition = resolve_competition(real_league, real_country)
+
+    home_id = safe_get(match, "homeTeam", "id", default=None)
+    away_id = safe_get(match, "awayTeam", "id", default=None)
+
+    if not home_id and home_team:
+        home_id = find_team_id(home_team, resolved_competition["id"] if resolved_competition else None)
+    if not away_id and away_team:
+        away_id = find_team_id(away_team, resolved_competition["id"] if resolved_competition else None)
+
+    h2h_data = api_request(f"matches/{match_id}/head2head", {"limit": 10}, f"h2h_{match_id}", 3600)
+    h2h_matches = []
+    h2h_stats = {
+        "home_wins": 0,
+        "away_wins": 0,
+        "draws": 0,
+        "home_goals": 0,
+        "away_goals": 0,
+        "total_matches": 0
+    }
+
+    if h2h_data and h2h_data.get("aggregates"):
+        agg = h2h_data["aggregates"]
+        h2h_stats = {
+            "home_wins": safe_get(agg, "homeTeam", "wins", default=0),
+            "away_wins": safe_get(agg, "awayTeam", "wins", default=0),
+            "draws": safe_get(agg, "homeTeam", "draws", default=0),
+            "home_goals": safe_get(agg, "homeTeam", "goals", default=0),
+            "away_goals": safe_get(agg, "awayTeam", "goals", default=0),
+            "total_matches": agg.get("numberOfMatches", 0)
+        }
+
+        for m in h2h_data.get("matches", [])[:5]:
+            h2h_matches.append({
+                "date": (m.get("utcDate") or "")[:10],
+                "home": safe_get(m, "homeTeam", "name", default=""),
+                "away": safe_get(m, "awayTeam", "name", default=""),
+                "homeScore": safe_get(m, "score", "fullTime", "home", default=None),
+                "awayScore": safe_get(m, "score", "fullTime", "away", default=None),
+                "competition": safe_get(m, "competition", "name", default="")
+            })
+
+    competition_id = resolved_competition["id"] if resolved_competition else None
 
     home_recent = get_team_recent_matches(home_id, competition_id, 10)
     away_recent = get_team_recent_matches(away_id, competition_id, 10)
 
-    home_form, home_stats = build_form_and_stats(home_id, home_recent)
-    away_form, away_stats = build_form_and_stats(away_id, away_recent)
+    home_standings = get_standings(home_id, competition_id, season_year) if home_id and competition_id else None
+    away_standings = get_standings(away_id, competition_id, season_year) if away_id and competition_id else None
+
+    home_form, home_stats = build_form_and_stats(home_id, home_recent, home_standings)
+    away_form, away_stats = build_form_and_stats(away_id, away_recent, away_standings)
 
     probabilities = {
-        "home_win": prob_home if prob_home is not None else 0,
-        "draw": prob_draw if prob_draw is not None else 0,
-        "away_win": prob_away if prob_away is not None else 0,
-        "over_1_5": round((home_stats["over_1_5_pct"] + away_stats["over_1_5_pct"]) / 2, 1),
-        "over_2_5": round((home_stats["over_2_5_pct"] + away_stats["over_2_5_pct"]) / 2, 1),
-        "over_3_5": round((home_stats["over_3_5_pct"] + away_stats["over_3_5_pct"]) / 2, 1),
-        "btts": round((home_stats["btts_pct"] + away_stats["btts_pct"]) / 2, 1),
-        "total_expected_goals": xg_total if xg_total is not None else round(home_stats["avg_team_goals"] + away_stats["avg_team_goals"], 2),
-        "home_xg": xg_home if xg_home is not None else 0,
-        "away_xg": xg_away if xg_away is not None else 0
-    }
-
-    odds = {
-        "home": odds_home if odds_home is not None else 0,
-        "draw": odds_draw if odds_draw is not None else 0,
-        "away": odds_away if odds_away is not None else 0
+        "over_1_5": round((home_stats["over_1_5_pct"] + away_stats["over_1_5_pct"]) / 2, 1) if (home_stats["played"] and away_stats["played"]) else 0.0,
+        "over_2_5": round((home_stats["over_2_5_pct"] + away_stats["over_2_5_pct"]) / 2, 1) if (home_stats["played"] and away_stats["played"]) else 0.0,
+        "over_3_5": round((home_stats["over_3_5_pct"] + away_stats["over_3_5_pct"]) / 2, 1) if (home_stats["played"] and away_stats["played"]) else 0.0,
+        "btts": round((home_stats["btts_pct"] + away_stats["btts_pct"]) / 2, 1) if (home_stats["played"] and away_stats["played"]) else 0.0,
+        "total_expected_goals": round(home_stats["avg_team_goals"] + away_stats["avg_team_goals"], 2) if (home_stats["played"] and away_stats["played"]) else 0,
+        "home_xg": 0,
+        "away_xg": 0
     }
 
     return JSONResponse({
         "match_info": {
-            "home_team": home_team,
-            "away_team": away_team,
-            "home_short": home_team[:12],
-            "away_short": away_team[:12],
-            "home_logo": home_logo,
-            "away_logo": away_logo,
-            "league": league,
-            "country": country,
-            "date": date,
-            "time": time,
-            "venue": venue,
-            "status": "SCHEDULED",
-            "minute": 0,
-            "matchday": 0,
-            "home_score": home_score,
-            "away_score": away_score,
-            "halfTimeHome": None,
-            "halfTimeAway": None
+            "home_team": real_home_name,
+            "away_team": real_away_name,
+            "home_short": safe_get(match, "homeTeam", "shortName", default=real_home_name[:12]),
+            "away_short": safe_get(match, "awayTeam", "shortName", default=real_away_name[:12]),
+            "home_logo": home_logo or safe_get(match, "homeTeam", "crest", default=""),
+            "away_logo": away_logo or safe_get(match, "awayTeam", "crest", default=""),
+            "league": real_league,
+            "country": real_country,
+            "date": (match.get("utcDate") or "")[:10] or date,
+            "time": (match.get("utcDate") or "")[11:16] or time,
+            "venue": match.get("venue", "") or venue,
+            "status": match.get("status", "SCHEDULED"),
+            "minute": match_detail.get("minute", 0),
+            "matchday": match_detail.get("matchday", 0),
+            "home_score": match_detail.get("homeScore"),
+            "away_score": match_detail.get("awayScore"),
+            "halfTimeHome": match_detail.get("halfTimeHome"),
+            "halfTimeAway": match_detail.get("halfTimeAway")
         },
         "home_form": home_form,
         "away_form": away_form,
         "home_stats": home_stats,
         "away_stats": away_stats,
-        "h2h": {"matches": [], "stats": {}},
+        "h2h": {
+            "matches": h2h_matches,
+            "stats": h2h_stats
+        },
         "probabilities": probabilities,
-        "odds": odds,
+        "odds": {
+            "home": 0,
+            "draw": 0,
+            "away": 0
+        },
         "stats_available": bool(home_stats["played"] or away_stats["played"]),
         "debug": {
             "match_id": match_id,
-            "competition": competition,
+            "competition": resolved_competition,
             "home_id": home_id,
             "away_id": away_id,
             "home_recent_count": len(home_recent),
-            "away_recent_count": len(away_recent)
+            "away_recent_count": len(away_recent),
+            "home_recent_raw": [
+                {
+                    "date": (m.get("utcDate") or "")[:10],
+                    "home": safe_get(m, "homeTeam", "name", default=""),
+                    "away": safe_get(m, "awayTeam", "name", default=""),
+                    "homeScore": safe_get(m, "score", "fullTime", "home", default=None),
+                    "awayScore": safe_get(m, "score", "fullTime", "away", default=None),
+                    "competition": safe_get(m, "competition", "name", default="")
+                }
+                for m in home_recent[:10]
+            ],
+            "away_recent_raw": [
+                {
+                    "date": (m.get("utcDate") or "")[:10],
+                    "home": safe_get(m, "homeTeam", "name", default=""),
+                    "away": safe_get(m, "awayTeam", "name", default=""),
+                    "homeScore": safe_get(m, "score", "fullTime", "home", default=None),
+                    "awayScore": safe_get(m, "score", "fullTime", "away", default=None),
+                    "competition": safe_get(m, "competition", "name", default="")
+                }
+                for m in away_recent[:10]
+            ]
         }
     })
 
@@ -561,11 +761,10 @@ def analyze(
 def health():
     return {
         "status": "ok",
+        "cache_size": len(_cache),
         "time": datetime.now().isoformat(),
-        "cache_size": len(CACHE),
-        "footballdata_io": "configured" if FOOTBALLDATA_IO_KEY else "missing",
-        "football_data_org": "configured" if FOOTBALL_DATA_ORG_KEY else "missing",
-        "version": "8.0.0"
+        "api_key": "configured" if API_KEY else "missing",
+        "version": "9.0.0"
     }
 
 
