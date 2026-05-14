@@ -9,6 +9,7 @@
 </head>
 <body>
   <div id="app">
+    <!-- MATCHES LIST SCREEN -->
     <header class="app-header">
       <h1>TipFactory</h1>
       <p class="subtitle">Analítica de fútbol profesional</p>
@@ -29,48 +30,67 @@
       </div>
     </section>
 
+    <!-- ANALYSIS SCREEN -->
     <section class="section hidden" id="analysis-section">
-      <div class="analysis-header">
-        <div class="analysis-title">Análisis del partido</div>
-        <div class="analysis-subtitle" id="analysis-subtitle"></div>
+      <!-- Back button + title -->
+      <div class="analysis-top-bar">
+        <button class="back-arrow" id="back-btn">&#10094;</button>
+        <span class="analysis-top-title">Análisis del partido</span>
       </div>
 
+      <!-- Match title card -->
+      <div class="match-title-card">
+        <h2 id="match-title">Girona vs Real Sociedad</h2>
+        <div class="match-subtitle" id="analysis-subtitle">Spain - La Liga</div>
+        <div class="match-meta" id="match-meta">Hora de inicio: 20:00 · Jornada 36 · Estadio Municipal de Montilivi</div>
+      </div>
+
+      <!-- Tabs -->
       <div class="tabs">
-        <button class="tab-btn active" data-tab="resumen">Resumen</button>
+        <button class="tab-btn active" data-tab="resumen">General</button>
         <button class="tab-btn" data-tab="goles">Goles</button>
-        <button class="tab-btn" data-tab="corners">Corners</button>
+        <button class="tab-btn" data-tab="corners">Córners</button>
         <button class="tab-btn" data-tab="tarjetas">Tarjetas</button>
       </div>
 
+      <!-- TAB: RESUMEN -->
       <div class="tab-content active" id="tab-resumen">
-        <div class="card teams-form-card">
+        <!-- Teams card -->
+        <div class="card teams-card">
           <div class="teams-row">
             <div class="team-block">
               <img id="home-logo" src="" alt="Local" onerror="this.style.display='none'">
-              <span id="home-name">Local</span>
+              <span class="team-label" id="home-name">Girona</span>
+              <span class="team-role">Local</span>
             </div>
             <div class="vs-center">VS</div>
             <div class="team-block">
               <img id="away-logo" src="" alt="Visitante" onerror="this.style.display='none'">
-              <span id="away-name">Visitante</span>
+              <span class="team-label" id="away-name">Real Sociedad</span>
+              <span class="team-role">Visitante</span>
             </div>
           </div>
           <div class="form-row">
             <div class="form-badges" id="home-form-badges"></div>
             <div class="form-badges" id="away-form-badges"></div>
           </div>
+          <div class="form-note">
+            Mostrando las estadísticas en casa del Girona y las estadísticas de visitante del Real Sociedad.
+          </div>
         </div>
 
+        <!-- Probabilities grid -->
         <div class="card prob-grid-card">
-          <div class="card-title">Probabilidades</div>
           <div class="prob-grid" id="prob-grid"></div>
         </div>
 
+        <!-- Mini stats -->
         <div class="card">
           <div class="card-title">Mini stats</div>
           <div class="mini-stats-grid" id="mini-stats-grid"></div>
         </div>
 
+        <!-- Season table -->
         <div class="card">
           <div class="card-title">Temporada</div>
           <table class="stats-table">
@@ -85,19 +105,21 @@
           </table>
         </div>
 
-        <div class="card">
-          <div class="card-title">Análisis</div>
-          <div id="analysis-text-box">Selecciona un partido.</div>
+        <!-- Analysis text -->
+        <div class="card analysis-card">
+          <div class="card-title">GPT4 Análisis</div>
+          <div id="analysis-text-box"></div>
         </div>
       </div>
 
+      <!-- TAB: GOLES -->
       <div class="tab-content" id="tab-goles">
         <div class="card">
           <div class="card-title">Tendencias de goles</div>
           <table class="stats-table" id="goals-table">
             <thead>
               <tr>
-                <th>Mercado</th>
+                <th>Métrica</th>
                 <th id="goals-home-header">Local</th>
                 <th id="goals-away-header">Visitante</th>
                 <th>Media</th>
@@ -108,9 +130,10 @@
         </div>
       </div>
 
+      <!-- TAB: CORNERS -->
       <div class="tab-content" id="tab-corners">
         <div class="card">
-          <div class="card-title">Corners por equipo</div>
+          <div class="card-title">Corners ganados</div>
           <table class="stats-table" id="corners-table">
             <thead>
               <tr>
@@ -124,7 +147,21 @@
           </table>
         </div>
         <div class="card">
-          <div class="card-title">Total de corners (líneas)</div>
+          <div class="card-title">Córners en contra</div>
+          <table class="stats-table" id="corners-conceded-table">
+            <thead>
+              <tr>
+                <th>Métrica</th>
+                <th id="corners-conceded-home-header">Local</th>
+                <th id="corners-conceded-away-header">Visitante</th>
+                <th>Media</th>
+              </tr>
+            </thead>
+            <tbody id="corners-conceded-body"></tbody>
+          </table>
+        </div>
+        <div class="card">
+          <div class="card-title">Total de córners</div>
           <table class="stats-table" id="total-corners-table">
             <thead>
               <tr>
@@ -139,9 +176,10 @@
         </div>
       </div>
 
+      <!-- TAB: TARJETAS -->
       <div class="tab-content" id="tab-tarjetas">
         <div class="card">
-          <div class="card-title">Tarjetas por equipo</div>
+          <div class="card-title">Tarjetas</div>
           <table class="stats-table" id="cards-table">
             <thead>
               <tr>
@@ -155,8 +193,6 @@
           </table>
         </div>
       </div>
-
-      <button class="back-btn-bottom" id="back-btn">Volver a partidos</button>
     </section>
   </div>
 
