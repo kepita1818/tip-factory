@@ -12,7 +12,7 @@ from fastapi.templating import Jinja2Templates
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
 
-app = FastAPI(title="TipFactory", version="4.0.0")
+app = FastAPI(title="TipFactory", version="5.0.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -188,56 +188,45 @@ def format_match(m):
     }
 
 
-def get_trend_for_match(match_id, match_date):
+def extract_stats_from_standings(table_row, form_string=""):
     """
-    Obtiene el trend para un partido específico usando la fecha del partido.
-    El endpoint /v4/trends devuelve trends para una fecha, filtramos por match_id.
+    Extrae estadísticas estimadas desde la tabla de clasificación.
+    Usa goles a favor/contra y partidos jugados para estimar medias.
     """
-    if not match_date:
+    if not table_row:
         return None
     
-    cache_key = f"trend_{match_date}"
+    played = table_row.get("playedGames", 0)
+    won = table_row.get("won", 0)
+    draw = table_row.get("draw", 0)
+    lost = table_row.get("lost", 0)
+    gf = table_row.get("goalsFor", 0)
+    ga = table_row.get("goalsAgainst", 0)
+    points = table_row.get("points", 0)
     
-    data = api_get(
-        "trends",
-        params={"date": match_date},
-        cache_key=cache_key,
-        ttl=3600
-    )
-    
-    if not data or not isinstance(data, dict) or "_error" in data:
+    if played == 0:
         return None
     
-    trends = data.get("trends", [])
+    # Calcular medias
+    avg_gf = round(gf / played, 2)
+    avg_ga = round(ga / played, 2)
+    avg_total = round((gf + ga) / played, 2)
     
-    # Buscar el trend que corresponde a nuestro match_id
-    for trend in trends:
-        if trend.get("id") == match_id:
-            logger.info(f"Found trend for match {match_id}")
-            return trend
+    # Estimar BTTS y Over basado en goles
+    # Si avg_total > 2.5, estimar Over 2.5 alto
+    # Si avg_gf > 0 y avg_ga > 0, estimar BTTS alto
+    est_btts = min(100, round((avg_gf / max(avg_gf + 0.5, 0.1)) * (avg_ga / max(avg_ga + 0.5, 0.1)) * 100, 1))
+    est_over_15 = min(100, round(avg_total * 35, 1))  # Heurística
+    est_over_25 = min(100, round(avg_total * 25, 1))
+    est_over_35 = min(100, round(avg_total * 15, 1))
     
-    logger.warning(f"No trend found for match {match_id} on {match_date}")
-    return None
-
-
-def extract_stats_from_trend(trend_data, team_id, is_home=True):
-    """
-    Extrae estadísticas del objeto trend para un equipo específico.
-    """
-    if not trend_data or not isinstance(trend_data, dict):
-        return None
+    # Clean sheet y failed to score desde forma
+    clean_sheet_pct = round((max(0, played - ga) / played) * 100, 1) if played else 0
+    failed_to_score_pct = round((max(0, played - gf) / played) * 100, 1) if played else 0
     
-    trend = trend_data.get("trend", {})
-    team_key = "home" if is_home else "away"
-    team_trend = trend.get(team_key, {})
-    
-    if not team_trend:
-        return None
-    
-    # Convertir form string a array de objetos
-    form_string = team_trend.get("form", "")
+    # Forma desde string (ej: "WWDLW")
     form = []
-    for char in form_string:
+    for char in (form_string or "")[-5:]:
         if char == "W":
             form.append({"result": "W", "result_text": "Victoria"})
         elif char == "D":
@@ -245,33 +234,26 @@ def extract_stats_from_trend(trend_data, team_id, is_home=True):
         elif char == "L":
             form.append({"result": "L", "result_text": "Derrota"})
     
-    # pct_ values vienen como 0.8 (80%), convertir a porcentaje 0-100
-    def pct(val):
-        if val is None:
-            return 0
-        return round(float(val) * 100, 1)
-    
     return {
-        "played": 5,  # El trend usa ventana de 5 partidos por defecto
-        "won": round(float(team_trend.get("pct_wins", 0)) * 5),
-        "draw": round(float(team_trend.get("pct_draws", 0)) * 5),
-        "lost": round(float(team_trend.get("pct_losses", 0)) * 5),
-        "goals_for": round(float(team_trend.get("avg_goals_scored", 0)) * 5, 1),
-        "goals_against": round(float(team_trend.get("avg_goals_conceded", 0)) * 5, 1),
-        "avg_total_goals": round(float(team_trend.get("avg_goals", 0)), 2),
-        "avg_team_goals": round(float(team_trend.get("avg_goals_scored", 0)), 2),
-        "avg_conceded": round(float(team_trend.get("avg_goals_conceded", 0)), 2),
-        "btts_pct": pct(team_trend.get("pct_bts")),
-        "over_1_5_pct": pct(team_trend.get("pct_o_15")),
-        "over_2_5_pct": pct(team_trend.get("pct_o_25")),
-        "over_3_5_pct": pct(team_trend.get("pct_o_35")),
-        "clean_sheet_pct": pct(team_trend.get("pct_fts")),  # failed to score es inverso
-        "failed_to_score_pct": pct(team_trend.get("pct_fts")),
-        "form_string": form_string,
-        "form": form[:5],
-        "avg_points": round(float(team_trend.get("avg_points", 0)), 2),
-        "window_start": team_trend.get("window_start_date", ""),
-        "window_end": team_trend.get("window_end_date", "")
+        "played": played,
+        "won": won,
+        "draw": draw,
+        "lost": lost,
+        "goals_for": gf,
+        "goals_against": ga,
+        "avg_total_goals": avg_total,
+        "avg_team_goals": avg_gf,
+        "avg_conceded": avg_ga,
+        "btts_pct": est_btts,
+        "over_1_5_pct": est_over_15,
+        "over_2_5_pct": est_over_25,
+        "over_3_5_pct": est_over_35,
+        "clean_sheet_pct": clean_sheet_pct,
+        "failed_to_score_pct": failed_to_score_pct,
+        "form_string": form_string or "",
+        "form": form,
+        "points": points,
+        "position": table_row.get("position", 0)
     }
 
 
@@ -280,12 +262,12 @@ def find_team_row(table_rows, team_id):
         if safe_get(row, "team", "id") == team_id:
             return {
                 "position": row.get("position", 0),
-                "played": row.get("playedGames", 0),
+                "playedGames": row.get("playedGames", 0),
                 "won": row.get("won", 0),
                 "draw": row.get("draw", 0),
                 "lost": row.get("lost", 0),
-                "goals_for": row.get("goalsFor", 0),
-                "goals_against": row.get("goalsAgainst", 0),
+                "goalsFor": row.get("goalsFor", 0),
+                "goalsAgainst": row.get("goalsAgainst", 0),
                 "points": row.get("points", 0),
                 "form": row.get("form", "")
             }
@@ -416,41 +398,40 @@ def analyze(
         if isinstance(season_start, str) and len(season_start) >= 4:
             season_year = int(season_start[:4])
     
-    logger.info(f"Season year: {season_year}, match date: {date}")
+    logger.info(f"Season year: {season_year}")
 
-    # === NUEVO: USAR ENDPOINT TREND ===
-    # Solo 1 llamada a la API para obtener todas las estadísticas
-    trend_data = get_trend_for_match(match_id, date)
+    # === SOLO STANDINGS: 1 llamada a la API ===
+    home_bundle = get_standings_bundle(home_id, competition_id, season_year)
+    away_bundle = get_standings_bundle(away_id, competition_id, season_year)
+
+    # Extraer stats desde standings
+    home_total = home_bundle.get("TOTAL")
+    away_total = away_bundle.get("TOTAL")
     
-    if trend_data:
-        logger.info("USING TREND DATA")
-        home_stats = extract_stats_from_trend(trend_data, home_id, is_home=True)
-        away_stats = extract_stats_from_trend(trend_data, away_id, is_home=False)
-        home_mode = "TREND_HOME"
-        away_mode = "TREND_AWAY"
-    else:
-        logger.info("TREND NOT AVAILABLE, using fallback")
-        # Fallback: datos vacíos o de standings
+    home_stats = extract_stats_from_standings(home_total, home_total.get("form", "") if home_total else "")
+    away_stats = extract_stats_from_standings(away_total, away_total.get("form", "") if away_total else "")
+    
+    # Fallback si no hay standings
+    if not home_stats:
         home_stats = {
             "played": 0, "won": 0, "draw": 0, "lost": 0,
             "goals_for": 0, "goals_against": 0,
             "avg_total_goals": 0, "avg_team_goals": 0, "avg_conceded": 0,
             "btts_pct": 0, "over_1_5_pct": 0, "over_2_5_pct": 0, "over_3_5_pct": 0,
             "clean_sheet_pct": 0, "failed_to_score_pct": 0,
-            "form_string": "", "form": []
+            "form_string": "", "form": [], "points": 0, "position": 0
         }
+    
+    if not away_stats:
         away_stats = dict(home_stats)
-        home_mode = "NO_DATA"
-        away_mode = "NO_DATA"
+    
+    home_mode = "STANDINGS_TOTAL"
+    away_mode = "STANDINGS_TOTAL"
 
-    # Standings (1 llamada, cacheada)
-    home_bundle = get_standings_bundle(home_id, competition_id, season_year)
-    away_bundle = get_standings_bundle(away_id, competition_id, season_year)
+    home_table = home_total or {"position": 0, "points": 0, "won": 0, "draw": 0, "lost": 0, "goals_for": 0, "goals_against": 0}
+    away_table = away_total or {"position": 0, "points": 0, "won": 0, "draw": 0, "lost": 0, "goals_for": 0, "goals_against": 0}
 
-    home_table = home_bundle["TOTAL"] or {"position": 0, "points": 0, "won": 0, "draw": 0, "lost": 0, "goals_for": 0, "goals_against": 0}
-    away_table = away_bundle["TOTAL"] or {"position": 0, "points": 0, "won": 0, "draw": 0, "lost": 0, "goals_for": 0, "goals_against": 0}
-
-    # H2H (1 llamada, opcional, cacheada)
+    # H2H (opcional, cacheada)
     h2h_data = api_get(
         f"matches/{match_id}/head2head",
         params={"limit": 5},
@@ -546,7 +527,6 @@ def analyze(
             "away_mode_used": away_mode,
             "home_stats_played": home_stats["played"],
             "away_stats_played": away_stats["played"],
-            "trend_found": bool(trend_data),
             "home_total_found": bool(home_bundle["TOTAL"]),
             "away_total_found": bool(away_bundle["TOTAL"])
         }
@@ -561,7 +541,7 @@ def health():
         "cache_size": len(CACHE),
         "api_key": "configured" if API_KEY else "missing",
         "rate_limit_until": RATE_LIMIT_UNTIL.isoformat() if RATE_LIMIT_UNTIL else None,
-        "version": "4.0.0"
+        "version": "5.0.0"
     }
 
 
