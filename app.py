@@ -12,7 +12,7 @@ from fastapi.templating import Jinja2Templates
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
 
-app = FastAPI(title="TipFactory", version="3.1.0")
+app = FastAPI(title="TipFactory", version="4.0.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -30,7 +30,7 @@ BASE_URL = "https://api.football-data.org/v4"
 HEADERS = {"X-Auth-Token": API_KEY} if API_KEY else {}
 
 CACHE = {}
-RATE_LIMIT_UNTIL = None  # Timestamp hasta cuando respetamos rate limit
+RATE_LIMIT_UNTIL = None
 
 COMPETITIONS = {
     "PD": "La Liga",
@@ -63,10 +63,9 @@ def cache_set(key, data):
 def api_get(endpoint, params=None, cache_key=None, ttl=3600):
     global RATE_LIMIT_UNTIL
     
-    # Si estamos en rate limit cooldown, devolver cache o None
     if RATE_LIMIT_UNTIL and datetime.now() < RATE_LIMIT_UNTIL:
         if cache_key:
-            cached = cache_get(cache_key, ttl=86400)  # Cache extendida durante rate limit
+            cached = cache_get(cache_key, ttl=86400)
             if cached is not None:
                 return cached
         logger.warning(f"RATE LIMIT COOLDOWN: skipping {endpoint}")
@@ -83,17 +82,16 @@ def api_get(endpoint, params=None, cache_key=None, ttl=3600):
 
     try:
         url = f"{BASE_URL}/{endpoint.lstrip('/')}"
+        logger.info(f"API CALL: {url} | params={params}")
         resp = requests.get(url, headers=HEADERS, params=params, timeout=30)
 
         if resp.status_code == 429:
-            # Rate limit - esperar 60 segundos
             RATE_LIMIT_UNTIL = datetime.now() + timedelta(seconds=60)
             logger.error(f"RATE LIMIT HIT on {endpoint}. Cooling down 60s.")
             return None
             
         if resp.status_code in (401, 403, 402):
-            logger.error(f"AUTH ERROR {resp.status_code} on {endpoint}")
-            # Cachear el error para no repetir
+            logger.error(f"AUTH ERROR {resp.status_code} on {endpoint}: {resp.text[:200]}")
             if cache_key:
                 cache_set(cache_key, {"_error": resp.status_code})
             return None
@@ -190,128 +188,90 @@ def format_match(m):
     }
 
 
-def get_team_matches(team_id, season_year, venue=None, limit=20):
+def get_trend_for_match(match_id, match_date):
     """
-    Obtiene partidos FINISHED de un equipo. SIN filtro de competición para evitar 403.
-    Cache TTL: 1 hora
+    Obtiene el trend para un partido específico usando la fecha del partido.
+    El endpoint /v4/trends devuelve trends para una fecha, filtramos por match_id.
     """
-    params = {
-        "season": season_year,
-        "status": "FINISHED",
-        "limit": limit
-    }
-    if venue:
-        params["venue"] = venue
-
-    cache_key = f"team_matches_{team_id}_{season_year}_{venue}_{limit}"
+    if not match_date:
+        return None
+    
+    cache_key = f"trend_{match_date}"
     
     data = api_get(
-        f"teams/{team_id}/matches",
-        params=params,
+        "trends",
+        params={"date": match_date},
         cache_key=cache_key,
         ttl=3600
     )
+    
+    if not data or not isinstance(data, dict) or "_error" in data:
+        return None
+    
+    trends = data.get("trends", [])
+    
+    # Buscar el trend que corresponde a nuestro match_id
+    for trend in trends:
+        if trend.get("id") == match_id:
+            logger.info(f"Found trend for match {match_id}")
+            return trend
+    
+    logger.warning(f"No trend found for match {match_id} on {match_date}")
+    return None
 
-    if not data or not isinstance(data, dict):
-        return []
 
-    # Si es un error cacheado, devolver vacío
-    if "_error" in data:
-        return []
-
-    matches = data.get("matches", [])
-    logger.info(f"Team {team_id}: {len(matches)} matches retrieved")
-    return matches
-
-
-def extract_team_view(team_id, matches, target_competition_id=None):
-    played = won = draw = lost = 0
-    gf = ga = 0
-    over15 = over25 = over35 = btts = clean_sheet = failed_to_score = 0
+def extract_stats_from_trend(trend_data, team_id, is_home=True):
+    """
+    Extrae estadísticas del objeto trend para un equipo específico.
+    """
+    if not trend_data or not isinstance(trend_data, dict):
+        return None
+    
+    trend = trend_data.get("trend", {})
+    team_key = "home" if is_home else "away"
+    team_trend = trend.get(team_key, {})
+    
+    if not team_trend:
+        return None
+    
+    # Convertir form string a array de objetos
+    form_string = team_trend.get("form", "")
     form = []
-
-    # Filtrar por competición si se especifica
-    if target_competition_id:
-        matches = [m for m in matches if safe_get(m, "competition", "id") == target_competition_id]
-
-    for m in matches[:10]:
-        home = m.get("homeTeam", {}) or {}
-        away = m.get("awayTeam", {}) or {}
-        score = m.get("score", {}) or {}
-        full = score.get("fullTime", {}) or {}
-
-        hg = full.get("home")
-        ag = full.get("away")
-
-        if hg is None or ag is None:
-            continue
-
-        is_home = home.get("id") == team_id
-        is_away = away.get("id") == team_id
-        if not is_home and not is_away:
-            continue
-
-        tg = hg if is_home else ag
-        og = ag if is_home else hg
-
-        played += 1
-        gf += tg
-        ga += og
-
-        if tg > og:
-            result = "W"
-            won += 1
-        elif tg == og:
-            result = "D"
-            draw += 1
-        else:
-            result = "L"
-            lost += 1
-
-        total = tg + og
-        if total > 1:
-            over15 += 1
-        if total > 2:
-            over25 += 1
-        if total > 3:
-            over35 += 1
-        if tg > 0 and og > 0:
-            btts += 1
-        if og == 0:
-            clean_sheet += 1
-        if tg == 0:
-            failed_to_score += 1
-
-        if len(form) < 5:
-            form.append({
-                "result": result,
-                "result_text": "Victoria" if result == "W" else "Empate" if result == "D" else "Derrota",
-                "team_goals": tg,
-                "opp_goals": og,
-                "opponent": away.get("name", "Rival") if is_home else home.get("name", "Rival"),
-                "venue": "home" if is_home else "away",
-                "date": (m.get("utcDate") or "")[:10],
-                "competition": safe_get(m, "competition", "name", default="")
-            })
-
+    for char in form_string:
+        if char == "W":
+            form.append({"result": "W", "result_text": "Victoria"})
+        elif char == "D":
+            form.append({"result": "D", "result_text": "Empate"})
+        elif char == "L":
+            form.append({"result": "L", "result_text": "Derrota"})
+    
+    # pct_ values vienen como 0.8 (80%), convertir a porcentaje 0-100
+    def pct(val):
+        if val is None:
+            return 0
+        return round(float(val) * 100, 1)
+    
     return {
-        "played": played,
-        "won": won,
-        "draw": draw,
-        "lost": lost,
-        "goals_for": gf,
-        "goals_against": ga,
-        "avg_total_goals": round((gf + ga) / played, 2) if played else 0,
-        "avg_team_goals": round(gf / played, 2) if played else 0,
-        "avg_conceded": round(ga / played, 2) if played else 0,
-        "btts_pct": round((btts / played) * 100, 1) if played else 0,
-        "over_1_5_pct": round((over15 / played) * 100, 1) if played else 0,
-        "over_2_5_pct": round((over25 / played) * 100, 1) if played else 0,
-        "over_3_5_pct": round((over35 / played) * 100, 1) if played else 0,
-        "clean_sheet_pct": round((clean_sheet / played) * 100, 1) if played else 0,
-        "failed_to_score_pct": round((failed_to_score / played) * 100, 1) if played else 0,
-        "form_string": "".join([x["result"] for x in form]),
-        "form": form
+        "played": 5,  # El trend usa ventana de 5 partidos por defecto
+        "won": round(float(team_trend.get("pct_wins", 0)) * 5),
+        "draw": round(float(team_trend.get("pct_draws", 0)) * 5),
+        "lost": round(float(team_trend.get("pct_losses", 0)) * 5),
+        "goals_for": round(float(team_trend.get("avg_goals_scored", 0)) * 5, 1),
+        "goals_against": round(float(team_trend.get("avg_goals_conceded", 0)) * 5, 1),
+        "avg_total_goals": round(float(team_trend.get("avg_goals", 0)), 2),
+        "avg_team_goals": round(float(team_trend.get("avg_goals_scored", 0)), 2),
+        "avg_conceded": round(float(team_trend.get("avg_goals_conceded", 0)), 2),
+        "btts_pct": pct(team_trend.get("pct_bts")),
+        "over_1_5_pct": pct(team_trend.get("pct_o_15")),
+        "over_2_5_pct": pct(team_trend.get("pct_o_25")),
+        "over_3_5_pct": pct(team_trend.get("pct_o_35")),
+        "clean_sheet_pct": pct(team_trend.get("pct_fts")),  # failed to score es inverso
+        "failed_to_score_pct": pct(team_trend.get("pct_fts")),
+        "form_string": form_string,
+        "form": form[:5],
+        "avg_points": round(float(team_trend.get("avg_points", 0)), 2),
+        "window_start": team_trend.get("window_start_date", ""),
+        "window_end": team_trend.get("window_end_date", "")
     }
 
 
@@ -370,7 +330,7 @@ def api_matches(date: str = Query(None)):
             f"competitions/{code}/matches",
             params={"dateFrom": date, "dateTo": date},
             cache_key=f"matches_{code}_{date}",
-            ttl=1800  # 30 min cache para partidos del día
+            ttl=1800
         )
 
         if data and isinstance(data, dict) and "_error" not in data and data.get("matches"):
@@ -450,36 +410,38 @@ def analyze(
         if away_score == "":
             away_score = safe_get(match_detail, "score", "fullTime", "away", default="")
 
-    # Determinar temporada
     season_year = datetime.utcnow().year
     if match_detail and isinstance(match_detail, dict) and "_error" not in match_detail:
         season_start = safe_get(match_detail, "season", "startDate", default="")
         if isinstance(season_start, str) and len(season_start) >= 4:
             season_year = int(season_start[:4])
     
-    logger.info(f"Season year: {season_year}")
+    logger.info(f"Season year: {season_year}, match date: {date}")
 
-    # SOLO 2 LLAMADAS A LA API PARA ESTADÍSTICAS (home + away)
-    # Usamos ALL matches (sin venue filter) para reducir a 1 llamada por equipo
-    home_all = get_team_matches(home_id, season_year, venue=None, limit=20)
-    away_all = get_team_matches(away_id, season_year, venue=None, limit=20)
-
-    # Extraer stats
-    home_stats = extract_team_view(home_id, home_all, target_competition_id=competition_id)
-    away_stats = extract_team_view(away_id, away_all, target_competition_id=competition_id)
-
-    # Decidir modo (si hay pocos datos en la competición, usamos ALL sin filtro)
-    home_mode = "ALL" if home_stats["played"] < 3 else "COMP"
-    away_mode = "ALL" if away_stats["played"] < 3 else "COMP"
-
-    # Si no hay datos filtrados por competición, usar todos los partidos sin filtro
-    if home_stats["played"] == 0 and home_all:
-        home_stats = extract_team_view(home_id, home_all, target_competition_id=None)
-        home_mode = "ALL_FALLBACK"
+    # === NUEVO: USAR ENDPOINT TREND ===
+    # Solo 1 llamada a la API para obtener todas las estadísticas
+    trend_data = get_trend_for_match(match_id, date)
     
-    if away_stats["played"] == 0 and away_all:
-        away_stats = extract_team_view(away_id, away_all, target_competition_id=None)
-        away_mode = "ALL_FALLBACK"
+    if trend_data:
+        logger.info("USING TREND DATA")
+        home_stats = extract_stats_from_trend(trend_data, home_id, is_home=True)
+        away_stats = extract_stats_from_trend(trend_data, away_id, is_home=False)
+        home_mode = "TREND_HOME"
+        away_mode = "TREND_AWAY"
+    else:
+        logger.info("TREND NOT AVAILABLE, using fallback")
+        # Fallback: datos vacíos o de standings
+        home_stats = {
+            "played": 0, "won": 0, "draw": 0, "lost": 0,
+            "goals_for": 0, "goals_against": 0,
+            "avg_total_goals": 0, "avg_team_goals": 0, "avg_conceded": 0,
+            "btts_pct": 0, "over_1_5_pct": 0, "over_2_5_pct": 0, "over_3_5_pct": 0,
+            "clean_sheet_pct": 0, "failed_to_score_pct": 0,
+            "form_string": "", "form": []
+        }
+        away_stats = dict(home_stats)
+        home_mode = "NO_DATA"
+        away_mode = "NO_DATA"
 
     # Standings (1 llamada, cacheada)
     home_bundle = get_standings_bundle(home_id, competition_id, season_year)
@@ -488,7 +450,7 @@ def analyze(
     home_table = home_bundle["TOTAL"] or {"position": 0, "points": 0, "won": 0, "draw": 0, "lost": 0, "goals_for": 0, "goals_against": 0}
     away_table = away_bundle["TOTAL"] or {"position": 0, "points": 0, "won": 0, "draw": 0, "lost": 0, "goals_for": 0, "goals_against": 0}
 
-    # H2H (1 llamada, opcional)
+    # H2H (1 llamada, opcional, cacheada)
     h2h_data = api_get(
         f"matches/{match_id}/head2head",
         params={"limit": 5},
@@ -498,12 +460,8 @@ def analyze(
 
     h2h_matches = []
     h2h_stats = {
-        "home_wins": 0,
-        "away_wins": 0,
-        "draws": 0,
-        "home_goals": 0,
-        "away_goals": 0,
-        "total_matches": 0
+        "home_wins": 0, "away_wins": 0, "draws": 0,
+        "home_goals": 0, "away_goals": 0, "total_matches": 0
     }
 
     if h2h_data and isinstance(h2h_data, dict) and "_error" not in h2h_data and h2h_data.get("aggregates"):
@@ -584,15 +542,13 @@ def analyze(
             "away_id": away_id,
             "competition_id": competition_id,
             "season_year_used": season_year,
-            "home_matches_raw": len(home_all),
-            "away_matches_raw": len(away_all),
             "home_mode_used": home_mode,
             "away_mode_used": away_mode,
             "home_stats_played": home_stats["played"],
             "away_stats_played": away_stats["played"],
+            "trend_found": bool(trend_data),
             "home_total_found": bool(home_bundle["TOTAL"]),
-            "away_total_found": bool(away_bundle["TOTAL"]),
-            "rate_limit_active": RATE_LIMIT_UNTIL.isoformat() if RATE_LIMIT_UNTIL else None
+            "away_total_found": bool(away_bundle["TOTAL"])
         }
     })
 
@@ -605,7 +561,7 @@ def health():
         "cache_size": len(CACHE),
         "api_key": "configured" if API_KEY else "missing",
         "rate_limit_until": RATE_LIMIT_UNTIL.isoformat() if RATE_LIMIT_UNTIL else None,
-        "version": "3.1.0"
+        "version": "4.0.0"
     }
 
 
