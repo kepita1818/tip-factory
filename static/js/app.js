@@ -43,6 +43,11 @@ function pct(value) {
   return num(value, 0).toFixed(0) + '%';
 }
 
+function dec(value) {
+  if (value === null || value === undefined || value === '') return '0.00';
+  return num(value, 0).toFixed(2);
+}
+
 function valueOrNoData(value, suffix) {
   if (value === null || value === undefined || value === '') return 'Sin datos';
   return String(value) + (suffix || '');
@@ -139,7 +144,6 @@ function loadMatches() {
   fetch('/api/matches?date=' + encodeURIComponent(dateStr))
     .then(function (response) { return response.json(); })
     .then(function (data) {
-      console.log('MATCHES DATA', data);
       allMatches = Array.isArray(data.matches) ? data.matches : [];
       renderMatches();
     })
@@ -175,8 +179,6 @@ function renderMatches() {
     var match = matches[i];
     var home = match.homeTeam || {};
     var away = match.awayTeam || {};
-    var homeScore = match.homeScore;
-    var awayScore = match.awayScore;
 
     html += ''
       + '<div class="match-card"'
@@ -188,7 +190,19 @@ function renderMatches() {
       + ' data-league="' + encodeURIComponent(match.league_name || '') + '"'
       + ' data-country="' + encodeURIComponent(match.country || '') + '"'
       + ' data-date="' + encodeURIComponent(match.matchDate || '') + '"'
-      + ' data-time="' + encodeURIComponent(formatLocalTime(match.utcDate)) + '">'
+      + ' data-time="' + encodeURIComponent(formatLocalTime(match.utcDate)) + '"'
+      + ' data-venue="' + encodeURIComponent(match.venue || '') + '"'
+      + ' data-home-score="' + (match.homeScore ?? '') + '"'
+      + ' data-away-score="' + (match.awayScore ?? '') + '"'
+      + ' data-xg-home="' + (match.xg_home ?? '') + '"'
+      + ' data-xg-away="' + (match.xg_away ?? '') + '"'
+      + ' data-xg-total="' + (match.xg_total ?? '') + '"'
+      + ' data-odds-home="' + (match.odds_home ?? '') + '"'
+      + ' data-odds-draw="' + (match.odds_draw ?? '') + '"'
+      + ' data-odds-away="' + (match.odds_away ?? '') + '"'
+      + ' data-prob-home="' + (match.prob_home ?? '') + '"'
+      + ' data-prob-draw="' + (match.prob_draw ?? '') + '"'
+      + ' data-prob-away="' + (match.prob_away ?? '') + '">'
 
       + '<div class="match-time-row">'
       + '<span class="match-time">' + formatLocalTime(match.utcDate) + '</span>'
@@ -196,8 +210,8 @@ function renderMatches() {
       + '</div>'
 
       + '<div class="match-teams">'
-      + '<div class="match-team"><img src="' + (home.crest || '') + '" onerror="this.style.display=\'none\'"><span>' + (home.name || 'Local') + '</span>' + (homeScore !== null && homeScore !== undefined ? '<span class="match-score">' + homeScore + '</span>' : '') + '</div>'
-      + '<div class="match-team"><img src="' + (away.crest || '') + '" onerror="this.style.display=\'none\'"><span>' + (away.name || 'Visitante') + '</span>' + (awayScore !== null && awayScore !== undefined ? '<span class="match-score">' + awayScore + '</span>' : '') + '</div>'
+      + '<div class="match-team"><img src="' + (home.crest || '') + '" onerror="this.style.display=\'none\'"><span>' + (home.name || 'Local') + '</span>' + (match.homeScore !== null && match.homeScore !== undefined ? '<span class="match-score">' + match.homeScore + '</span>' : '') + '</div>'
+      + '<div class="match-team"><img src="' + (away.crest || '') + '" onerror="this.style.display=\'none\'"><span>' + (away.name || 'Visitante') + '</span>' + (match.awayScore !== null && match.awayScore !== undefined ? '<span class="match-score">' + match.awayScore + '</span>' : '') + '</div>'
       + '</div>'
       + '</div>';
   }
@@ -238,12 +252,12 @@ function renderProbabilities(data) {
   var p = data.probabilities || {};
   var html = '';
 
-  html += '<div class="prob-box"><div class="prob-box-value">' + pct(p.over_1_5) + '</div><div class="prob-box-label">Más de 1.5</div><div class="prob-box-sub">Reciente</div></div>';
-  html += '<div class="prob-box"><div class="prob-box-value">' + pct(p.over_2_5) + '</div><div class="prob-box-label">Más de 2.5</div><div class="prob-box-sub">Reciente</div></div>';
-  html += '<div class="prob-box"><div class="prob-box-value">' + pct(p.over_3_5) + '</div><div class="prob-box-label">Más de 3.5</div><div class="prob-box-sub">Reciente</div></div>';
-  html += '<div class="prob-box"><div class="prob-box-value">' + pct(p.btts) + '</div><div class="prob-box-label">AMB</div><div class="prob-box-sub">Ambos marcan</div></div>';
-  html += '<div class="prob-box"><div class="prob-box-value">' + valueOrNoData(p.total_expected_goals) + '</div><div class="prob-box-label">Goles esperados</div><div class="prob-box-sub">Media reciente</div></div>';
-  html += '<div class="prob-box"><div class="prob-box-value">' + valueOrNoData((data.home_stats || {}).points) + '</div><div class="prob-box-label">Puntos local</div><div class="prob-box-sub">Muestra</div></div>';
+  html += '<div class="prob-box"><div class="prob-box-value">' + pct(p.home_win) + '</div><div class="prob-box-label">1</div><div class="prob-box-sub">Victoria local</div></div>';
+  html += '<div class="prob-box"><div class="prob-box-value">' + pct(p.draw) + '</div><div class="prob-box-label">X</div><div class="prob-box-sub">Empate</div></div>';
+  html += '<div class="prob-box"><div class="prob-box-value">' + pct(p.away_win) + '</div><div class="prob-box-label">2</div><div class="prob-box-sub">Victoria visitante</div></div>';
+  html += '<div class="prob-box"><div class="prob-box-value">' + pct(p.over_1_5) + '</div><div class="prob-box-label">Más de 1.5</div><div class="prob-box-sub">Últimos partidos</div></div>';
+  html += '<div class="prob-box"><div class="prob-box-value">' + pct(p.over_2_5) + '</div><div class="prob-box-label">Más de 2.5</div><div class="prob-box-sub">Últimos partidos</div></div>';
+  html += '<div class="prob-box"><div class="prob-box-value">' + pct(p.btts) + '</div><div class="prob-box-label">AMB</div><div class="prob-box-sub">Últimos partidos</div></div>';
 
   getEl('prob-grid').innerHTML = html;
 }
@@ -253,12 +267,12 @@ function renderMiniStats(data) {
   var as = data.away_stats || {};
   var html = '';
 
-  html += '<div class="mini-stat-box"><div class="mini-stat-value">' + valueOrNoData(hs.played) + '</div><div class="mini-stat-label">Partidos jugados local</div></div>';
-  html += '<div class="mini-stat-box"><div class="mini-stat-value">' + valueOrNoData(hs.points) + '</div><div class="mini-stat-label">Puntos local</div></div>';
-  html += '<div class="mini-stat-box"><div class="mini-stat-value">' + valueOrNoData(as.points) + '</div><div class="mini-stat-label">Puntos visitante</div></div>';
-  html += '<div class="mini-stat-box"><div class="mini-stat-value">' + pct((num(hs.btts_pct, 0) + num(as.btts_pct, 0)) / 2) + '</div><div class="mini-stat-label">BTTS medio</div></div>';
-  html += '<div class="mini-stat-box"><div class="mini-stat-value">' + valueOrNoData(hs.avg_team_goals) + '</div><div class="mini-stat-label">Media goles local</div></div>';
-  html += '<div class="mini-stat-box"><div class="mini-stat-value">' + valueOrNoData(as.avg_team_goals) + '</div><div class="mini-stat-label">Media goles visitante</div></div>';
+  html += '<div class="mini-stat-box"><div class="mini-stat-value">' + valueOrNoData(hs.played) + '</div><div class="mini-stat-label">Partidos local</div></div>';
+  html += '<div class="mini-stat-box"><div class="mini-stat-value">' + valueOrNoData(as.played) + '</div><div class="mini-stat-label">Partidos visitante</div></div>';
+  html += '<div class="mini-stat-box"><div class="mini-stat-value">' + valueOrNoData(hs.avg_team_goals) + '</div><div class="mini-stat-label">Goles local</div></div>';
+  html += '<div class="mini-stat-box"><div class="mini-stat-value">' + valueOrNoData(as.avg_team_goals) + '</div><div class="mini-stat-label">Goles visitante</div></div>';
+  html += '<div class="mini-stat-box"><div class="mini-stat-value">' + dec((data.probabilities || {}).home_xg) + '</div><div class="mini-stat-label">xG local</div></div>';
+  html += '<div class="mini-stat-box"><div class="mini-stat-value">' + dec((data.probabilities || {}).away_xg) + '</div><div class="mini-stat-label">xG visitante</div></div>';
 
   getEl('mini-stats-grid').innerHTML = html;
 }
@@ -278,9 +292,9 @@ function renderSeasonTable(data) {
     ['GF', hs.goals_for, as.goals_for],
     ['GC', hs.goals_against, as.goals_against],
     ['Puntos', hs.points, as.points],
-    ['Más de 2.5', pct(hs.over_2_5_pct), pct(as.over_2_5_pct)],
-    ['AMB', pct(hs.btts_pct), pct(as.btts_pct)],
-    ['Portería a cero', pct(hs.clean_sheet_pct), pct(as.clean_sheet_pct)]
+    ['Media gol', hs.avg_team_goals, as.avg_team_goals],
+    ['BTTS', pct(hs.btts_pct), pct(as.btts_pct)],
+    ['Over 2.5', pct(hs.over_2_5_pct), pct(as.over_2_5_pct)]
   ];
 
   var html = '';
@@ -319,9 +333,9 @@ function renderSimpleUnavailableTables(data) {
   getEl('cards-home-header').textContent = (data.match_info && data.match_info.home_short) || 'Local';
   getEl('cards-away-header').textContent = (data.match_info && data.match_info.away_short) || 'Visitante';
 
-  getEl('corners-table-body').innerHTML = '<tr><td>Corners equipo</td><td>Sin datos</td><td>Sin datos</td><td>Sin datos</td></tr>';
-  getEl('total-corners-body').innerHTML = '<tr><td>Más de 8.5</td><td>Sin datos</td><td>Sin datos</td><td>Sin datos</td></tr>';
-  getEl('cards-table-body').innerHTML = '<tr><td>Tarjetas equipo</td><td>Sin datos</td><td>Sin datos</td><td>Sin datos</td></tr>';
+  getEl('corners-table-body').innerHTML = '<tr><td>Corners</td><td>Sin datos</td><td>Sin datos</td><td>Sin datos</td></tr>';
+  getEl('total-corners-body').innerHTML = '<tr><td>Total corners</td><td>Sin datos</td><td>Sin datos</td><td>Sin datos</td></tr>';
+  getEl('cards-table-body').innerHTML = '<tr><td>Tarjetas</td><td>Sin datos</td><td>Sin datos</td><td>Sin datos</td></tr>';
 }
 
 function renderAnalysisText(data) {
@@ -329,11 +343,12 @@ function renderAnalysisText(data) {
   var as = data.away_stats || {};
   var mi = data.match_info || {};
   var p = data.probabilities || {};
+  var o = data.odds || {};
 
   var html = '';
-  html += '<p><strong>' + (mi.home_team || 'Local') + '</strong> llega con ' + valueOrNoData(hs.points) + ' puntos y una media de ' + valueOrNoData(hs.avg_team_goals) + ' goles por partido en la muestra reciente.</p>';
-  html += '<p><strong>' + (mi.away_team || 'Visitante') + '</strong> presenta ' + valueOrNoData(as.points) + ' puntos y una media de ' + valueOrNoData(as.avg_team_goals) + ' goles por encuentro.</p>';
-  html += '<p>La media combinada sugiere ' + valueOrNoData(p.total_expected_goals) + ' goles esperados, con una probabilidad aproximada de ' + pct(p.over_2_5) + ' para el más de 2.5 y ' + pct(p.btts) + ' para ambos marcan.</p>';
+  html += '<p><strong>' + (mi.home_team || 'Local') + '</strong> llega con racha ' + valueOrNoData(hs.form_string) + ' y media de ' + valueOrNoData(hs.avg_team_goals) + ' goles.</p>';
+  html += '<p><strong>' + (mi.away_team || 'Visitante') + '</strong> llega con racha ' + valueOrNoData(as.form_string) + ' y media de ' + valueOrNoData(as.avg_team_goals) + ' goles.</p>';
+  html += '<p>Cuotas 1X2: ' + dec(o.home) + ' / ' + dec(o.draw) + ' / ' + dec(o.away) + '. xG previo: ' + dec(p.home_xg) + ' - ' + dec(p.away_xg) + '.</p>';
 
   getEl('analysis-text-box').innerHTML = html;
 }
@@ -349,6 +364,7 @@ function fillHeader(data) {
 
 function openAnalysis(card) {
   var matchId = card.dataset.matchId || '0';
+
   var params = new URLSearchParams({
     home_team: decodeURIComponent(card.dataset.homeTeam || 'Local'),
     away_team: decodeURIComponent(card.dataset.awayTeam || 'Visitante'),
@@ -357,7 +373,19 @@ function openAnalysis(card) {
     league: decodeURIComponent(card.dataset.league || ''),
     date: decodeURIComponent(card.dataset.date || ''),
     time: decodeURIComponent(card.dataset.time || ''),
-    country: decodeURIComponent(card.dataset.country || '')
+    country: decodeURIComponent(card.dataset.country || ''),
+    venue: decodeURIComponent(card.dataset.venue || ''),
+    home_score: card.dataset.homeScore || '',
+    away_score: card.dataset.awayScore || '',
+    xg_home: card.dataset.xgHome || '',
+    xg_away: card.dataset.xgAway || '',
+    xg_total: card.dataset.xgTotal || '',
+    odds_home: card.dataset.oddsHome || '',
+    odds_draw: card.dataset.oddsDraw || '',
+    odds_away: card.dataset.oddsAway || '',
+    prob_home: card.dataset.probHome || '',
+    prob_draw: card.dataset.probDraw || '',
+    prob_away: card.dataset.probAway || ''
   });
 
   showAnalysis();
