@@ -1,4 +1,4 @@
-console.log('TipFactory v10.0 - Exact Match');
+console.log('TipFactory v10.0 - Optimizado');
 
 var currentDate = new Date();
 var allMatches = [];
@@ -234,26 +234,40 @@ function renderMatches() {
       var isFinished = m.status === 'FT' || m.status === 'AET' || m.status === 'PEN';
       var statusText = isLive ? 'LIVE' : (isFinished ? 'FT' : m.status);
 
+      // FIX ESCUDOS: usar data attributes sin encodeURIComponent para evitar problemas
+      var homeName = home.name || 'Local';
+      var awayName = away.name || 'Visitante';
+      var homeShort = home.shortName || homeName;
+      var awayShort = away.shortName || awayName;
+      var homeCrest = home.crest || '';
+      var awayCrest = away.crest || '';
+      var leagueName = m.league_name || '';
+      var countryName = m.country || '';
+      var matchDate = m.matchDate || '';
+      var venueName = m.venue || '';
+      var matchdayVal = m.matchday || '0';
+      var statusVal = m.statusText || 'SCHEDULED';
+
       html += '<div class="match-card"'
         + ' data-match-id="' + valueOrDash(m.id) + '"'
         + ' data-home-id="' + valueOrDash(home.id) + '"'
         + ' data-away-id="' + valueOrDash(away.id) + '"'
         + ' data-competition-id="' + valueOrDash(comp.id) + '"'
-        + ' data-home-team="' + encodeURIComponent(home.name || 'Local') + '"'
-        + ' data-away-team="' + encodeURIComponent(away.name || 'Visitante') + '"'
-        + ' data-home-short="' + encodeURIComponent(home.shortName || home.name || 'Local') + '"'
-        + ' data-away-short="' + encodeURIComponent(away.shortName || away.name || 'Visitante') + '"'
-        + ' data-home-logo="' + encodeURIComponent(home.crest || '') + '"'
-        + ' data-away-logo="' + encodeURIComponent(away.crest || '') + '"'
-        + ' data-league="' + encodeURIComponent(m.league_name || '') + '"'
-        + ' data-country="' + encodeURIComponent(m.country || '') + '"'
-        + ' data-date="' + encodeURIComponent(m.matchDate || '') + '"'
-        + ' data-time="' + encodeURIComponent(timeStr) + '"'
-        + ' data-venue="' + encodeURIComponent(m.venue || '') + '"'
+        + ' data-home-team="' + homeName.replace(/"/g, '&quot;') + '"'
+        + ' data-away-team="' + awayName.replace(/"/g, '&quot;') + '"'
+        + ' data-home-short="' + homeShort.replace(/"/g, '&quot;') + '"'
+        + ' data-away-short="' + awayShort.replace(/"/g, '&quot;') + '"'
+        + ' data-home-logo="' + homeCrest.replace(/"/g, '&quot;') + '"'
+        + ' data-away-logo="' + awayCrest.replace(/"/g, '&quot;') + '"'
+        + ' data-league="' + leagueName.replace(/"/g, '&quot;') + '"'
+        + ' data-country="' + countryName.replace(/"/g, '&quot;') + '"'
+        + ' data-date="' + matchDate + '"'
+        + ' data-time="' + timeStr + '"'
+        + ' data-venue="' + venueName.replace(/"/g, '&quot;') + '"'
         + ' data-home-score="' + (m.homeScore === null || m.homeScore === undefined ? '' : m.homeScore) + '"'
         + ' data-away-score="' + (m.awayScore === null || m.awayScore === undefined ? '' : m.awayScore) + '"'
-        + ' data-matchday="' + valueOrDash(m.matchday || 0) + '"'
-        + ' data-status="' + encodeURIComponent(m.statusText || 'SCHEDULED') + '">';
+        + ' data-matchday="' + matchdayVal + '"'
+        + ' data-status="' + statusVal + '">';
 
       // Left: time/status
       html += '<div class="match-left">';
@@ -270,12 +284,13 @@ function renderMatches() {
       // Center: teams
       html += '<div class="match-center">';
       html += '<div class="match-team-row">';
-      html += '<img src="' + (home.crest || '') + '" alt="" onerror="this.style.display=\'none\'">';
-      html += '<span class="team-name">' + valueOrDash(home.name) + '</span>';
+      // FIX: escudos con fondo blanco y sin onerror que los oculte
+      html += '<img class="team-crest" src="' + homeCrest + '" alt="">';
+      html += '<span class="team-name">' + valueOrDash(homeName) + '</span>';
       html += '</div>';
       html += '<div class="match-team-row">';
-      html += '<img src="' + (away.crest || '') + '" alt="" onerror="this.style.display=\'none\'">';
-      html += '<span class="team-name">' + valueOrDash(away.name) + '</span>';
+      html += '<img class="team-crest" src="' + awayCrest + '" alt="">';
+      html += '<span class="team-name">' + valueOrDash(awayName) + '</span>';
       html += '</div>';
       html += '</div>';
 
@@ -322,7 +337,6 @@ function renderFormBadges(list, elementId) {
   el.innerHTML = html;
 }
 
-// Get color class for probability value
 function probColorClass(val) {
   var v = num(val);
   if (v >= 70) return 'prob-high';
@@ -339,28 +353,28 @@ function renderProbabilities(data) {
   var over25 = num(p.over_2_5);
   html += '<div class="prob-box ' + probColorClass(over25) + '">';
   html += '<div class="prob-box-value">' + pct(p.over_2_5) + ' Más de 2,5</div>';
-  html += '<div class="prob-box-sub">Media de la liga: ' + pct(over25 * 0.9) + '</div>';
+  html += '<div class="prob-box-sub">Media estimada</div>';
   html += '</div>';
 
   // Over 1.5
   var over15 = num(p.over_1_5);
   html += '<div class="prob-box ' + probColorClass(over15) + '">';
   html += '<div class="prob-box-value">' + pct(p.over_1_5) + ' Más de 1,5</div>';
-  html += '<div class="prob-box-sub">Media de la liga: ' + pct(over15 * 0.95) + '</div>';
+  html += '<div class="prob-box-sub">Media estimada</div>';
   html += '</div>';
 
   // BTTS
   var btts = num(p.btts);
   html += '<div class="prob-box ' + probColorClass(btts) + '">';
   html += '<div class="prob-box-value">' + pct(p.btts) + ' AEM</div>';
-  html += '<div class="prob-box-sub">Media de la liga: ' + pct(btts * 1.1) + '</div>';
+  html += '<div class="prob-box-sub">Ambos equipos marcan</div>';
   html += '</div>';
 
   // Goals per match
   var xg = num(p.total_expected_goals);
   html += '<div class="prob-box ' + probColorClass(xg * 20) + '">';
   html += '<div class="prob-box-value">' + dec(xg, 2) + ' Goles / Partido</div>';
-  html += '<div class="prob-box-sub">Media de la liga: ' + dec(xg * 0.95, 1) + '</div>';
+  html += '<div class="prob-box-sub">Goles esperados</div>';
   html += '</div>';
 
   // Cards
@@ -369,14 +383,14 @@ function renderProbabilities(data) {
   var avgCards = (num(hs.avg_yellow_cards) + num(as.avg_yellow_cards)) / 2;
   html += '<div class="prob-box ' + probColorClass(avgCards * 15) + '">';
   html += '<div class="prob-box-value">' + dec(avgCards, 2) + ' Tarjetas</div>';
-  html += '<div class="prob-box-sub">Media de la liga: ' + dec(avgCards * 1.1, 2) + '</div>';
+  html += '<div class="prob-box-sub">Amarillas esperadas</div>';
   html += '</div>';
 
   // Corners
   var avgCorners = (num(hs.avg_corners) + num(as.avg_corners)) / 2;
   html += '<div class="prob-box ' + probColorClass(avgCorners * 7) + '">';
   html += '<div class="prob-box-value">' + dec(avgCorners, 2) + ' Córners</div>';
-  html += '<div class="prob-box-sub">Media de la liga: ' + dec(avgCorners * 1.05, 1) + '</div>';
+  html += '<div class="prob-box-sub">Córners esperados</div>';
   html += '</div>';
 
   var grid = getEl('prob-grid');
@@ -389,8 +403,8 @@ function renderMiniStats(data) {
   var d = data.debug || {};
   var html = '';
 
-  html += '<div class="mini-stat-box"><div class="mini-stat-value">' + valueOrDash(hs.played) + '</div><div class="mini-stat-label">PJ local (' + valueOrDash(d.home_mode_used) + ')</div></div>';
-  html += '<div class="mini-stat-box"><div class="mini-stat-value">' + valueOrDash(as.played) + '</div><div class="mini-stat-label">PJ visitante (' + valueOrDash(d.away_mode_used) + ')</div></div>';
+  html += '<div class="mini-stat-box"><div class="mini-stat-value">' + valueOrDash(hs.played) + '</div><div class="mini-stat-label">PJ local</div></div>';
+  html += '<div class="mini-stat-box"><div class="mini-stat-value">' + valueOrDash(as.played) + '</div><div class="mini-stat-label">PJ visitante</div></div>';
   html += '<div class="mini-stat-box"><div class="mini-stat-value">' + valueOrDash(hs.avg_team_goals) + '</div><div class="mini-stat-label">Goles local</div></div>';
   html += '<div class="mini-stat-box"><div class="mini-stat-value">' + valueOrDash(as.avg_team_goals) + '</div><div class="mini-stat-label">Goles visitante</div></div>';
   html += '<div class="mini-stat-box"><div class="mini-stat-value">' + pct(hs.clean_sheet_pct) + '</div><div class="mini-stat-label">Portería a 0 local</div></div>';
@@ -398,35 +412,6 @@ function renderMiniStats(data) {
 
   var grid = getEl('mini-stats-grid');
   if (grid) grid.innerHTML = html;
-}
-
-function renderSeasonTable(data) {
-  var hs = data.home_stats || {};
-  var as = data.away_stats || {};
-  var mi = data.match_info || {};
-
-  var homeHeader = getEl('season-home-header');
-  var awayHeader = getEl('season-away-header');
-  if (homeHeader) homeHeader.textContent = mi.home_short || 'Local';
-  if (awayHeader) awayHeader.textContent = mi.away_short || 'Visitante';
-
-  var rows = [
-    ['Posición', valueOrDash(hs.position), valueOrDash(as.position)],
-    ['Puntos', valueOrDash(hs.points), valueOrDash(as.points)],
-    ['PG', valueOrDash(hs.won), valueOrDash(as.won)],
-    ['PE', valueOrDash(hs.draw), valueOrDash(as.draw)],
-    ['PP', valueOrDash(hs.lost), valueOrDash(as.lost)],
-    ['GF', valueOrDash(hs.goals_for), valueOrDash(as.goals_for)],
-    ['GC', valueOrDash(hs.goals_against), valueOrDash(as.goals_against)]
-  ];
-
-  var html = '';
-  for (var i = 0; i < rows.length; i++) {
-    html += '<tr><td>' + rows[i][0] + '</td><td>' + rows[i][1] + '</td><td>' + rows[i][2] + '</td></tr>';
-  }
-
-  var body = getEl('season-table-body');
-  if (body) body.innerHTML = html;
 }
 
 function renderGoalsTable(data) {
@@ -468,7 +453,6 @@ function renderCornersTable(data) {
   if (cornersHome) cornersHome.textContent = mi.home_short || 'Local';
   if (cornersAway) cornersAway.textContent = mi.away_short || 'Visitante';
 
-  // Corners obtained
   var rows1 = [
     ['Obtenidos/Partido', dec(hs.avg_corners), dec(as.avg_corners), dec((num(hs.avg_corners) + num(as.avg_corners)) / 2)],
     ['Más de 6,5', pct(num(hs.avg_corners) > 6.5 ? 70 : 35), pct(num(as.avg_corners) > 6.5 ? 70 : 35), pct((num(hs.avg_corners) + num(as.avg_corners)) / 2 > 6.5 ? 70 : 35)],
@@ -577,60 +561,68 @@ function fillHeader(data) {
   }
   if (homeName) homeName.textContent = mi.home_team || 'Local';
   if (awayName) awayName.textContent = mi.away_team || 'Visitante';
-  if (homeLogo) homeLogo.src = mi.home_logo || '';
-  if (awayLogo) awayLogo.src = mi.away_logo || '';
+  // FIX: forzar visibilidad de escudos
+  if (homeLogo) {
+    homeLogo.src = mi.home_logo || '';
+    homeLogo.style.display = 'block';
+  }
+  if (awayLogo) {
+    awayLogo.src = mi.away_logo || '';
+    awayLogo.style.display = 'block';
+  }
 }
 
-function renderAnalysisText(data) {
-  var hs = data.home_stats || {};
-  var as = data.away_stats || {};
-  var mi = data.match_info || {};
-  var d = data.debug || {};
+function renderPrediction(data) {
   var pred = data.predictions || {};
+  var box = getEl('prediction-box');
+  if (!box) return;
 
   var html = '';
-  html += '<p><strong>' + valueOrDash(mi.home_team) + '</strong> llega con ' + valueOrDash(hs.played) + ' partidos jugados y racha ' + valueOrDash(hs.form_string || 'Sin datos') + '.</p>';
-  html += '<p><strong>' + valueOrDash(mi.away_team) + '</strong> llega con ' + valueOrDash(as.played) + ' partidos jugados y racha ' + valueOrDash(as.form_string || 'Sin datos') + '.</p>';
-
-  if (pred && pred.advice) {
-    html += '<p><strong>Predicción API-Football:</strong> ' + pred.advice + '</p>';
+  if (pred.winner) {
+    html += '<div class="prediction-winner">🏆 Ganador: <strong>' + pred.winner + '</strong></div>';
   }
-
-  html += '<p>Mostrando las estadísticas en casa del ' + valueOrDash(mi.home_team) + ' y las estadísticas de visitante del ' + valueOrDash(mi.away_team) + '.</p>';
-
-  var box = getEl('analysis-text-box');
-  if (box) box.innerHTML = html;
+  if (pred.advice) {
+    html += '<div class="prediction-advice">💡 ' + pred.advice + '</div>';
+  }
+  if (pred.under_over) {
+    html += '<div class="prediction-over">📊 Over/Under: ' + pred.under_over + '</div>';
+  }
+  if (!html) {
+    html = '<div class="prediction-empty">Predicción no disponible para este partido</div>';
+  }
+  box.innerHTML = html;
 }
 
 function openAnalysis(card) {
   var matchId = card.dataset.matchId;
 
+  // FIX: leer data attributes directamente sin decodeURIComponent
   var params = new URLSearchParams({
     home_id: card.dataset.homeId,
     away_id: card.dataset.awayId,
     competition_id: card.dataset.competitionId,
-    home_team: decodeURIComponent(card.dataset.homeTeam || 'Local'),
-    away_team: decodeURIComponent(card.dataset.awayTeam || 'Visitante'),
-    home_short: decodeURIComponent(card.dataset.homeShort || 'Local'),
-    away_short: decodeURIComponent(card.dataset.awayShort || 'Visitante'),
-    home_logo: decodeURIComponent(card.dataset.homeLogo || ''),
-    away_logo: decodeURIComponent(card.dataset.awayLogo || ''),
-    league: decodeURIComponent(card.dataset.league || ''),
-    country: decodeURIComponent(card.dataset.country || ''),
-    date: decodeURIComponent(card.dataset.date || ''),
-    time: decodeURIComponent(card.dataset.time || '--:--'),
-    venue: decodeURIComponent(card.dataset.venue || ''),
+    home_team: card.dataset.homeTeam || 'Local',
+    away_team: card.dataset.awayTeam || 'Visitante',
+    home_short: card.dataset.homeShort || 'Local',
+    away_short: card.dataset.awayShort || 'Visitante',
+    home_logo: card.dataset.homeLogo || '',
+    away_logo: card.dataset.awayLogo || '',
+    league: card.dataset.league || '',
+    country: card.dataset.country || '',
+    date: card.dataset.date || '',
+    time: card.dataset.time || '--:--',
+    venue: card.dataset.venue || '',
     home_score: card.dataset.homeScore || '',
     away_score: card.dataset.awayScore || '',
     matchday: card.dataset.matchday || '0',
-    status: decodeURIComponent(card.dataset.status || 'SCHEDULED')
+    status: card.dataset.status || 'SCHEDULED'
   });
 
   showAnalysis();
   activateTab('resumen');
 
-  var box = getEl('analysis-text-box');
-  if (box) box.innerHTML = 'Cargando análisis...';
+  var box = getEl('prediction-box');
+  if (box) box.innerHTML = '<div class="prediction-loading">Cargando predicción...</div>';
 
   fetch('/api/analyze/' + encodeURIComponent(matchId) + '?' + params.toString())
     .then(function (r) {
@@ -643,14 +635,13 @@ function openAnalysis(card) {
       renderFormBadges(data.away_form || [], 'away-form-badges');
       renderProbabilities(data);
       renderMiniStats(data);
-      renderSeasonTable(data);
       renderGoalsTable(data);
       renderCornersTable(data);
       renderCardsTable(data);
-      renderAnalysisText(data);
+      renderPrediction(data);
     })
     .catch(function (error) {
-      if (box) box.innerHTML = 'Error cargando análisis: ' + error.message;
+      if (box) box.innerHTML = '<div class="prediction-error">Error: ' + error.message + '</div>';
     });
 }
 
