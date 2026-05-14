@@ -40,9 +40,9 @@
 
       <!-- Match title card -->
       <div class="match-title-card">
-        <h2 id="match-title">Girona vs Real Sociedad</h2>
-        <div class="match-subtitle" id="analysis-subtitle">Spain - La Liga</div>
-        <div class="match-meta" id="match-meta">Hora de inicio: 20:00 · Jornada 36 · Estadio Municipal de Montilivi</div>
+        <h2 id="match-title">Local vs Visitante</h2>
+        <div class="match-subtitle" id="analysis-subtitle">Liga</div>
+        <div class="match-meta" id="match-meta">Hora de inicio: --:--</div>
       </div>
 
       <!-- Tabs -->
@@ -59,14 +59,14 @@
         <div class="card teams-card">
           <div class="teams-row">
             <div class="team-block">
-              <img id="home-logo" src="" alt="Local" onerror="this.style.display='none'">
-              <span class="team-label" id="home-name">Girona</span>
+              <img id="home-logo" src="" alt="Local">
+              <span class="team-label" id="home-name">Local</span>
               <span class="team-role">Local</span>
             </div>
             <div class="vs-center">VS</div>
             <div class="team-block">
-              <img id="away-logo" src="" alt="Visitante" onerror="this.style.display='none'">
-              <span class="team-label" id="away-name">Real Sociedad</span>
+              <img id="away-logo" src="" alt="Visitante">
+              <span class="team-label" id="away-name">Visitante</span>
               <span class="team-role">Visitante</span>
             </div>
           </div>
@@ -74,8 +74,13 @@
             <div class="form-badges" id="home-form-badges"></div>
             <div class="form-badges" id="away-form-badges"></div>
           </div>
-          <div class="form-note">
-            Mostrando las estadísticas en casa del Girona y las estadísticas de visitante del Real Sociedad.
+        </div>
+
+        <!-- Prediction box (reemplaza GPT) -->
+        <div class="card prediction-card">
+          <div class="card-title">🔮 Predicción API-Football</div>
+          <div id="prediction-box">
+            <div class="prediction-loading">Cargando predicción...</div>
           </div>
         </div>
 
@@ -88,27 +93,6 @@
         <div class="card">
           <div class="card-title">Mini stats</div>
           <div class="mini-stats-grid" id="mini-stats-grid"></div>
-        </div>
-
-        <!-- Season table -->
-        <div class="card">
-          <div class="card-title">Temporada</div>
-          <table class="stats-table">
-            <thead>
-              <tr>
-                <th>Métrica</th>
-                <th id="season-home-header">Local</th>
-                <th id="season-away-header">Visitante</th>
-              </tr>
-            </thead>
-            <tbody id="season-table-body"></tbody>
-          </table>
-        </div>
-
-        <!-- Analysis text -->
-        <div class="card analysis-card">
-          <div class="card-title">GPT4 Análisis</div>
-          <div id="analysis-text-box"></div>
         </div>
       </div>
 
