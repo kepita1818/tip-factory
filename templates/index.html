@@ -1,16 +1,19 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta charset="UTF-8" />
+  <meta
+    name="viewport"
+    content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"
+  />
   <title>TipFactory</title>
-  <link rel="stylesheet" href="/static/css/style.css">
+  <link rel="stylesheet" href="/static/css/style.css" />
 </head>
 <body>
   <div id="app">
     <header class="app-header">
       <h1>TipFactory</h1>
-      <p class="subtitle">Analítica de Fútbol Profesional</p>
+      <p class="subtitle">Analítica de fútbol profesional</p>
     </header>
 
     <div class="date-selector">
@@ -18,31 +21,29 @@
 
       <div class="date-display">
         <span id="current-date">--/--/----</span>
-        <input type="date" id="date-picker">
+        <input type="date" id="date-picker" />
       </div>
 
       <button class="date-nav" id="next-date">&#9654;</button>
     </div>
 
-    <div class="league-filters">
+    <div class="league-filters" id="league-filters">
       <button class="filter-btn active" data-filter="all">Todos</button>
-      <button class="filter-btn" data-filter="Spain">España</button>
-      <button class="filter-btn" data-filter="England">Inglaterra</button>
-      <button class="filter-btn" data-filter="Italy">Italia</button>
-      <button class="filter-btn" data-filter="Germany">Alemania</button>
-      <button class="filter-btn" data-filter="France">Francia</button>
-      <button class="filter-btn" data-filter="Portugal">Portugal</button>
-      <button class="filter-btn" data-filter="Netherlands">Holanda</button>
-      <button class="filter-btn" data-filter="Brazil">Brasil</button>
+      <button class="filter-btn" data-filter="spain">España</button>
+      <button class="filter-btn" data-filter="england">Inglaterra</button>
+      <button class="filter-btn" data-filter="italy">Italia</button>
+      <button class="filter-btn" data-filter="germany">Alemania</button>
+      <button class="filter-btn" data-filter="france">Francia</button>
+      <button class="filter-btn" data-filter="brazil">Brasil</button>
     </div>
 
-    <div class="matches-section" id="matches-section">
+    <section id="matches-section">
       <div class="matches-container" id="matches-container">
         <div class="loading">Cargando partidos...</div>
       </div>
-    </div>
+    </section>
 
-    <div class="section hidden" id="analysis-section">
+    <section class="section hidden" id="analysis-section">
       <div class="analysis-header">
         <div class="analysis-title">Análisis del partido</div>
         <div class="analysis-subtitle" id="analysis-subtitle"></div>
@@ -59,42 +60,36 @@
         <div class="card teams-form-card">
           <div class="teams-row">
             <div class="team-block">
-              <img id="home-logo" src="" alt="Escudo local" onerror="this.style.display='none'">
+              <img id="home-logo" src="" alt="Local" onerror="this.style.display='none'">
               <span id="home-name">Local</span>
             </div>
 
             <div class="vs-center">VS</div>
 
             <div class="team-block">
-              <img id="away-logo" src="" alt="Escudo visitante" onerror="this.style.display='none'">
+              <img id="away-logo" src="" alt="Visitante" onerror="this.style.display='none'">
               <span id="away-name">Visitante</span>
             </div>
           </div>
 
           <div class="form-row">
-            <div class="form-side">
-              <div class="form-side-label">Forma local</div>
-              <div class="form-badges" id="home-form-badges"></div>
-            </div>
-
-            <div class="form-side">
-              <div class="form-side-label">Forma visitante</div>
-              <div class="form-badges form-badges-right" id="away-form-badges"></div>
-            </div>
+            <div class="form-badges" id="home-form-badges"></div>
+            <div class="form-badges" id="away-form-badges"></div>
           </div>
         </div>
 
         <div class="card prob-grid-card">
+          <div class="card-title">Probabilidades</div>
           <div class="prob-grid" id="prob-grid"></div>
         </div>
 
         <div class="card">
-          <div class="card-title">Claves del partido</div>
+          <div class="card-title">Mini stats</div>
           <div class="mini-stats-grid" id="mini-stats-grid"></div>
         </div>
 
         <div class="card">
-          <div class="card-title">Datos de temporada</div>
+          <div class="card-title">Temporada</div>
           <table class="stats-table">
             <thead>
               <tr>
@@ -109,14 +104,14 @@
 
         <div class="card">
           <div class="card-title">Análisis</div>
-          <div class="analysis-text-box" id="analysis-text-box"></div>
+          <div id="analysis-text-box">Selecciona un partido.</div>
         </div>
       </div>
 
       <div class="tab-content" id="tab-goles">
         <div class="card">
           <div class="card-title">Tendencias de goles</div>
-          <table class="stats-table">
+          <table class="stats-table" id="goals-table">
             <thead>
               <tr>
                 <th>Mercado</th>
@@ -132,8 +127,8 @@
 
       <div class="tab-content" id="tab-corners">
         <div class="card">
-          <div class="card-title">Corners</div>
-          <table class="stats-table">
+          <div class="card-title">Corners en contra</div>
+          <table class="stats-table" id="corners-table">
             <thead>
               <tr>
                 <th>Mercado</th>
@@ -148,7 +143,7 @@
 
         <div class="card">
           <div class="card-title">Total de corners</div>
-          <table class="stats-table">
+          <table class="stats-table" id="total-corners-table">
             <thead>
               <tr>
                 <th>Línea</th>
@@ -165,7 +160,7 @@
       <div class="tab-content" id="tab-tarjetas">
         <div class="card">
           <div class="card-title">Tarjetas</div>
-          <table class="stats-table">
+          <table class="stats-table" id="cards-table">
             <thead>
               <tr>
                 <th>Mercado</th>
@@ -180,7 +175,7 @@
       </div>
 
       <button class="back-btn-bottom" id="back-btn">Volver a partidos</button>
-    </div>
+    </section>
   </div>
 
   <script src="/static/js/app.js"></script>
