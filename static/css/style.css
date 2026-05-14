@@ -101,9 +101,29 @@ body {
 
 .league-filters {
   display: flex;
-  gap: 8px;
+  gap: 6px;
   flex-wrap: wrap;
   margin-bottom: 16px;
+  justify-content: center;
+  max-height: 120px;
+  overflow-y: auto;
+  padding: 4px;
+  scrollbar-width: thin;
+  scrollbar-color: var(--line) var(--card);
+}
+
+.league-filters::-webkit-scrollbar {
+  width: 6px;
+}
+
+.league-filters::-webkit-scrollbar-track {
+  background: var(--card);
+  border-radius: 3px;
+}
+
+.league-filters::-webkit-scrollbar-thumb {
+  background: var(--line);
+  border-radius: 3px;
 }
 
 .filter-btn {
@@ -111,9 +131,16 @@ body {
   background: var(--card);
   color: var(--text);
   border-radius: 999px;
-  padding: 8px 12px;
+  padding: 6px 10px;
   cursor: pointer;
-  font-size: 13px;
+  font-size: 12px;
+  white-space: nowrap;
+  transition: all 0.15s ease;
+}
+
+.filter-btn:hover {
+  border-color: var(--accent);
+  background: var(--card-2);
 }
 
 .filter-btn.active {
@@ -227,6 +254,11 @@ body {
   border-radius: 10px;
   padding: 10px 14px;
   cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.tab-btn:hover {
+  border-color: var(--accent);
 }
 
 .tab-btn.active {
@@ -389,6 +421,10 @@ body {
   line-height: 1.5;
 }
 
+#analysis-text-box p {
+  margin: 8px 0;
+}
+
 .back-btn-bottom {
   width: 100%;
   margin-top: 16px;
@@ -399,6 +435,11 @@ body {
   border-radius: 12px;
   padding: 14px 16px;
   cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.back-btn-bottom:hover {
+  background: #2563eb;
 }
 
 @media (max-width: 640px) {
@@ -427,38 +468,19 @@ body {
   .match-card {
     padding: 12px;
   }
-}
-.league-filters {
-  display: flex;
-  gap: 6px;
-  flex-wrap: wrap;
-  margin-bottom: 16px;
-  justify-content: center;
-}
 
-.filter-btn {
-  border: 1px solid var(--line);
-  background: var(--card);
-  color: var(--text);
-  border-radius: 999px;
-  padding: 6px 10px;
-  cursor: pointer;
-  font-size: 12px;
-  white-space: nowrap;
-}
-
-.filter-btn.active {
-  background: var(--accent);
-  border-color: var(--accent);
-  color: #fff;
-}
-
-@media (max-width: 640px) {
   .league-filters {
     gap: 4px;
+    max-height: 100px;
   }
+
   .filter-btn {
     padding: 5px 8px;
     font-size: 11px;
+  }
+
+  .tab-btn {
+    padding: 8px 10px;
+    font-size: 13px;
   }
 }
