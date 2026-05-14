@@ -378,22 +378,26 @@ function openAnalysis(card) {
   getEl('analysis-text-box').innerHTML = 'Cargando análisis...';
 
   fetch('/api/analyze/' + matchId + '?' + params.toString())
-    .then(function (response) { return response.json(); })
-    .then(function (data) {
-      fillHeader(data);
-      renderFormBadges(data.home_form || [], 'home-form-badges');
-      renderFormBadges(data.away_form || [], 'away-form-badges');
-      renderProbabilities(data);
-      renderMiniStats(data);
-      renderSeasonTable(data);
-      renderGoalsTable(data);
-      renderSimpleUnavailableTables(data);
-      renderAnalysisText(data);
-    })
-    .catch(function (e) {
-      console.error(e);
-      getEl('analysis-text-box').innerHTML = 'Error cargando análisis.';
-    });
+  .then(function (response) {
+    return response.json();
+  })
+  .then(function (data) {
+    console.log('ANALYSIS DATA', data);
+
+    fillHeader(data);
+    renderFormBadges(data.home_form || [], 'home-form-badges');
+    renderFormBadges(data.away_form || [], 'away-form-badges');
+    renderProbabilities(data);
+    renderMiniStats(data);
+    renderSeasonTable(data);
+    renderGoalsTable(data);
+    renderSimpleUnavailableTables(data);
+    renderAnalysisText(data);
+  })
+  .catch(function (e) {
+    console.error(e);
+    getEl('analysis-text-box').innerHTML = 'Error cargando análisis.';
+  });
 }
 
 document.addEventListener('DOMContentLoaded', function () {
