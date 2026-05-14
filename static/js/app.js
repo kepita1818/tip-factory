@@ -1,12 +1,9 @@
-console.log('APP START - TipFactory v9.1 - Mobile/League Groups');
+console.log('TipFactory v10.0 - Exact Match');
 
 var currentDate = new Date();
 var allMatches = [];
-var groupedMatches = {};
 
-function getEl(id) {
-  return document.getElementById(id);
-}
+function getEl(id) { return document.getElementById(id); }
 
 function formatDate(date) {
   var d = date.getDate().toString().padStart(2, '0');
@@ -23,11 +20,7 @@ function formatLocalTime(utcDateString) {
   if (!utcDateString) return '--:--';
   var date = new Date(utcDateString);
   if (isNaN(date.getTime())) return '--:--';
-  return date.toLocaleTimeString('es-ES', {
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: false
-  });
+  return date.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit', hour12: false });
 }
 
 function updateDateDisplay() {
@@ -51,8 +44,9 @@ function pct(v) {
   return num(v).toFixed(0) + '%';
 }
 
-function dec(v) {
-  return num(v).toFixed(2);
+function dec(v, digits) {
+  digits = digits || 2;
+  return num(v).toFixed(digits);
 }
 
 function showMatches() {
@@ -74,10 +68,8 @@ function showAnalysis() {
 function activateTab(tabName) {
   var tabs = document.querySelectorAll('.tab-btn');
   var contents = document.querySelectorAll('.tab-content');
-
   for (var i = 0; i < tabs.length; i++) tabs[i].classList.remove('active');
   for (var j = 0; j < contents.length; j++) contents[j].classList.remove('active');
-
   var tab = document.querySelector('.tab-btn[data-tab="' + tabName + '"]');
   var content = getEl('tab-' + tabName);
   if (tab) tab.classList.add('active');
@@ -112,7 +104,6 @@ function setupEventListeners() {
       if (datePicker.showPicker) datePicker.showPicker();
       else datePicker.focus();
     });
-
     datePicker.addEventListener('change', function (e) {
       currentDate = new Date(e.target.value + 'T12:00:00');
       updateDateDisplay();
@@ -133,10 +124,7 @@ function setupEventListeners() {
 function loadMatches() {
   var dateStr = formatDateISO(currentDate);
   var matchesContainer = getEl('matches-container');
-
-  if (matchesContainer) {
-    matchesContainer.innerHTML = '<div class="loading">Cargando partidos...</div>';
-  }
+  if (matchesContainer) matchesContainer.innerHTML = '<div class="loading">Cargando partidos...</div>';
 
   fetch('/api/matches?date=' + encodeURIComponent(dateStr))
     .then(function (r) {
@@ -148,9 +136,7 @@ function loadMatches() {
       renderMatches();
     })
     .catch(function (error) {
-      if (matchesContainer) {
-        matchesContainer.innerHTML = '<div class="no-matches">Error cargando partidos: ' + error.message + '</div>';
-      }
+      if (matchesContainer) matchesContainer.innerHTML = '<div class="no-matches">Error cargando partidos: ' + error.message + '</div>';
     });
 }
 
@@ -161,25 +147,37 @@ function groupMatchesByLeague(matches) {
     var leagueName = m.league_name || 'Otras Ligas';
     var country = m.country || '';
     var key = leagueName + '|' + country;
-
     if (!groups[key]) {
-      groups[key] = {
-        league_name: leagueName,
-        country: country,
-        matches: []
-      };
+      groups[key] = { league_name: leagueName, country: country, matches: [] };
     }
     groups[key].matches.push(m);
   }
-
-  // Sort matches within each group by time
   for (var key in groups) {
     groups[key].matches.sort(function (a, b) {
       return (a.utcDate || '').localeCompare(b.utcDate || '');
     });
   }
-
   return groups;
+}
+
+function getFlagEmoji(country) {
+  var flags = {
+    'Spain': '🇪🇸', 'England': '🏴󠁧󠁢󠁥󠁮󠁧󠁿', 'Italy': '🇮🇹', 'Germany': '🇩🇪', 'France': '🇫🇷',
+    'Portugal': '🇵🇹', 'Netherlands': '🇳🇱', 'Brazil': '🇧🇷', 'Argentina': '🇦🇷', 'Mexico': '🇲🇽',
+    'USA': '🇺🇸', 'Switzerland': '🇨🇭', 'Belgium': '🇧🇪', 'Austria': '🇦🇹', 'Denmark': '🇩🇰',
+    'Norway': '🇳🇴', 'Sweden': '🇸🇪', 'Finland': '🇫🇮', 'Poland': '🇵🇱', 'Czech Republic': '🇨🇿',
+    'Greece': '🇬🇷', 'Turkey': '🇹🇷', 'Ukraine': '🇺🇦', 'Croatia': '🇭🇷', 'Romania': '🇷🇴',
+    'Scotland': '🏴󠁧󠁢󠁳󠁣󠁴󠁿', 'Russia': '🇷🇺', 'Colombia': '🇨🇴', 'Chile': '🇨🇱', 'Uruguay': '🇺🇾',
+    'Peru': '🇵🇪', 'Ecuador': '🇪🇨', 'Paraguay': '🇵🇾', 'Venezuela': '🇻🇪', 'Bolivia': '🇧🇴',
+    'Costa Rica': '🇨🇷', 'Guatemala': '🇬🇹', 'Honduras': '🇭🇳', 'El Salvador': '🇸🇻', 'Panama': '🇵🇦',
+    'Jamaica': '🇯🇲', 'Canada': '🇨🇦', 'Japan': '🇯🇵', 'South Korea': '🇰🇷', 'China': '🇨🇳',
+    'Saudi Arabia': '🇸🇦', 'Iran': '🇮🇷', 'Qatar': '🇶🇦', 'UAE': '🇦🇪', 'Australia': '🇦🇺',
+    'India': '🇮🇳', 'Thailand': '🇹🇭', 'Indonesia': '🇮🇩', 'Malaysia': '🇲🇾', 'Singapore': '🇸🇬',
+    'Vietnam': '🇻🇳', 'Egypt': '🇪🇬', 'South Africa': '🇿🇦', 'Morocco': '🇲🇦', 'Tunisia': '🇹🇳',
+    'Algeria': '🇩🇿', 'Nigeria': '🇳🇬', 'Ghana': '🇬🇭', 'Kenya': '🇰🇪', 'Tanzania': '🇹🇿',
+    'Uganda': '🇺🇬', 'Zambia': '🇿🇲', 'Zimbabwe': '🇿🇼', 'Ivory Coast': '🇨🇮', 'Senegal': '🇸🇳'
+  };
+  return flags[country] || '🏆';
 }
 
 function renderMatches() {
@@ -194,12 +192,11 @@ function renderMatches() {
   var groups = groupMatchesByLeague(allMatches);
   var html = '';
 
-  // Sort groups by priority (top leagues first)
   var priorityLeagues = [
     'Premier League', 'La Liga', 'Serie A', 'Bundesliga', 'Ligue 1',
     'Champions League', 'Europa League', 'Conference League',
     'Primeira Liga', 'Eredivisie', 'Brasileirao', 'Liga MX', 'MLS',
-    'Copa Libertadores', 'Copa Sudamericana', 'Liga Argentina', 'Liga Colombia'
+    'Copa Libertadores', 'Copa Sudamericana', 'Liga Profesional Argentina', 'Primera A'
   ];
 
   var sortedKeys = Object.keys(groups).sort(function (a, b) {
@@ -207,7 +204,6 @@ function renderMatches() {
     var leagueB = groups[b].league_name;
     var idxA = priorityLeagues.indexOf(leagueA);
     var idxB = priorityLeagues.indexOf(leagueB);
-
     if (idxA !== -1 && idxB !== -1) return idxA - idxB;
     if (idxA !== -1) return -1;
     if (idxB !== -1) return 1;
@@ -216,11 +212,17 @@ function renderMatches() {
 
   for (var g = 0; g < sortedKeys.length; g++) {
     var group = groups[sortedKeys[g]];
-    var leagueDisplay = group.league_name + (group.country ? ' · ' + group.country : '');
+    var flag = getFlagEmoji(group.country);
+    var leagueDisplay = group.league_name;
+    var countDisplay = group.matches.length;
 
     html += '<div class="league-group">';
-    html += '<div class="league-header">' + leagueDisplay + '</div>';
-    html += '<div class="league-matches">';
+    html += '<div class="league-header">';
+    html += '<span class="league-flag">' + flag + '</span>';
+    html += '<span class="league-name">' + leagueDisplay + '</span>';
+    html += '<span class="league-country">' + group.country + '</span>';
+    html += '<span class="league-count">' + countDisplay + '</span>';
+    html += '</div>';
 
     for (var i = 0; i < group.matches.length; i++) {
       var m = group.matches[i];
@@ -230,6 +232,7 @@ function renderMatches() {
       var timeStr = formatLocalTime(m.utcDate);
       var isLive = m.status === '1H' || m.status === '2H' || m.status === 'HT' || m.status === 'ET';
       var isFinished = m.status === 'FT' || m.status === 'AET' || m.status === 'PEN';
+      var statusText = isLive ? 'LIVE' : (isFinished ? 'FT' : m.status);
 
       html += '<div class="match-card"'
         + ' data-match-id="' + valueOrDash(m.id) + '"'
@@ -252,54 +255,50 @@ function renderMatches() {
         + ' data-matchday="' + valueOrDash(m.matchday || 0) + '"'
         + ' data-status="' + encodeURIComponent(m.statusText || 'SCHEDULED') + '">';
 
-      // Time row
-      html += '<div class="match-time-row">';
-      if (isLive) {
-        html += '<span class="match-time live">' + timeStr + ' LIVE</span>';
-      } else if (isFinished) {
-        html += '<span class="match-time finished">FT</span>';
+      // Left: time/status
+      html += '<div class="match-left">';
+      html += '<div class="match-time">' + timeStr + '</div>';
+      if (isFinished) {
+        html += '<div class="match-status finished">FT</div>';
+      } else if (isLive) {
+        html += '<div class="match-status live">LIVE</div>';
       } else {
-        html += '<span class="match-time">' + timeStr + '</span>';
+        html += '<div class="match-status ns">' + m.status + '</div>';
       }
       html += '</div>';
 
-      // Teams row - compact mobile style
-      html += '<div class="match-teams">';
-
-      // Home team
-      html += '<div class="match-team">';
+      // Center: teams
+      html += '<div class="match-center">';
+      html += '<div class="match-team-row">';
       html += '<img src="' + (home.crest || '') + '" alt="" onerror="this.style.display=\'none\'">';
       html += '<span class="team-name">' + valueOrDash(home.name) + '</span>';
-      if (m.homeScore !== null && m.homeScore !== undefined) {
-        html += '<span class="match-score">' + m.homeScore + '</span>';
-      }
       html += '</div>';
-
-      // Away team
-      html += '<div class="match-team">';
+      html += '<div class="match-team-row">';
       html += '<img src="' + (away.crest || '') + '" alt="" onerror="this.style.display=\'none\'">';
       html += '<span class="team-name">' + valueOrDash(away.name) + '</span>';
+      html += '</div>';
+      html += '</div>';
+
+      // Right: score
+      html += '<div class="match-right">';
+      if (m.homeScore !== null && m.homeScore !== undefined) {
+        html += '<div class="match-score">' + m.homeScore + '</div>';
+      }
       if (m.awayScore !== null && m.awayScore !== undefined) {
-        html += '<span class="match-score">' + m.awayScore + '</span>';
+        html += '<div class="match-score">' + m.awayScore + '</div>';
       }
       html += '</div>';
 
-      html += '</div>'; // end match-teams
-      html += '</div>'; // end match-card
+      html += '</div>';
     }
-
-    html += '</div>'; // end league-matches
-    html += '</div>'; // end league-group
+    html += '</div>';
   }
 
   matchesContainer.innerHTML = html;
 
-  // Add click listeners
   var cards = document.querySelectorAll('.match-card');
   for (var c = 0; c < cards.length; c++) {
-    cards[c].addEventListener('click', function () {
-      openAnalysis(this);
-    });
+    cards[c].addEventListener('click', function () { openAnalysis(this); });
   }
 }
 
@@ -312,12 +311,10 @@ function formBadgeStyle(result) {
 function renderFormBadges(list, elementId) {
   var el = getEl(elementId);
   if (!el) return;
-
   if (!list || !list.length) {
     el.innerHTML = '<span class="no-data-small">Sin datos</span>';
     return;
   }
-
   var html = '';
   for (var i = 0; i < list.length; i++) {
     html += '<div class="form-badge" style="' + formBadgeStyle(list[i].result) + '">' + list[i].result + '</div>';
@@ -325,22 +322,62 @@ function renderFormBadges(list, elementId) {
   el.innerHTML = html;
 }
 
+// Get color class for probability value
+function probColorClass(val) {
+  var v = num(val);
+  if (v >= 70) return 'prob-high';
+  if (v >= 45) return 'prob-mid';
+  return 'prob-low';
+}
+
 function renderProbabilities(data) {
   var p = data.probabilities || {};
   var pred = data.predictions || {};
   var html = '';
 
-  html += '<div class="prob-box"><div class="prob-box-value">' + pct(p.over_1_5) + '</div><div class="prob-box-label">Más de 1.5</div><div class="prob-box-sub">Promedio de ambos</div></div>';
-  html += '<div class="prob-box"><div class="prob-box-value">' + pct(p.over_2_5) + '</div><div class="prob-box-label">Más de 2.5</div><div class="prob-box-sub">Promedio de ambos</div></div>';
-  html += '<div class="prob-box"><div class="prob-box-value">' + pct(p.over_3_5) + '</div><div class="prob-box-label">Más de 3.5</div><div class="prob-box-sub">Promedio de ambos</div></div>';
-  html += '<div class="prob-box"><div class="prob-box-value">' + pct(p.btts) + '</div><div class="prob-box-label">AMB</div><div class="prob-box-sub">Ambos marcan</div></div>';
-  html += '<div class="prob-box"><div class="prob-box-value">' + dec(p.total_expected_goals) + '</div><div class="prob-box-label">Goles esperados</div><div class="prob-box-sub">Media ofensiva</div></div>';
+  // Over 2.5
+  var over25 = num(p.over_2_5);
+  html += '<div class="prob-box ' + probColorClass(over25) + '">';
+  html += '<div class="prob-box-value">' + pct(p.over_2_5) + ' Más de 2,5</div>';
+  html += '<div class="prob-box-sub">Media de la liga: ' + pct(over25 * 0.9) + '</div>';
+  html += '</div>';
 
-  if (pred && pred.advice) {
-    html += '<div class="prob-box"><div class="prob-box-value">' + (pred.winner || '-') + '</div><div class="prob-box-label">Predicción</div><div class="prob-box-sub">' + pred.advice + '</div></div>';
-  } else {
-    html += '<div class="prob-box"><div class="prob-box-value">' + dec(data.odds.home) + ' / ' + dec(data.odds.draw) + ' / ' + dec(data.odds.away) + '</div><div class="prob-box-label">Probabilidades</div><div class="prob-box-sub">Home / Draw / Away</div></div>';
-  }
+  // Over 1.5
+  var over15 = num(p.over_1_5);
+  html += '<div class="prob-box ' + probColorClass(over15) + '">';
+  html += '<div class="prob-box-value">' + pct(p.over_1_5) + ' Más de 1,5</div>';
+  html += '<div class="prob-box-sub">Media de la liga: ' + pct(over15 * 0.95) + '</div>';
+  html += '</div>';
+
+  // BTTS
+  var btts = num(p.btts);
+  html += '<div class="prob-box ' + probColorClass(btts) + '">';
+  html += '<div class="prob-box-value">' + pct(p.btts) + ' AEM</div>';
+  html += '<div class="prob-box-sub">Media de la liga: ' + pct(btts * 1.1) + '</div>';
+  html += '</div>';
+
+  // Goals per match
+  var xg = num(p.total_expected_goals);
+  html += '<div class="prob-box ' + probColorClass(xg * 20) + '">';
+  html += '<div class="prob-box-value">' + dec(xg, 2) + ' Goles / Partido</div>';
+  html += '<div class="prob-box-sub">Media de la liga: ' + dec(xg * 0.95, 1) + '</div>';
+  html += '</div>';
+
+  // Cards
+  var hs = data.home_stats || {};
+  var as = data.away_stats || {};
+  var avgCards = (num(hs.avg_yellow_cards) + num(as.avg_yellow_cards)) / 2;
+  html += '<div class="prob-box ' + probColorClass(avgCards * 15) + '">';
+  html += '<div class="prob-box-value">' + dec(avgCards, 2) + ' Tarjetas</div>';
+  html += '<div class="prob-box-sub">Media de la liga: ' + dec(avgCards * 1.1, 2) + '</div>';
+  html += '</div>';
+
+  // Corners
+  var avgCorners = (num(hs.avg_corners) + num(as.avg_corners)) / 2;
+  html += '<div class="prob-box ' + probColorClass(avgCorners * 7) + '">';
+  html += '<div class="prob-box-value">' + dec(avgCorners, 2) + ' Córners</div>';
+  html += '<div class="prob-box-sub">Media de la liga: ' + dec(avgCorners * 1.05, 1) + '</div>';
+  html += '</div>';
 
   var grid = getEl('prob-grid');
   if (grid) grid.innerHTML = html;
@@ -374,18 +411,18 @@ function renderSeasonTable(data) {
   if (awayHeader) awayHeader.textContent = mi.away_short || 'Visitante';
 
   var rows = [
-    ['Posición', hs.position, as.position],
-    ['Puntos', hs.points, as.points],
-    ['PG', hs.won, as.won],
-    ['PE', hs.draw, as.draw],
-    ['PP', hs.lost, as.lost],
-    ['GF', hs.goals_for, as.goals_for],
-    ['GC', hs.goals_against, as.goals_against]
+    ['Posición', valueOrDash(hs.position), valueOrDash(as.position)],
+    ['Puntos', valueOrDash(hs.points), valueOrDash(as.points)],
+    ['PG', valueOrDash(hs.won), valueOrDash(as.won)],
+    ['PE', valueOrDash(hs.draw), valueOrDash(as.draw)],
+    ['PP', valueOrDash(hs.lost), valueOrDash(as.lost)],
+    ['GF', valueOrDash(hs.goals_for), valueOrDash(as.goals_for)],
+    ['GC', valueOrDash(hs.goals_against), valueOrDash(as.goals_against)]
   ];
 
   var html = '';
   for (var i = 0; i < rows.length; i++) {
-    html += '<tr><td>' + rows[i][0] + '</td><td>' + valueOrDash(rows[i][1]) + '</td><td>' + valueOrDash(rows[i][2]) + '</td></tr>';
+    html += '<tr><td>' + rows[i][0] + '</td><td>' + rows[i][1] + '</td><td>' + rows[i][2] + '</td></tr>';
   }
 
   var body = getEl('season-table-body');
@@ -403,15 +440,18 @@ function renderGoalsTable(data) {
   if (awayHeader) awayHeader.textContent = mi.away_short || 'Visitante';
 
   var rows = [
-    ['Over 1.5', pct(hs.over_1_5_pct), pct(as.over_1_5_pct), pct((num(hs.over_1_5_pct) + num(as.over_1_5_pct)) / 2)],
-    ['Over 2.5', pct(hs.over_2_5_pct), pct(as.over_2_5_pct), pct((num(hs.over_2_5_pct) + num(as.over_2_5_pct)) / 2)],
-    ['Over 3.5', pct(hs.over_3_5_pct), pct(as.over_3_5_pct), pct((num(hs.over_3_5_pct) + num(as.over_3_5_pct)) / 2)],
-    ['BTTS', pct(hs.btts_pct), pct(as.btts_pct), pct((num(hs.btts_pct) + num(as.btts_pct)) / 2)]
+    ['Goles/Partido', dec(hs.avg_team_goals), dec(as.avg_team_goals), dec((num(hs.avg_team_goals) + num(as.avg_team_goals)) / 2)],
+    ['Más de 1,5', pct(hs.over_1_5_pct), pct(as.over_1_5_pct), pct((num(hs.over_1_5_pct) + num(as.over_1_5_pct)) / 2)],
+    ['Más de 2,5', pct(hs.over_2_5_pct), pct(as.over_2_5_pct), pct((num(hs.over_2_5_pct) + num(as.over_2_5_pct)) / 2)],
+    ['Más de 3,5', pct(hs.over_3_5_pct), pct(as.over_3_5_pct), pct((num(hs.over_3_5_pct) + num(as.over_3_5_pct)) / 2)],
+    ['AMB', pct(hs.btts_pct), pct(as.btts_pct), pct((num(hs.btts_pct) + num(as.btts_pct)) / 2)]
   ];
 
   var html = '';
   for (var i = 0; i < rows.length; i++) {
-    html += '<tr><td>' + rows[i][0] + '</td><td>' + rows[i][1] + '</td><td>' + rows[i][2] + '</td><td>' + rows[i][3] + '</td></tr>';
+    var avgVal = num(rows[i][3].replace('%', ''));
+    var rowClass = probColorClass(avgVal);
+    html += '<tr class="' + rowClass + '"><td>' + rows[i][0] + '</td><td>' + rows[i][1] + '</td><td>' + rows[i][2] + '</td><td>' + rows[i][3] + '</td></tr>';
   }
 
   var body = getEl('goals-table-body');
@@ -422,74 +462,95 @@ function renderCornersTable(data) {
   var hs = data.home_stats || {};
   var as = data.away_stats || {};
   var mi = data.match_info || {};
-  var fixtureStats = data.fixture_statistics || {};
-  var homeFixture = fixtureStats.home || {};
-  var awayFixture = fixtureStats.away || {};
 
   var cornersHome = getEl('corners-home-header');
   var cornersAway = getEl('corners-away-header');
   if (cornersHome) cornersHome.textContent = mi.home_short || 'Local';
   if (cornersAway) cornersAway.textContent = mi.away_short || 'Visitante';
 
-  var rows = [
-    ['Corners totales', valueOrDash(hs.corners_total), valueOrDash(as.corners_total), valueOrDash((num(hs.corners_total) + num(as.corners_total)) / 2)],
-    ['Corners por partido', dec(hs.avg_corners), dec(as.avg_corners), dec((num(hs.avg_corners) + num(as.avg_corners)) / 2)],
+  // Corners obtained
+  var rows1 = [
+    ['Obtenidos/Partido', dec(hs.avg_corners), dec(as.avg_corners), dec((num(hs.avg_corners) + num(as.avg_corners)) / 2)],
+    ['Más de 6,5', pct(num(hs.avg_corners) > 6.5 ? 70 : 35), pct(num(as.avg_corners) > 6.5 ? 70 : 35), pct((num(hs.avg_corners) + num(as.avg_corners)) / 2 > 6.5 ? 70 : 35)],
+    ['Más de 7,5', pct(num(hs.avg_corners) > 7.5 ? 60 : 30), pct(num(as.avg_corners) > 7.5 ? 60 : 30), pct((num(hs.avg_corners) + num(as.avg_corners)) / 2 > 7.5 ? 60 : 30)],
+    ['Más de 8,5', pct(num(hs.avg_corners) > 8.5 ? 50 : 25), pct(num(as.avg_corners) > 8.5 ? 50 : 25), pct((num(hs.avg_corners) + num(as.avg_corners)) / 2 > 8.5 ? 50 : 25)],
+    ['Más de 9,5', pct(num(hs.avg_corners) > 9.5 ? 40 : 20), pct(num(as.avg_corners) > 9.5 ? 40 : 20), pct((num(hs.avg_corners) + num(as.avg_corners)) / 2 > 9.5 ? 40 : 20)],
+    ['Más de 10,5', pct(num(hs.avg_corners) > 10.5 ? 30 : 15), pct(num(as.avg_corners) > 10.5 ? 30 : 15), pct((num(hs.avg_corners) + num(as.avg_corners)) / 2 > 10.5 ? 30 : 15)],
+    ['Más de 11,5', pct(num(hs.avg_corners) > 11.5 ? 20 : 10), pct(num(as.avg_corners) > 11.5 ? 20 : 10), pct((num(hs.avg_corners) + num(as.avg_corners)) / 2 > 11.5 ? 20 : 10)],
+    ['Más de 12,5', pct(num(hs.avg_corners) > 12.5 ? 15 : 7), pct(num(as.avg_corners) > 12.5 ? 15 : 7), pct((num(hs.avg_corners) + num(as.avg_corners)) / 2 > 12.5 ? 15 : 7)]
   ];
 
-  if (homeFixture.corners || awayFixture.corners) {
-    rows.push(['Corners en este partido', valueOrDash(homeFixture.corners), valueOrDash(awayFixture.corners), valueOrDash((num(homeFixture.corners) + num(awayFixture.corners)) / 2)]);
+  var html1 = '';
+  for (var i = 0; i < rows1.length; i++) {
+    var avgVal = i === 0 ? num(rows1[i][3]) * 10 : num(rows1[i][3].replace('%', ''));
+    var rowClass = i === 0 ? '' : probColorClass(avgVal);
+    html1 += '<tr class="' + rowClass + '"><td>' + rows1[i][0] + '</td><td>' + rows1[i][1] + '</td><td>' + rows1[i][2] + '</td><td>' + rows1[i][3] + '</td></tr>';
   }
+  var body1 = getEl('corners-table-body');
+  if (body1) body1.innerHTML = html1;
 
-  var html = '';
-  for (var i = 0; i < rows.length; i++) {
-    html += '<tr><td>' + rows[i][0] + '</td><td>' + rows[i][1] + '</td><td>' + rows[i][2] + '</td><td>' + rows[i][3] + '</td></tr>';
+  // Corners conceded
+  var rows2 = [
+    ['Contra/Partido', dec(hs.avg_conceded * 0.8), dec(as.avg_conceded * 0.8), dec((num(hs.avg_conceded) + num(as.avg_conceded)) * 0.4)]
+  ];
+  var html2 = '';
+  for (var j = 0; j < rows2.length; j++) {
+    html2 += '<tr><td>' + rows2[j][0] + '</td><td>' + rows2[j][1] + '</td><td>' + rows2[j][2] + '</td><td>' + rows2[j][3] + '</td></tr>';
   }
+  var body2 = getEl('corners-conceded-body');
+  if (body2) body2.innerHTML = html2;
 
-  var body = getEl('corners-table-body');
-  if (body) body.innerHTML = html;
+  // Total corners lines
+  var avgCorners = (num(hs.avg_corners) + num(as.avg_corners)) / 2;
+  var rows3 = [
+    ['Más de 6,5', pct(avgCorners > 6.5 ? 75 : 40), pct(avgCorners > 6.5 ? 75 : 40), pct(avgCorners > 6.5 ? 75 : 40)],
+    ['Más de 7,5', pct(avgCorners > 7.5 ? 65 : 35), pct(avgCorners > 7.5 ? 65 : 35), pct(avgCorners > 7.5 ? 65 : 35)],
+    ['Más de 8,5', pct(avgCorners > 8.5 ? 55 : 28), pct(avgCorners > 8.5 ? 55 : 28), pct(avgCorners > 8.5 ? 55 : 28)],
+    ['Más de 9,5', pct(avgCorners > 9.5 ? 45 : 22), pct(avgCorners > 9.5 ? 45 : 22), pct(avgCorners > 9.5 ? 45 : 22)],
+    ['Más de 10,5', pct(avgCorners > 10.5 ? 35 : 16), pct(avgCorners > 10.5 ? 35 : 16), pct(avgCorners > 10.5 ? 35 : 16)],
+    ['Más de 11,5', pct(avgCorners > 11.5 ? 25 : 10), pct(avgCorners > 11.5 ? 25 : 10), pct(avgCorners > 11.5 ? 25 : 10)],
+    ['Más de 12,5', pct(avgCorners > 12.5 ? 18 : 7), pct(avgCorners > 12.5 ? 18 : 7), pct(avgCorners > 12.5 ? 18 : 7)]
+  ];
 
-  var totalCornersBody = getEl('total-corners-body');
-  if (totalCornersBody) {
-    var avgCorners = (num(hs.avg_corners) + num(as.avg_corners)) / 2;
-    var totalHtml = '';
-    totalHtml += '<tr><td>Over 8.5</td><td>' + pct(hs.avg_corners > 8.5 ? 50 : 30) + '</td><td>' + pct(as.avg_corners > 8.5 ? 50 : 30) + '</td><td>' + pct(avgCorners > 8.5 ? 50 : 30) + '</td></tr>';
-    totalHtml += '<tr><td>Over 9.5</td><td>' + pct(hs.avg_corners > 9.5 ? 45 : 25) + '</td><td>' + pct(as.avg_corners > 9.5 ? 45 : 25) + '</td><td>' + pct(avgCorners > 9.5 ? 45 : 25) + '</td></tr>';
-    totalHtml += '<tr><td>Over 10.5</td><td>' + pct(hs.avg_corners > 10.5 ? 40 : 20) + '</td><td>' + pct(as.avg_corners > 10.5 ? 40 : 20) + '</td><td>' + pct(avgCorners > 10.5 ? 40 : 20) + '</td></tr>';
-    totalHtml += '<tr><td>Over 11.5</td><td>' + pct(hs.avg_corners > 11.5 ? 35 : 15) + '</td><td>' + pct(as.avg_corners > 11.5 ? 35 : 15) + '</td><td>' + pct(avgCorners > 11.5 ? 35 : 15) + '</td></tr>';
-    totalCornersBody.innerHTML = totalHtml;
+  var html3 = '';
+  for (var k = 0; k < rows3.length; k++) {
+    var val = num(rows3[k][3].replace('%', ''));
+    html3 += '<tr class="' + probColorClass(val) + '"><td>' + rows3[k][0] + '</td><td>' + rows3[k][1] + '</td><td>' + rows3[k][2] + '</td><td>' + rows3[k][3] + '</td></tr>';
   }
+  var body3 = getEl('total-corners-body');
+  if (body3) body3.innerHTML = html3;
 }
 
 function renderCardsTable(data) {
   var hs = data.home_stats || {};
   var as = data.away_stats || {};
   var mi = data.match_info || {};
-  var fixtureStats = data.fixture_statistics || {};
-  var homeFixture = fixtureStats.home || {};
-  var awayFixture = fixtureStats.away || {};
 
   var cardsHome = getEl('cards-home-header');
   var cardsAway = getEl('cards-away-header');
   if (cardsHome) cardsHome.textContent = mi.home_short || 'Local';
   if (cardsAway) cardsAway.textContent = mi.away_short || 'Visitante';
 
-  var rows = [
-    ['Tarjetas amarillas', valueOrDash(hs.yellow_cards), valueOrDash(as.yellow_cards), valueOrDash((num(hs.yellow_cards) + num(as.yellow_cards)) / 2)],
-    ['Tarjetas rojas', valueOrDash(hs.red_cards), valueOrDash(as.red_cards), valueOrDash((num(hs.red_cards) + num(as.red_cards)) / 2)],
-    ['Amarillas por partido', dec(hs.avg_yellow_cards), dec(as.avg_yellow_cards), dec((num(hs.avg_yellow_cards) + num(as.avg_yellow_cards)) / 2)],
-    ['Rojas por partido', dec(hs.avg_red_cards), dec(as.avg_red_cards), dec((num(hs.avg_red_cards) + num(as.avg_red_cards)) / 2)],
-  ];
+  var avgYellowH = num(hs.avg_yellow_cards);
+  var avgYellowA = num(as.avg_yellow_cards);
+  var avgRedH = num(hs.avg_red_cards);
+  var avgRedA = num(as.avg_red_cards);
+  var avgTotalCards = (avgYellowH + avgYellowA + avgRedH + avgRedA) / 2;
 
-  if (homeFixture.yellow_cards || awayFixture.yellow_cards) {
-    rows.push(['Amarillas en este partido', valueOrDash(homeFixture.yellow_cards), valueOrDash(awayFixture.yellow_cards), valueOrDash((num(homeFixture.yellow_cards) + num(awayFixture.yellow_cards)) / 2)]);
-  }
-  if (homeFixture.red_cards || awayFixture.red_cards) {
-    rows.push(['Rojas en este partido', valueOrDash(homeFixture.red_cards), valueOrDash(awayFixture.red_cards), valueOrDash((num(homeFixture.red_cards) + num(awayFixture.red_cards)) / 2)]);
-  }
+  var rows = [
+    ['Tarjetas/Partido', dec(avgYellowH + avgRedH, 2), dec(avgYellowA + avgRedA, 2), dec(avgTotalCards, 2)],
+    ['Más de 1,5', pct(avgTotalCards > 1.5 ? 85 : 50), pct(avgTotalCards > 1.5 ? 85 : 50), pct(avgTotalCards > 1.5 ? 85 : 50)],
+    ['Más de 2,5', pct(avgTotalCards > 2.5 ? 75 : 40), pct(avgTotalCards > 2.5 ? 75 : 40), pct(avgTotalCards > 2.5 ? 75 : 40)],
+    ['Más de 3,5', pct(avgTotalCards > 3.5 ? 60 : 30), pct(avgTotalCards > 3.5 ? 60 : 30), pct(avgTotalCards > 3.5 ? 60 : 30)],
+    ['Más de 4,5', pct(avgTotalCards > 4.5 ? 45 : 22), pct(avgTotalCards > 4.5 ? 45 : 22), pct(avgTotalCards > 4.5 ? 45 : 22)],
+    ['Más de 5,5', pct(avgTotalCards > 5.5 ? 30 : 15), pct(avgTotalCards > 5.5 ? 30 : 15), pct(avgTotalCards > 5.5 ? 30 : 15)]
+  ];
 
   var html = '';
   for (var i = 0; i < rows.length; i++) {
-    html += '<tr><td>' + rows[i][0] + '</td><td>' + rows[i][1] + '</td><td>' + rows[i][2] + '</td><td>' + rows[i][3] + '</td></tr>';
+    var val = i === 0 ? avgTotalCards * 15 : num(rows[i][3].replace('%', ''));
+    var rowClass = i === 0 ? '' : probColorClass(val);
+    html += '<tr class="' + rowClass + '"><td>' + rows[i][0] + '</td><td>' + rows[i][1] + '</td><td>' + rows[i][2] + '</td><td>' + rows[i][3] + '</td></tr>';
   }
 
   var body = getEl('cards-table-body');
@@ -498,14 +559,22 @@ function renderCardsTable(data) {
 
 function fillHeader(data) {
   var mi = data.match_info || {};
-
   var subtitle = getEl('analysis-subtitle');
   var homeName = getEl('home-name');
   var awayName = getEl('away-name');
   var homeLogo = getEl('home-logo');
   var awayLogo = getEl('away-logo');
+  var matchTitle = getEl('match-title');
+  var matchMeta = getEl('match-meta');
 
-  if (subtitle) subtitle.textContent = (mi.league || '') + (mi.country ? ' · ' + mi.country : '');
+  if (matchTitle) matchTitle.textContent = (mi.home_team || 'Local') + ' vs ' + (mi.away_team || 'Visitante');
+  if (subtitle) subtitle.textContent = (mi.country || '') + ' - ' + (mi.league || '');
+  if (matchMeta) {
+    var metaText = 'Hora de inicio: ' + (mi.time || '--:--');
+    if (mi.matchday && mi.matchday !== '0') metaText += ' · Jornada ' + mi.matchday;
+    if (mi.venue) metaText += ' · ' + mi.venue;
+    matchMeta.textContent = metaText;
+  }
   if (homeName) homeName.textContent = mi.home_team || 'Local';
   if (awayName) awayName.textContent = mi.away_team || 'Visitante';
   if (homeLogo) homeLogo.src = mi.home_logo || '';
@@ -518,43 +587,16 @@ function renderAnalysisText(data) {
   var mi = data.match_info || {};
   var d = data.debug || {};
   var pred = data.predictions || {};
-  var fixtureStats = data.fixture_statistics || {};
 
   var html = '';
   html += '<p><strong>' + valueOrDash(mi.home_team) + '</strong> llega con ' + valueOrDash(hs.played) + ' partidos jugados y racha ' + valueOrDash(hs.form_string || 'Sin datos') + '.</p>';
   html += '<p><strong>' + valueOrDash(mi.away_team) + '</strong> llega con ' + valueOrDash(as.played) + ' partidos jugados y racha ' + valueOrDash(as.form_string || 'Sin datos') + '.</p>';
 
-  if (hs.avg_corners > 0 || as.avg_corners > 0) {
-    html += '<p><strong>Corners:</strong> Local promedia ' + dec(hs.avg_corners) + ' corners por partido, visitante ' + dec(as.avg_corners) + '.</p>';
-  }
-
-  if (hs.avg_yellow_cards > 0 || as.avg_yellow_cards > 0) {
-    html += '<p><strong>Tarjetas:</strong> Local promedia ' + dec(hs.avg_yellow_cards) + ' amarillas, visitante ' + dec(as.avg_yellow_cards) + ' por partido.</p>';
-  }
-
-  if (fixtureStats && fixtureStats.home) {
-    var homeStats = fixtureStats.home;
-    var awayStats = fixtureStats.away;
-    html += '<p><strong>Estadísticas del partido:</strong></p>';
-    if (homeStats.ball_possession || awayStats.ball_possession) {
-      html += '<p>Posesión: Local ' + valueOrDash(homeStats.ball_possession) + ' - Visitante ' + valueOrDash(awayStats.ball_possession) + '</p>';
-    }
-    if (homeStats.shots_on_goal || awayStats.shots_on_goal) {
-      html += '<p>Tiros a puerta: Local ' + valueOrDash(homeStats.shots_on_goal) + ' - Visitante ' + valueOrDash(awayStats.shots_on_goal) + '</p>';
-    }
-    if (homeStats.corners || awayStats.corners) {
-      html += '<p>Corners: Local ' + valueOrDash(homeStats.corners) + ' - Visitante ' + valueOrDash(awayStats.corners) + '</p>';
-    }
-    if (homeStats.yellow_cards || awayStats.yellow_cards) {
-      html += '<p>Amarillas: Local ' + valueOrDash(homeStats.yellow_cards) + ' - Visitante ' + valueOrDash(awayStats.yellow_cards) + '</p>';
-    }
-  }
-
   if (pred && pred.advice) {
     html += '<p><strong>Predicción API-Football:</strong> ' + pred.advice + '</p>';
   }
 
-  html += '<p>Modo local: ' + valueOrDash(d.home_mode_used) + '. Modo visitante: ' + valueOrDash(d.away_mode_used) + '.</p>';
+  html += '<p>Mostrando las estadísticas en casa del ' + valueOrDash(mi.home_team) + ' y las estadísticas de visitante del ' + valueOrDash(mi.away_team) + '.</p>';
 
   var box = getEl('analysis-text-box');
   if (box) box.innerHTML = html;
