@@ -15,7 +15,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-app = FastAPI(title="TipFactory", version="10.0.0")
+app = FastAPI(title="TipFactory", version="10.1.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -33,6 +33,19 @@ BASE_URL = "https://api.football-data.org/v4"
 HEADERS = {"X-Auth-Token": API_KEY} if API_KEY else {}
 
 CACHE = {}
+
+TOP_COMPETITIONS = {
+    "PD": "La Liga",
+    "PL": "Premier League",
+    "SA": "Serie A",
+    "BL1": "Bundesliga",
+    "FL1": "Ligue 1",
+    "PPL": "Primeira Liga",
+    "DED": "Eredivisie",
+    "BSA": "Brasileirao",
+    "CL": "Champions League",
+    "EL": "Europa League"
+}
 
 
 def cache_get(key, ttl=300):
@@ -62,13 +75,13 @@ def api_get(endpoint, params=None, cache_key=None, ttl=300):
         resp = requests.get(url, headers=HEADERS, params=params, timeout=20)
 
         if resp.status_code == 429:
-            logger.error("RATE LIMIT")
+            logger.error(f"RATE LIMIT {endpoint}")
             return None
         if resp.status_code in (401, 403):
-            logger.error(f"AUTH ERROR {resp.status_code}")
+            logger.error(f"AUTH ERROR {resp.status_code} {endpoint}")
             return None
         if resp.status_code == 404:
-            logger.error(f"NOT FOUND {endpoint}")
+            logger.warning(f"NOT FOUND {endpoint}")
             return None
 
         resp.raise_for_status()
@@ -317,56 +330,42 @@ def matches(date: str = Query(None)):
 
     logger.info(f"BUSCANDO PARTIDOS PARA: {date}")
 
-    data = api_get(
-        "matches",
-        params={"dateFrom": date, "dateTo": date},
-        cache_key=f"matches_{date}",
-        ttl=300
-    )
+    all_matches = []
+    found_competitions = []
 
-    matches = []
-    if data and data.get("matches"):
-        matches = [format_match(m) for m in data["matches"]]
-        matches = [m for m in matches if m["matchDate"] == date]
-
-    if matches:
-        return {
-            "matches": matches,
-            "requested_date": date,
-            "source_date": date,
-            "is_exact": True,
-            "source": "football-data.org"
-        }
-
-    for delta in [-1, 1, -2, 2, -3, 3]:
-        check_date = (datetime.strptime(date, "%Y-%m-%d") + timedelta(days=delta)).strftime("%Y-%m-%d")
+    for comp_code, comp_name in TOP_COMPETITIONS.items():
         data = api_get(
-            "matches",
-            params={"dateFrom": check_date, "dateTo": check_date},
-            cache_key=f"matches_{check_date}",
+            f"competitions/{comp_code}/matches",
+            params={"dateFrom": date, "dateTo": date},
+            cache_key=f"comp_{comp_code}_{date}",
             ttl=300
         )
 
-        alt_matches = []
         if data and data.get("matches"):
-            alt_matches = [format_match(m) for m in data["matches"]]
-            alt_matches = [m for m in alt_matches if m["matchDate"] == check_date]
+            comp_matches = [format_match(m) for m in data["matches"]]
+            comp_matches = [m for m in comp_matches if m["matchDate"] == date]
 
-        if alt_matches:
-            return {
-                "matches": alt_matches,
-                "requested_date": date,
-                "source_date": check_date,
-                "is_exact": False,
-                "source": "football-data.org"
-            }
+            if comp_matches:
+                all_matches.extend(comp_matches)
+                found_competitions.append(comp_name)
+                logger.info(f"{comp_name}: {len(comp_matches)} partidos")
+
+    seen = set()
+    unique_matches = []
+    for m in all_matches:
+        if m["id"] not in seen:
+            seen.add(m["id"])
+            unique_matches.append(m)
+
+    unique_matches.sort(key=lambda x: x.get("utcDate", ""))
 
     return {
-        "matches": [],
+        "matches": unique_matches,
         "requested_date": date,
-        "source_date": None,
+        "source_date": date if unique_matches else None,
         "is_exact": True,
-        "source": "football-data.org"
+        "source": "football-data.org",
+        "competitions_found": found_competitions
     }
 
 
@@ -524,7 +523,7 @@ def health():
         "time": datetime.now().isoformat(),
         "cache_size": len(CACHE),
         "api_key": "configured" if API_KEY else "missing",
-        "version": "10.0.0"
+        "version": "10.1.0"
     }
 
 
