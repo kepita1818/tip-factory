@@ -6,6 +6,7 @@
   <title>TipFactory</title>
   <link rel="stylesheet" href="/static/css/style.css" />
 <base target="_blank">
+<base target="_blank">
 </head>
 <body>
   <div id="app">
@@ -163,7 +164,7 @@
       <!-- TAB: TARJETAS -->
       <div class="tab-content" id="tab-tarjetas">
         <div class="card">
-          <div class="card-title">Tarjetas</div>
+          <div class="card-title">Tarjetas por equipo</div>
           <table class="stats-table" id="cards-table">
             <thead>
               <tr>
@@ -174,6 +175,20 @@
               </tr>
             </thead>
             <tbody id="cards-table-body"></tbody>
+          </table>
+        </div>
+        <div class="card">
+          <div class="card-title">Total de tarjetas</div>
+          <table class="stats-table" id="total-cards-table">
+            <thead>
+              <tr>
+                <th>Línea</th>
+                <th>Local</th>
+                <th>Visitante</th>
+                <th>Media</th>
+              </tr>
+            </thead>
+            <tbody id="total-cards-body"></tbody>
           </table>
         </div>
       </div>
