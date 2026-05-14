@@ -1,4 +1,4 @@
-console.log('APP START');
+console.log('APP START - API-Football v3');
 
 var currentDate = new Date();
 var currentFilter = 'all';
@@ -269,6 +269,7 @@ function renderFormBadges(list, elementId) {
 
 function renderProbabilities(data) {
   var p = data.probabilities || {};
+  var pred = data.predictions || {};
   var html = '';
 
   html += '<div class="prob-box"><div class="prob-box-value">' + pct(p.over_1_5) + '</div><div class="prob-box-label">Más de 1.5</div><div class="prob-box-sub">Promedio de ambos</div></div>';
@@ -276,7 +277,13 @@ function renderProbabilities(data) {
   html += '<div class="prob-box"><div class="prob-box-value">' + pct(p.over_3_5) + '</div><div class="prob-box-label">Más de 3.5</div><div class="prob-box-sub">Promedio de ambos</div></div>';
   html += '<div class="prob-box"><div class="prob-box-value">' + pct(p.btts) + '</div><div class="prob-box-label">AMB</div><div class="prob-box-sub">Ambos marcan</div></div>';
   html += '<div class="prob-box"><div class="prob-box-value">' + dec(p.total_expected_goals) + '</div><div class="prob-box-label">Goles esperados</div><div class="prob-box-sub">Media ofensiva</div></div>';
-  html += '<div class="prob-box"><div class="prob-box-value">' + dec(data.odds.home) + ' / ' + dec(data.odds.draw) + ' / ' + dec(data.odds.away) + '</div><div class="prob-box-label">Cuotas</div><div class="prob-box-sub">Si la API las trae</div></div>';
+  
+  // Predicciones de API-Football
+  if (pred && pred.advice) {
+    html += '<div class="prob-box"><div class="prob-box-value">' + (pred.winner || '-') + '</div><div class="prob-box-label">Predicción</div><div class="prob-box-sub">' + pred.advice + '</div></div>';
+  } else {
+    html += '<div class="prob-box"><div class="prob-box-value">' + dec(data.odds.home) + ' / ' + dec(data.odds.draw) + ' / ' + dec(data.odds.away) + '</div><div class="prob-box-label">Probabilidades</div><div class="prob-box-sub">Home / Draw / Away</div></div>';
+  }
 
   var grid = getEl('prob-grid');
   if (grid) grid.innerHTML = html;
@@ -397,10 +404,16 @@ function renderAnalysisText(data) {
   var as = data.away_stats || {};
   var mi = data.match_info || {};
   var d = data.debug || {};
+  var pred = data.predictions || {};
 
   var html = '';
-  html += '<p><strong>' + valueOrDash(mi.home_team) + '</strong> llega con ' + valueOrDash(hs.played) + ' partidos usados y racha ' + valueOrDash(hs.form_string || 'Sin datos') + '.</p>';
-  html += '<p><strong>' + valueOrDash(mi.away_team) + '</strong> llega con ' + valueOrDash(as.played) + ' partidos usados y racha ' + valueOrDash(as.form_string || 'Sin datos') + '.</p>';
+  html += '<p><strong>' + valueOrDash(mi.home_team) + '</strong> llega con ' + valueOrDash(hs.played) + ' partidos jugados y racha ' + valueOrDash(hs.form_string || 'Sin datos') + '.</p>';
+  html += '<p><strong>' + valueOrDash(mi.away_team) + '</strong> llega con ' + valueOrDash(as.played) + ' partidos jugados y racha ' + valueOrDash(as.form_string || 'Sin datos') + '.</p>';
+  
+  if (pred && pred.advice) {
+    html += '<p><strong>Predicción API-Football:</strong> ' + pred.advice + '</p>';
+  }
+  
   html += '<p>Modo local: ' + valueOrDash(d.home_mode_used) + '. Modo visitante: ' + valueOrDash(d.away_mode_used) + '.</p>';
 
   var box = getEl('analysis-text-box');
