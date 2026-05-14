@@ -26,7 +26,6 @@ function formatLocalTime(dateString) {
   if (!dateString) return '--:--';
   var date = new Date(dateString.replace(' ', 'T'));
   if (isNaN(date.getTime())) return dateString.slice(11, 16) || '--:--';
-
   return date.toLocaleTimeString('es-ES', {
     hour: '2-digit',
     minute: '2-digit',
@@ -142,12 +141,6 @@ function loadMatches() {
     .then(function (data) {
       console.log('MATCHES DATA', data);
       allMatches = Array.isArray(data.matches) ? data.matches : [];
-      allMatches.meta = {
-        requestedDate: data.requested_date,
-        sourceDate: data.source_date,
-        isExact: data.is_exact,
-        source: data.source || ''
-      };
       renderMatches();
     })
     .catch(function (e) {
@@ -182,14 +175,12 @@ function renderMatches() {
     var match = matches[i];
     var home = match.homeTeam || {};
     var away = match.awayTeam || {};
-    var comp = match.competition || {};
     var homeScore = match.homeScore;
     var awayScore = match.awayScore;
 
     html += ''
       + '<div class="match-card"'
       + ' data-match-id="' + (match.id || 0) + '"'
-      + ' data-competition-id="' + (comp.id || 0) + '"'
       + ' data-home-team="' + encodeURIComponent(home.name || 'Local') + '"'
       + ' data-away-team="' + encodeURIComponent(away.name || 'Visitante') + '"'
       + ' data-home-logo="' + encodeURIComponent(home.crest || '') + '"'
@@ -359,7 +350,6 @@ function fillHeader(data) {
 function openAnalysis(card) {
   var matchId = card.dataset.matchId || '0';
   var params = new URLSearchParams({
-    competition_id: card.dataset.competitionId || '',
     home_team: decodeURIComponent(card.dataset.homeTeam || 'Local'),
     away_team: decodeURIComponent(card.dataset.awayTeam || 'Visitante'),
     home_logo: decodeURIComponent(card.dataset.homeLogo || ''),
