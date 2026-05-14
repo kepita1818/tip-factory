@@ -3,7 +3,7 @@ import logging
 from datetime import datetime
 
 import requests
-from fastapi import FastAPI, Query, Request, HTTPException
+from fastapi import FastAPI, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -12,7 +12,7 @@ from fastapi.templating import Jinja2Templates
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
 
-app = FastAPI(title="TipFactory", version="1.0.0")
+app = FastAPI(title="TipFactory", version="1.1.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -249,18 +249,29 @@ def build_stats(team_id, matches, standings=None):
     return form, stats
 
 
-def get_team_matches(team_id, competition_id=None, limit=10):
+def get_team_matches(team_id, competition_id=None, venue=None, limit=10):
     if not team_id:
         return []
 
-    params = {"status": "FINISHED", "limit": limit}
+    params = {
+        "status": "FINISHED",
+        "limit": limit
+    }
+
     if competition_id:
         params["competitions"] = str(competition_id)
 
-    data = api_get(f"teams/{team_id}/matches", params=params, cache_key=f"tm_{team_id}_{competition_id}_{limit}", ttl=1800)
-    matches = data.get("matches", []) if isinstance(data, dict) else []
+    if venue:
+        params["venue"] = venue
 
-    return matches
+    data = api_get(
+        f"teams/{team_id}/matches",
+        params=params,
+        cache_key=f"tm_{team_id}_{competition_id}_{venue}_{limit}",
+        ttl=1800
+    )
+
+    return data.get("matches", []) if isinstance(data, dict) else []
 
 
 def get_standings(team_id, competition_id, season_year):
@@ -365,8 +376,8 @@ def analyze(
 ):
     season_year = datetime.utcnow().year
 
-    home_recent = get_team_matches(home_id, competition_id, 10)
-    away_recent = get_team_matches(away_id, competition_id, 10)
+    home_recent = get_team_matches(home_id, competition_id, venue="HOME", limit=10)
+    away_recent = get_team_matches(away_id, competition_id, venue="AWAY", limit=10)
 
     home_standings = get_standings(home_id, competition_id, season_year)
     away_standings = get_standings(away_id, competition_id, season_year)
@@ -376,8 +387,8 @@ def analyze(
 
     h2h_data = api_get(
         f"matches/{match_id}/head2head",
-        params={"limit": 5},
-        cache_key=f"h2h_{match_id}",
+        params={"limit": 5, "competitions": str(competition_id)},
+        cache_key=f"h2h_{match_id}_{competition_id}",
         ttl=3600
     )
 
@@ -460,7 +471,9 @@ def analyze(
             "away_id": away_id,
             "competition_id": competition_id,
             "home_recent_count": len(home_recent),
-            "away_recent_count": len(away_recent)
+            "away_recent_count": len(away_recent),
+            "home_venue_filter": "HOME",
+            "away_venue_filter": "AWAY"
         }
     })
 
@@ -472,7 +485,7 @@ def health():
         "time": datetime.now().isoformat(),
         "cache_size": len(CACHE),
         "api_key": "configured" if API_KEY else "missing",
-        "version": "1.0.0"
+        "version": "1.1.0"
     }
 
 
