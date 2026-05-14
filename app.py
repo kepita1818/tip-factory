@@ -283,92 +283,57 @@ def get_team_real_stats(team_id, league_id, season, max_fixtures=10):
         ttl=3600
     )
 
-    if not fixtures_data or not isinstance(fixtures_data, dict):
-        return None
+    fixtures = fixtures_data.get("response", []) if fixtures_data else []
+    if not fixtures: return None
 
-    fixtures = fixtures_data.get("response", [])
-    if not fixtures:
-        return None
+    # Contadores de frecuencia REAL (Match Total)
+    stats = {
+        "over_85_cor": 0, "over_95_cor": 0,
+        "over_35_card": 0, "over_45_card": 0,
+        "total_corners": 0, "total_cards": 0,
+        "matches_with_stats": 0
+    }
 
-    # --- ACUMULADORES ---
-    total_gf, total_ga = 0, 0
-    total_corners_match, total_cards_match = 0, 0
-    matches_with_stats = 0
-    played = len(fixtures)
-
-    # Contadores de Goles (ya los tenías)
-    over_15_count, over_25_count, btts_count = 0, 0, 0
-    
-    # NUEVOS: Contadores de Frecuencia Real (Corners y Tarjetas)
-    over_75_cor_count, over_85_cor_count, over_95_cor_count = 0, 0, 0
-    over_35_card_count, over_45_card_count, over_55_card_count = 0, 0, 0
-
-    for fixture in fixtures:
-        f_id = fixture["fixture"]["id"]
-        g_h = fixture["goals"]["home"] or 0
-        g_a = fixture["goals"]["away"] or 0
+    # Procesamos los últimos 10 partidos uno a uno
+    for f in fixtures:
+        f_id = f["fixture"]["id"]
+        f_stats = get_fixture_statistics(f_id) # Esto obtiene stats de AMBOS equipos
         
-        # Lógica de Goles Match Total
-        m_goals = g_h + g_a
-        if m_goals > 1.5: over_15_count += 1
-        if m_goals > 2.5: over_25_count += 1
-        if g_h > 0 and g_a > 0: btts_count += 1
-
-        # --- ESTADÍSTICAS DE CÓRNERS Y TARJETAS (MATCH TOTAL) ---
-        f_stats = get_fixture_statistics(f_id)
         if f_stats and len(f_stats) >= 2:
-            # Sumamos ambos equipos para tener el total REAL del partido
             m_corners = 0
             m_cards = 0
-            
             for t_id in f_stats:
-                # Córners
+                # Sumamos córners de los dos equipos
                 c = f_stats[t_id].get("Corner Kicks", 0)
                 m_corners += int(c) if c else 0
-                # Tarjetas (Amarillas + Rojas)
+                # Sumamos tarjetas de los dos equipos
                 y = f_stats[t_id].get("Yellow Cards", 0)
                 r = f_stats[t_id].get("Red Cards", 0)
                 m_cards += (int(y) if y else 0) + (int(r) if r else 0)
 
-            # Guardamos totales y aumentamos contadores de frecuencia
-            total_corners_match += m_corners
-            total_cards_match += m_cards
+            # ¿Se cumplió la línea en este partido?
+            if m_corners > 8.5: stats["over_85_cor"] += 1
+            if m_corners > 9.5: stats["over_95_cor"] += 1
+            if m_cards > 3.5: stats["over_35_card"] += 1
+            if m_cards > 4.5: stats["over_45_card"] += 1
             
-            if m_corners > 7.5: over_75_cor_count += 1
-            if m_corners > 8.5: over_85_cor_count += 1
-            if m_corners > 9.5: over_95_cor_count += 1
-            
-            if m_cards > 3.5: over_35_card_count += 1
-            if m_cards > 4.5: over_45_card_count += 1
-            if m_cards > 5.5: over_55_card_count += 1
-            
-            matches_with_stats += 1
+            stats["total_corners"] += m_corners
+            stats["total_cards"] += m_cards
+            stats["matches_with_stats"] += 1
 
-    if played == 0: return None
-    divisor = matches_with_stats if matches_with_stats > 0 else 1
-
+    m_count = stats["matches_with_stats"] or 1
+    
+    # Retornamos los porcentajes de éxito REAL
     return {
-        "played": played,
-        "avg_total_goals": round((over_25_count/played)*100, 1), # % Over 2.5 para consistencia
-        "over_1_5_pct": round((over_15_count / played) * 100),
-        "over_2_5_pct": round((over_25_count / played) * 100),
-        "btts_pct": round((btts_count / played) * 100),
-        
-        # --- RESULTADOS REALES CÓRNERS ---
-        "avg_corners": round(total_corners_match / divisor, 2),
-        "over_75_corners_pct": round((over_75_cor_count / divisor) * 100),
-        "over_85_corners_pct": round((over_85_cor_count / divisor) * 100),
-        "over_95_corners_pct": round((over_95_cor_count / divisor) * 100),
-        
-        # --- RESULTADOS REALES TARJETAS ---
-        "avg_total_cards": round(total_cards_match / divisor, 2),
-        "over_35_cards_pct": round((over_35_card_count / divisor) * 100),
-        "over_45_cards_pct": round((over_45_card_count / divisor) * 100),
-        "over_55_cards_pct": round((over_55_card_count / divisor) * 100),
-        
-        "matches_with_stats": matches_with_stats
+        "played": len(fixtures),
+        "avg_corners": round(stats["total_corners"] / m_count, 2),
+        "over_85_corners_pct": round((stats["over_85_cor"] / m_count) * 100),
+        "over_95_corners_pct": round((stats["over_95_cor"] / m_count) * 100),
+        "avg_total_cards": round(stats["total_cards"] / m_count, 2),
+        "over_35_cards_pct": round((stats["over_35_card"] / m_count) * 100),
+        "over_45_cards_pct": round((stats["over_45_card"] / m_count) * 100),
+        "matches_with_stats": m_count
     }
-
 
 # ============================================================
 # PREDICCIONES
