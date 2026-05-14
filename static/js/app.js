@@ -1,4 +1,4 @@
-console.log('TipFactory v10.1 - Probabilidades reales');
+console.log('TipFactory v11.0 - Datos reales API-Football');
 
 var currentDate = new Date();
 var allMatches = [];
@@ -340,91 +340,56 @@ function probColorClass(val) {
 }
 
 // ============================================
-// FUNCIONES DE PROBABILIDAD REAL (Poisson)
-// ============================================
-
-// Factorial para Poisson
-function factorial(n) {
-  if (n <= 1) return 1;
-  var result = 1;
-  for (var i = 2; i <= n; i++) result *= i;
-  return result;
-}
-
-// Probabilidad de Poisson: P(X=k) = (lambda^k * e^-lambda) / k!
-function poisson(lambda, k) {
-  return (Math.pow(lambda, k) * Math.exp(-lambda)) / factorial(k);
-}
-
-// Probabilidad acumulada P(X > threshold) = 1 - P(X <= threshold)
-function poissonOver(lambda, threshold) {
-  var cumul = 0;
-  for (var k = 0; k <= threshold; k++) {
-    cumul += poisson(lambda, k);
-  }
-  return Math.min(100, Math.max(0, (1 - cumul) * 100));
-}
-
-// Probabilidad acumulada P(X <= threshold)
-function poissonUnder(lambda, threshold) {
-  var cumul = 0;
-  for (var k = 0; k <= threshold; k++) {
-    cumul += poisson(lambda, k);
-  }
-  return Math.min(100, Math.max(0, cumul * 100));
-}
-
-// Probabilidad de que la suma de dos Poisson independientes supere un umbral
-// Si X~Poisson(a) e Y~Poisson(b), entonces X+Y~Poisson(a+b)
-function poissonSumOver(lambda1, lambda2, threshold) {
-  return poissonOver(lambda1 + lambda2, threshold);
-}
-
-// ============================================
-// RENDER PROBABILIDADES GENERAL
+// RENDER PROBABILIDADES GENERAL (datos reales)
 // ============================================
 
 function renderProbabilities(data) {
   var p = data.probabilities || {};
   var pred = data.predictions || {};
+  var hs = data.home_stats || {};
+  var as = data.away_stats || {};
   var html = '';
 
+  // Over 2.5 - % real de frecuencia
   var over25 = num(p.over_2_5);
   html += '<div class="prob-box ' + probColorClass(over25) + '">';
   html += '<div class="prob-box-value">' + pct(p.over_2_5) + ' Más de 2,5</div>';
-  html += '<div class="prob-box-sub">Media estimada</div>';
+  html += '<div class="prob-box-sub">Basado en ' + (hs.played || 0) + ' partidos reales</div>';
   html += '</div>';
 
+  // Over 1.5
   var over15 = num(p.over_1_5);
   html += '<div class="prob-box ' + probColorClass(over15) + '">';
   html += '<div class="prob-box-value">' + pct(p.over_1_5) + ' Más de 1,5</div>';
-  html += '<div class="prob-box-sub">Media estimada</div>';
+  html += '<div class="prob-box-sub">Frecuencia real</div>';
   html += '</div>';
 
+  // BTTS
   var btts = num(p.btts);
   html += '<div class="prob-box ' + probColorClass(btts) + '">';
   html += '<div class="prob-box-value">' + pct(p.btts) + ' AEM</div>';
-  html += '<div class="prob-box-sub">Ambos equipos marcan</div>';
+  html += '<div class="prob-box-sub">Ambos marcan</div>';
   html += '</div>';
 
+  // Goals per match
   var xg = num(p.total_expected_goals);
   html += '<div class="prob-box ' + probColorClass(xg * 20) + '">';
   html += '<div class="prob-box-value">' + dec(xg, 2) + ' Goles / Partido</div>';
-  html += '<div class="prob-box-sub">Goles esperados</div>';
+  html += '<div class="prob-box-sub">Media real</div>';
   html += '</div>';
 
-  var hs = data.home_stats || {};
-  var as = data.away_stats || {};
+  // Cards REALES
   var avgCards = (num(hs.avg_yellow_cards) + num(as.avg_yellow_cards)) / 2;
   html += '<div class="prob-box ' + probColorClass(avgCards * 15) + '">';
   html += '<div class="prob-box-value">' + dec(avgCards, 2) + ' Tarjetas</div>';
-  html += '<div class="prob-box-sub">Amarillas esperadas</div>';
+  html += '<div class="prob-box-sub">Amarillas reales por partido</div>';
   html += '</div>';
 
+  // Corners REALES
   var avgCorners = (num(hs.avg_corners) + num(as.avg_corners)) / 2;
   html += '<div class="prob-box ' + probColorClass(avgCorners * 7) + '">';
   html += '<div class="prob-box-value">' + dec(avgCorners, 2) + ' Córners</div>';
-  html += '<div class="prob-box-sub">Córners esperados</div>';
+  html += '<div class="prob-box-sub">Córners reales por partido</div>';
   html += '</div>';
 
   var grid = getEl('prob-grid');
@@ -448,7 +413,7 @@ function renderMiniStats(data) {
 }
 
 // ============================================
-// GOLES - Probabilidades reales con Poisson
+// GOLES - Porcentajes REALES del backend
 // ============================================
 
 function renderGoalsTable(data) {
@@ -461,15 +426,11 @@ function renderGoalsTable(data) {
   if (homeHeader) homeHeader.textContent = mi.home_short || 'Local';
   if (awayHeader) awayHeader.textContent = mi.away_short || 'Visitante';
 
-  var homeLambda = num(hs.avg_team_goals);
-  var awayLambda = num(as.avg_team_goals);
-  var totalLambda = homeLambda + awayLambda;
-
   var rows = [
-    ['Goles/Partido', dec(homeLambda), dec(awayLambda), dec(totalLambda)],
-    ['Más de 1,5', pct(poissonOver(homeLambda, 1)), pct(poissonOver(awayLambda, 1)), pct(poissonOver(totalLambda, 1))],
-    ['Más de 2,5', pct(poissonOver(homeLambda, 2)), pct(poissonOver(awayLambda, 2)), pct(poissonOver(totalLambda, 2))],
-    ['Más de 3,5', pct(poissonOver(homeLambda, 3)), pct(poissonOver(awayLambda, 3)), pct(poissonOver(totalLambda, 3))],
+    ['Goles/Partido', dec(hs.avg_team_goals), dec(as.avg_team_goals), dec((num(hs.avg_team_goals) + num(as.avg_team_goals)) / 2)],
+    ['Más de 1,5', pct(hs.over_1_5_pct), pct(as.over_1_5_pct), pct((num(hs.over_1_5_pct) + num(as.over_1_5_pct)) / 2)],
+    ['Más de 2,5', pct(hs.over_2_5_pct), pct(as.over_2_5_pct), pct((num(hs.over_2_5_pct) + num(as.over_2_5_pct)) / 2)],
+    ['Más de 3,5', pct(hs.over_3_5_pct), pct(as.over_3_5_pct), pct((num(hs.over_3_5_pct) + num(as.over_3_5_pct)) / 2)],
     ['AMB', pct(hs.btts_pct), pct(as.btts_pct), pct((num(hs.btts_pct) + num(as.btts_pct)) / 2)]
   ];
 
@@ -485,9 +446,30 @@ function renderGoalsTable(data) {
 }
 
 // ============================================
-// CORNERS - Probabilidades reales con Poisson
-// Cada equipo tiene su lambda propio
+// CORNERS - Datos REALES de la API
+// Los % de over/under se calculan desde las medias reales con Poisson
+// porque la API no da historial de líneas de corners
 // ============================================
+
+// Poisson para estimar probabilidades de líneas desde la media real
+function factorial(n) {
+  if (n <= 1) return 1;
+  var result = 1;
+  for (var i = 2; i <= n; i++) result *= i;
+  return result;
+}
+
+function poisson(lambda, k) {
+  return (Math.pow(lambda, k) * Math.exp(-lambda)) / factorial(k);
+}
+
+function poissonOver(lambda, threshold) {
+  var cumul = 0;
+  for (var k = 0; k <= threshold; k++) {
+    cumul += poisson(lambda, k);
+  }
+  return Math.min(100, Math.max(0, (1 - cumul) * 100));
+}
 
 function renderCornersTable(data) {
   var hs = data.home_stats || {};
@@ -501,18 +483,19 @@ function renderCornersTable(data) {
 
   var homeCorners = num(hs.avg_corners);
   var awayCorners = num(as.avg_corners);
+  var avgCorners = (homeCorners + awayCorners) / 2;
   var totalCorners = homeCorners + awayCorners;
 
-  // Corners ganados por equipo (lambda individual)
+  // Corners ganados por equipo (datos reales)
   var rows1 = [
-    ['Obtenidos/Partido', dec(homeCorners), dec(awayCorners), dec((homeCorners + awayCorners) / 2)],
-    ['Más de 6,5', pct(poissonOver(homeCorners, 6)), pct(poissonOver(awayCorners, 6)), pct(poissonOver((homeCorners + awayCorners) / 2, 6))],
-    ['Más de 7,5', pct(poissonOver(homeCorners, 7)), pct(poissonOver(awayCorners, 7)), pct(poissonOver((homeCorners + awayCorners) / 2, 7))],
-    ['Más de 8,5', pct(poissonOver(homeCorners, 8)), pct(poissonOver(awayCorners, 8)), pct(poissonOver((homeCorners + awayCorners) / 2, 8))],
-    ['Más de 9,5', pct(poissonOver(homeCorners, 9)), pct(poissonOver(awayCorners, 9)), pct(poissonOver((homeCorners + awayCorners) / 2, 9))],
-    ['Más de 10,5', pct(poissonOver(homeCorners, 10)), pct(poissonOver(awayCorners, 10)), pct(poissonOver((homeCorners + awayCorners) / 2, 10))],
-    ['Más de 11,5', pct(poissonOver(homeCorners, 11)), pct(poissonOver(awayCorners, 11)), pct(poissonOver((homeCorners + awayCorners) / 2, 11))],
-    ['Más de 12,5', pct(poissonOver(homeCorners, 12)), pct(poissonOver(awayCorners, 12)), pct(poissonOver((homeCorners + awayCorners) / 2, 12))]
+    ['Obtenidos/Partido', dec(homeCorners), dec(awayCorners), dec(avgCorners)],
+    ['Más de 4,5', pct(poissonOver(homeCorners, 4)), pct(poissonOver(awayCorners, 4)), pct(poissonOver(avgCorners, 4))],
+    ['Más de 5,5', pct(poissonOver(homeCorners, 5)), pct(poissonOver(awayCorners, 5)), pct(poissonOver(avgCorners, 5))],
+    ['Más de 6,5', pct(poissonOver(homeCorners, 6)), pct(poissonOver(awayCorners, 6)), pct(poissonOver(avgCorners, 6))],
+    ['Más de 7,5', pct(poissonOver(homeCorners, 7)), pct(poissonOver(awayCorners, 7)), pct(poissonOver(avgCorners, 7))],
+    ['Más de 8,5', pct(poissonOver(homeCorners, 8)), pct(poissonOver(awayCorners, 8)), pct(poissonOver(avgCorners, 8))],
+    ['Más de 9,5', pct(poissonOver(homeCorners, 9)), pct(poissonOver(awayCorners, 9)), pct(poissonOver(avgCorners, 9))],
+    ['Más de 10,5', pct(poissonOver(homeCorners, 10)), pct(poissonOver(awayCorners, 10)), pct(poissonOver(avgCorners, 10))]
   ];
 
   var html1 = '';
@@ -524,7 +507,7 @@ function renderCornersTable(data) {
   var body1 = getEl('corners-table-body');
   if (body1) body1.innerHTML = html1;
 
-  // Corners en contra (estimados desde goles encajados)
+  // Corners en contra (estimados desde goles encajados, no hay datos reales de corners recibidos)
   var homeConcededCorners = num(hs.avg_conceded) * 1.5;
   var awayConcededCorners = num(as.avg_conceded) * 1.5;
 
@@ -538,7 +521,7 @@ function renderCornersTable(data) {
   var body2 = getEl('corners-conceded-body');
   if (body2) body2.innerHTML = html2;
 
-  // Total de corners (suma de ambos lambdas = Poisson(totalLambda))
+  // Total de corners (suma de ambos = Poisson(totalLambda))
   var rows3 = [
     ['Más de 6,5', pct(poissonOver(totalCorners, 6)), pct(poissonOver(totalCorners, 6)), pct(poissonOver(totalCorners, 6))],
     ['Más de 7,5', pct(poissonOver(totalCorners, 7)), pct(poissonOver(totalCorners, 7)), pct(poissonOver(totalCorners, 7))],
@@ -559,7 +542,7 @@ function renderCornersTable(data) {
 }
 
 // ============================================
-// TARJETAS - Probabilidades reales con Poisson
+// TARJETAS - Datos REALES de la API
 // ============================================
 
 function renderCardsTable(data) {
@@ -577,7 +560,6 @@ function renderCardsTable(data) {
   var homeRed = num(hs.avg_red_cards);
   var awayRed = num(as.avg_red_cards);
 
-  // Total tarjetas por equipo (amarillas + rojas)
   var homeTotalCards = homeYellow + homeRed;
   var awayTotalCards = awayYellow + awayRed;
   var avgTotalCards = (homeTotalCards + awayTotalCards) / 2;
