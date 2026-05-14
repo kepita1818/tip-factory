@@ -340,6 +340,30 @@ function probColorClass(val) {
 }
 
 // ============================================
+// POISSON - Solo para TOTALES (mathematically correct)
+// No se usa para stats individuales
+// ============================================
+
+function factorial(n) {
+  if (n <= 1) return 1;
+  var result = 1;
+  for (var i = 2; i <= n; i++) result *= i;
+  return result;
+}
+
+function poisson(lambda, k) {
+  return (Math.pow(lambda, k) * Math.exp(-lambda)) / factorial(k);
+}
+
+function poissonOver(lambda, threshold) {
+  var cumul = 0;
+  for (var k = 0; k <= threshold; k++) {
+    cumul += poisson(lambda, k);
+  }
+  return Math.min(100, Math.max(0, (1 - cumul) * 100));
+}
+
+// ============================================
 // RENDER PROBABILIDADES GENERAL (datos reales)
 // ============================================
 
@@ -447,7 +471,8 @@ function renderGoalsTable(data) {
 
 // ============================================
 // CORNERS - Datos 100% REALES de la API
-// Ya NO usa Poisson. Usa frecuencias reales.
+// Individual: porcentajes reales del backend
+// Total: Poisson con lambda = home_avg + away_avg (correcto)
 // ============================================
 
 function renderCornersTable(data) {
@@ -463,7 +488,7 @@ function renderCornersTable(data) {
   var hcp = hs.corners_pct || {};
   var acp = as.corners_pct || {};
 
-  // Corners ganados por equipo - PORCENTAJES REALES del backend
+  // === CORNERS GANADOS POR EQUIPO - PORCENTAJES REALES ===
   var rows1 = [
     ['Obtenidos/Partido', dec(hs.avg_corners), dec(as.avg_corners), dec((num(hs.avg_corners) + num(as.avg_corners)) / 2)],
     ['Más de 4,5', pct(hcp.over_4_5 || 0), pct(acp.over_4_5 || 0), pct((num(hcp.over_4_5) + num(acp.over_4_5)) / 2)],
@@ -484,7 +509,7 @@ function renderCornersTable(data) {
   var body1 = getEl('corners-table-body');
   if (body1) body1.innerHTML = html1;
 
-  // Corners en contra (estimados desde goles encajados como aproximación)
+  // === CORNERS EN CONTRA (estimado) ===
   var homeConcededCorners = num(hs.avg_conceded) * 1.5;
   var awayConcededCorners = num(as.avg_conceded) * 1.5;
 
@@ -498,15 +523,19 @@ function renderCornersTable(data) {
   var body2 = getEl('corners-conceded-body');
   if (body2) body2.innerHTML = html2;
 
-  // Total de corners - PORCENTAJES REALES del backend
+  // === TOTAL DE CORNERS - POISSON CON LAMBDA = SUMA DE MEDIAS ===
+  // Esto es matemáticamente correcto: si local hace 4.89 y visitante 5.80,
+  // el total esperado es ~10.69, y Poisson da la probabilidad de superar cada línea
+  var totalCornersLambda = num(hs.avg_corners) + num(as.avg_corners);
+
   var rows3 = [
-    ['Más de 6,5', pct(hcp.over_6_5 || 0), pct(acp.over_6_5 || 0), pct((num(hcp.over_6_5) + num(acp.over_6_5)) / 2)],
-    ['Más de 7,5', pct(hcp.over_7_5 || 0), pct(acp.over_7_5 || 0), pct((num(hcp.over_7_5) + num(acp.over_7_5)) / 2)],
-    ['Más de 8,5', pct(hcp.over_8_5 || 0), pct(acp.over_8_5 || 0), pct((num(hcp.over_8_5) + num(acp.over_8_5)) / 2)],
-    ['Más de 9,5', pct(hcp.over_9_5 || 0), pct(acp.over_9_5 || 0), pct((num(hcp.over_9_5) + num(acp.over_9_5)) / 2)],
-    ['Más de 10,5', pct(hcp.over_10_5 || 0), pct(acp.over_10_5 || 0), pct((num(hcp.over_10_5) + num(acp.over_10_5)) / 2)],
-    ['Más de 11,5', pct(hcp.over_10_5 || 0), pct(acp.over_10_5 || 0), pct((num(hcp.over_10_5) + num(acp.over_10_5)) / 2)],
-    ['Más de 12,5', pct(hcp.over_10_5 || 0), pct(acp.over_10_5 || 0), pct((num(hcp.over_10_5) + num(acp.over_10_5)) / 2)]
+    ['Más de 6,5', pct(poissonOver(totalCornersLambda, 6)), pct(poissonOver(totalCornersLambda, 6)), pct(poissonOver(totalCornersLambda, 6))],
+    ['Más de 7,5', pct(poissonOver(totalCornersLambda, 7)), pct(poissonOver(totalCornersLambda, 7)), pct(poissonOver(totalCornersLambda, 7))],
+    ['Más de 8,5', pct(poissonOver(totalCornersLambda, 8)), pct(poissonOver(totalCornersLambda, 8)), pct(poissonOver(totalCornersLambda, 8))],
+    ['Más de 9,5', pct(poissonOver(totalCornersLambda, 9)), pct(poissonOver(totalCornersLambda, 9)), pct(poissonOver(totalCornersLambda, 9))],
+    ['Más de 10,5', pct(poissonOver(totalCornersLambda, 10)), pct(poissonOver(totalCornersLambda, 10)), pct(poissonOver(totalCornersLambda, 10))],
+    ['Más de 11,5', pct(poissonOver(totalCornersLambda, 11)), pct(poissonOver(totalCornersLambda, 11)), pct(poissonOver(totalCornersLambda, 11))],
+    ['Más de 12,5', pct(poissonOver(totalCornersLambda, 12)), pct(poissonOver(totalCornersLambda, 12)), pct(poissonOver(totalCornersLambda, 12))]
   ];
 
   var html3 = '';
@@ -520,7 +549,8 @@ function renderCornersTable(data) {
 
 // ============================================
 // TARJETAS - Datos 100% REALES de la API
-// Ya NO usa Poisson. Usa frecuencias reales.
+// Individual: porcentajes reales del backend
+// Total: Poisson con lambda = home_avg + away_avg (correcto)
 // ============================================
 
 function renderCardsTable(data) {
@@ -545,7 +575,7 @@ function renderCardsTable(data) {
   var awayTotalCards = awayYellow + awayRed;
   var avgTotalCards = (homeTotalCards + awayTotalCards) / 2;
 
-  // TARJETAS - PORCENTAJES REALES del backend
+  // === TARJETAS POR EQUIPO - PORCENTAJES REALES ===
   var rows = [
     ['Tarjetas/Partido', dec(homeTotalCards, 2), dec(awayTotalCards, 2), dec(avgTotalCards, 2)],
     ['Más de 1,5', pct(hcp.over_1_5 || 0), pct(acp.over_1_5 || 0), pct((num(hcp.over_1_5) + num(acp.over_1_5)) / 2)],
@@ -564,6 +594,30 @@ function renderCardsTable(data) {
 
   var body = getEl('cards-table-body');
   if (body) body.innerHTML = html;
+
+  // === TOTAL DE TARJETAS - POISSON CON LAMBDA = SUMA DE MEDIAS ===
+  // Esto es matemáticamente correcto para el total del partido
+  var totalCardsLambda = homeTotalCards + awayTotalCards;
+
+  var rowsTotal = [
+    ['Más de 2,5', pct(poissonOver(totalCardsLambda, 2)), pct(poissonOver(totalCardsLambda, 2)), pct(poissonOver(totalCardsLambda, 2))],
+    ['Más de 3,5', pct(poissonOver(totalCardsLambda, 3)), pct(poissonOver(totalCardsLambda, 3)), pct(poissonOver(totalCardsLambda, 3))],
+    ['Más de 4,5', pct(poissonOver(totalCardsLambda, 4)), pct(poissonOver(totalCardsLambda, 4)), pct(poissonOver(totalCardsLambda, 4))],
+    ['Más de 5,5', pct(poissonOver(totalCardsLambda, 5)), pct(poissonOver(totalCardsLambda, 5)), pct(poissonOver(totalCardsLambda, 5))],
+    ['Más de 6,5', pct(poissonOver(totalCardsLambda, 6)), pct(poissonOver(totalCardsLambda, 6)), pct(poissonOver(totalCardsLambda, 6))],
+    ['Más de 7,5', pct(poissonOver(totalCardsLambda, 7)), pct(poissonOver(totalCardsLambda, 7)), pct(poissonOver(totalCardsLambda, 7))]
+  ];
+
+  // Check if we have a total cards table body, if not create one
+  var totalCardsBody = getEl('total-cards-body');
+  if (totalCardsBody) {
+    var htmlTotal = '';
+    for (var t = 0; t < rowsTotal.length; t++) {
+      var valT = num(rowsTotal[t][3].replace('%', ''));
+      htmlTotal += '<tr class="' + probColorClass(valT) + '"><td>' + rowsTotal[t][0] + '</td><td>' + rowsTotal[t][1] + '</td><td>' + rowsTotal[t][2] + '</td><td>' + rowsTotal[t][3] + '</td></tr>';
+    }
+    totalCardsBody.innerHTML = htmlTotal;
+  }
 }
 
 function fillHeader(data) {
