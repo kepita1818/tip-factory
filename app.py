@@ -15,7 +15,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-app = FastAPI(title="TipFactory", version="6.2.0")
+app = FastAPI(title="TipFactory", version="6.3.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -38,6 +38,27 @@ FDIO_HEADERS = {"Authorization": f"Bearer {FOOTBALLDATA_IO_KEY}"} if FOOTBALLDAT
 FDORG_HEADERS = {"X-Auth-Token": FOOTBALL_DATA_ORG_KEY} if FOOTBALL_DATA_ORG_KEY else {}
 
 CACHE = {}
+
+COMPETITION_CODE_MAP = {
+    "la liga": "PD",
+    "spain la liga": "PD",
+    "premier league": "PL",
+    "england premier league": "PL",
+    "bundesliga": "BL1",
+    "germany bundesliga": "BL1",
+    "serie a": "SA",
+    "italy serie a": "SA",
+    "ligue 1": "FL1",
+    "france ligue 1": "FL1",
+    "primeira liga": "PPL",
+    "portugal primeira liga": "PPL",
+    "erediࢠvisie": "DED",
+    "eredivisie": "DED",
+    "champions league": "CL",
+    "uefa champions league": "CL",
+    "europa league": "EL",
+    "uefa europa league": "EL"
+}
 
 
 def cache_get(key, ttl=300):
@@ -185,6 +206,7 @@ def fetch_fdio_matches(date_str):
 def normalize_name(name):
     if not name:
         return ""
+    text = name.strip().lower()
     replacements = {
         " cf": "",
         " fc": "",
@@ -194,26 +216,33 @@ def normalize_name(name):
         ",": "",
         "-": " "
     }
-    text = name.strip().lower()
     for old, new in replacements.items():
         text = text.replace(old, new)
     return " ".join(text.split())
 
 
-def find_team_id(team_name, competition_id=None):
+def map_competition_code(league_name, country_name=""):
+    key1 = normalize_name(league_name)
+    key2 = normalize_name((country_name + " " + league_name).strip())
+    return COMPETITION_CODE_MAP.get(key1) or COMPETITION_CODE_MAP.get(key2)
+
+
+def find_team_id(team_name, competition_code=None):
     if not team_name:
         return None
 
     target = normalize_name(team_name)
 
-    if competition_id:
+    if competition_code:
         comp_data = fdorg_request(
-            f"competitions/{competition_id}/teams",
-            cache_key=f"comp_teams_{competition_id}",
+            f"competitions/{competition_code}/teams",
+            cache_key=f"comp_teams_{competition_code}",
             ttl=86400
         )
         if comp_data and isinstance(comp_data, dict):
-            for team in comp_data.get("teams", []):
+            teams = comp_data.get("teams", [])
+
+            for team in teams:
                 options = [
                     normalize_name(team.get("name", "")),
                     normalize_name(team.get("shortName", "")),
@@ -222,7 +251,7 @@ def find_team_id(team_name, competition_id=None):
                 if target in options:
                     return team.get("id")
 
-            for team in comp_data.get("teams", []):
+            for team in teams:
                 options = [
                     normalize_name(team.get("name", "")),
                     normalize_name(team.get("shortName", ""))
@@ -234,7 +263,9 @@ def find_team_id(team_name, competition_id=None):
     if not data or not isinstance(data, dict):
         return None
 
-    for team in data.get("teams", []):
+    teams = data.get("teams", [])
+
+    for team in teams:
         options = [
             normalize_name(team.get("name", "")),
             normalize_name(team.get("shortName", "")),
@@ -243,7 +274,7 @@ def find_team_id(team_name, competition_id=None):
         if target in options:
             return team.get("id")
 
-    for team in data.get("teams", []):
+    for team in teams:
         options = [
             normalize_name(team.get("name", "")),
             normalize_name(team.get("shortName", ""))
@@ -254,7 +285,7 @@ def find_team_id(team_name, competition_id=None):
     return None
 
 
-def get_team_recent_matches(team_id, competition_id=None, limit=10):
+def get_team_recent_matches(team_id, competition_code=None, limit=10):
     if not team_id:
         return []
 
@@ -263,30 +294,26 @@ def get_team_recent_matches(team_id, competition_id=None, limit=10):
         "limit": limit
     }
 
-    if competition_id:
-        params["competitions"] = competition_id
+    if competition_code:
+        params["competitions"] = competition_code
 
     data = fdorg_request(
         f"teams/{team_id}/matches",
         params=params,
-        cache_key=f"fdorg_recent_{team_id}_{competition_id}_{limit}",
+        cache_key=f"fdorg_recent_{team_id}_{competition_code}_{limit}",
         ttl=1800
     )
 
-    if not data or not isinstance(data, dict):
-        return []
+    matches = data.get("matches", []) if isinstance(data, dict) else []
 
-    matches = data.get("matches", [])
-
-    if not matches and competition_id:
+    if not matches:
         data = fdorg_request(
             f"teams/{team_id}/matches",
             params={"status": "FINISHED", "limit": limit},
             cache_key=f"fdorg_recent_fallback_{team_id}_{limit}",
             ttl=1800
         )
-        if data and isinstance(data, dict):
-            matches = data.get("matches", [])
+        matches = data.get("matches", []) if isinstance(data, dict) else []
 
     return matches
 
@@ -420,21 +447,6 @@ def matches(date: str = Query(None)):
     }
 
 
-@app.get("/api/test-fdio")
-def test_fdio():
-    raw = fdio_request("fixtures/today", cache_key=None, ttl=0)
-    items = extract_list_payload(raw)
-    normalized = [normalize_match(x) for x in items[:3]]
-
-    return {
-        "has_raw": bool(raw),
-        "raw_type": type(raw).__name__ if raw is not None else None,
-        "top_keys": list(raw.keys())[:20] if isinstance(raw, dict) else [],
-        "items_count": len(items),
-        "normalized_sample": normalized
-    }
-
-
 @app.get("/api/analyze/{match_id}")
 def analyze(
     match_id: int,
@@ -448,11 +460,13 @@ def analyze(
     country: str = Query(""),
     competition_id: int = Query(None)
 ):
-    home_id = find_team_id(home_team, competition_id)
-    away_id = find_team_id(away_team, competition_id)
+    competition_code = map_competition_code(league, country)
 
-    home_recent = get_team_recent_matches(home_id, competition_id, 10)
-    away_recent = get_team_recent_matches(away_id, competition_id, 10)
+    home_id = find_team_id(home_team, competition_code)
+    away_id = find_team_id(away_team, competition_code)
+
+    home_recent = get_team_recent_matches(home_id, competition_code, 10)
+    away_recent = get_team_recent_matches(away_id, competition_code, 10)
 
     home_form, home_stats = build_form_and_stats(home_id, home_recent)
     away_form, away_stats = build_form_and_stats(away_id, away_recent)
@@ -499,6 +513,7 @@ def analyze(
         "debug": {
             "match_id": match_id,
             "competition_id": competition_id,
+            "competition_code": competition_code,
             "home_id": home_id,
             "away_id": away_id,
             "home_recent_count": len(home_recent),
@@ -517,7 +532,7 @@ def health():
         "cache_size": len(CACHE),
         "footballdata_io": "configured" if FOOTBALLDATA_IO_KEY else "missing",
         "football_data_org": "configured" if FOOTBALL_DATA_ORG_KEY else "missing",
-        "version": "6.2.0"
+        "version": "6.3.0"
     }
 
 
