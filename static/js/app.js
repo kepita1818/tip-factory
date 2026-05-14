@@ -40,13 +40,64 @@ function updateDateDisplay() {
   if (datePicker) datePicker.value = formatDateISO(currentDate);
 }
 
+function activateTab(tabName) {
+  var allTabs = document.querySelectorAll('.tab-btn');
+  var allContents = document.querySelectorAll('.tab-content');
+
+  for (var i = 0; i < allTabs.length; i++) {
+    allTabs[i].classList.remove('active');
+  }
+
+  for (var j = 0; j < allContents.length; j++) {
+    allContents[j].classList.remove('active');
+  }
+
+  var btn = document.querySelector('.tab-btn[data-tab="' + tabName + '"]');
+  var content = getEl('tab-' + tabName);
+
+  if (btn) btn.classList.add('active');
+  if (content) content.classList.add('active');
+}
+
+function showMatches() {
+  var matchesSection = getEl('matches-section');
+  var analysisSection = getEl('analysis-section');
+  var dateSelector = document.querySelector('.date-selector');
+  var filters = document.querySelector('.league-filters');
+  var header = document.querySelector('.app-header');
+
+  if (matchesSection) matchesSection.classList.remove('hidden');
+  if (analysisSection) analysisSection.classList.add('hidden');
+  if (dateSelector) dateSelector.classList.remove('hidden');
+  if (filters) filters.classList.remove('hidden');
+  if (header) header.classList.remove('hidden');
+
+  window.scrollTo(0, 0);
+}
+
+function showAnalysis() {
+  var matchesSection = getEl('matches-section');
+  var analysisSection = getEl('analysis-section');
+  var dateSelector = document.querySelector('.date-selector');
+  var filters = document.querySelector('.league-filters');
+  var header = document.querySelector('.app-header');
+
+  if (matchesSection) matchesSection.classList.add('hidden');
+  if (analysisSection) analysisSection.classList.remove('hidden');
+  if (dateSelector) dateSelector.classList.add('hidden');
+  if (filters) filters.classList.add('hidden');
+  if (header) header.classList.add('hidden');
+
+  window.scrollTo(0, 0);
+}
+
 function setupEventListeners() {
   var prevBtn = getEl('prev-date');
   var nextBtn = getEl('next-date');
   var dateDisplay = getEl('current-date');
   var datePicker = getEl('date-picker');
-  var backBtn = getEl('back-btn');
   var filterBtns = document.querySelectorAll('.filter-btn');
+  var backBtn = getEl('back-btn');
   var tabBtns = document.querySelectorAll('.tab-btn');
 
   if (prevBtn) {
@@ -94,9 +145,7 @@ function setupEventListeners() {
   }
 
   if (backBtn) {
-    backBtn.addEventListener('click', function () {
-      showMatches();
-    });
+    backBtn.addEventListener('click', showMatches);
   }
 
   for (var k = 0; k < tabBtns.length; k++) {
@@ -104,25 +153,6 @@ function setupEventListeners() {
       activateTab(this.dataset.tab);
     });
   }
-}
-
-function activateTab(tabName) {
-  var allTabs = document.querySelectorAll('.tab-btn');
-  var allContents = document.querySelectorAll('.tab-content');
-
-  for (var i = 0; i < allTabs.length; i++) {
-    allTabs[i].classList.remove('active');
-  }
-
-  for (var j = 0; j < allContents.length; j++) {
-    allContents[j].classList.remove('active');
-  }
-
-  var btn = document.querySelector('.tab-btn[data-tab="' + tabName + '"]');
-  var content = getEl('tab-' + tabName);
-
-  if (btn) btn.classList.add('active');
-  if (content) content.classList.add('active');
 }
 
 function loadMatches() {
@@ -139,16 +169,16 @@ function loadMatches() {
       return response.json();
     })
     .then(function (data) {
-      if (data && Array.isArray(data.matches)) {
-        allMatches = data.matches;
-        allMatches.meta = {
-          requestedDate: data.requested_date,
-          sourceDate: data.source_date,
-          isExact: data.is_exact
-        };
-      } else {
+      if (!data || !Array.isArray(data.matches)) {
         throw new Error('Respuesta inválida');
       }
+
+      allMatches = data.matches;
+      allMatches.meta = {
+        requestedDate: data.requested_date,
+        sourceDate: data.source_date,
+        isExact: data.is_exact
+      };
 
       renderMatches();
     })
@@ -156,7 +186,7 @@ function loadMatches() {
       console.error('Error cargando partidos:', e);
       if (matchesContainer) {
         matchesContainer.innerHTML =
-          '<div class="no-matches">Error: ' + e.message + '<br><small>Intenta recargar</small></div>';
+          '<div class="no-matches">Error cargando partidos<br><small>' + e.message + '</small></div>';
       }
     });
 }
@@ -176,16 +206,15 @@ function renderMatches() {
 
       if (filter === 'spain') return country.indexOf('spain') !== -1 || country.indexOf('espa') !== -1;
       if (filter === 'england') return country.indexOf('england') !== -1 || country.indexOf('ingla') !== -1;
+      if (filter === 'italy') return country.indexOf('italy') !== -1 || country.indexOf('italia') !== -1;
+      if (filter === 'germany') return country.indexOf('germany') !== -1 || country.indexOf('alemania') !== -1;
+      if (filter === 'france') return country.indexOf('france') !== -1;
+      if (filter === 'portugal') return country.indexOf('portugal') !== -1;
+      if (filter === 'netherlands') return country.indexOf('netherlands') !== -1 || country.indexOf('holanda') !== -1;
+      if (filter === 'brazil') return country.indexOf('brazil') !== -1 || country.indexOf('brasil') !== -1;
 
       return country.indexOf(filter) !== -1 || league.indexOf(filter) !== -1;
     });
-  }
-
-  if (!matches.length) {
-    matchesContainer.innerHTML =
-      '<div class="no-matches">No hay partidos para ' + formatDate(currentDate) +
-      '<br><small>Prueba con otra fecha</small></div>';
-    return;
   }
 
   matches.sort(function (a, b) {
@@ -197,12 +226,18 @@ function renderMatches() {
     return (a.utcDate || '').localeCompare(b.utcDate || '');
   });
 
+  if (!matches.length) {
+    matchesContainer.innerHTML =
+      '<div class="no-matches">No hay partidos para este filtro<br><small>Prueba otra fecha o otra liga</small></div>';
+    return;
+  }
+
   var html = '';
 
   if (!meta.isExact && meta.sourceDate) {
-    var sourceParts = meta.sourceDate.split('-');
-    var sourceDateFormatted = sourceParts[2] + '/' + sourceParts[1] + '/' + sourceParts[0];
-    html += '<div class="date-notice">Mostrando partidos del ' + sourceDateFormatted + ' porque no hay partidos para la fecha seleccionada</div>';
+    var p = meta.sourceDate.split('-');
+    var sourceFormatted = p[2] + '/' + p[1] + '/' + p[0];
+    html += '<div class="date-notice">Mostrando partidos del ' + sourceFormatted + ' porque no hay partidos en la fecha elegida</div>';
   }
 
   for (var i = 0; i < matches.length; i++) {
@@ -210,7 +245,7 @@ function renderMatches() {
     var home = match.homeTeam || {};
     var away = match.awayTeam || {};
     var time = formatLocalTime(match.utcDate);
-    var isLive = match.status === 'LIVE' || match.status === '1H' || match.status === '2H' || match.status === 'HT';
+    var isLive = match.status === 'LIVE' || match.status === '1H' || match.status === 'HT' || match.status === '2H';
     var isFinished = match.status === 'FT';
 
     var statusBadge = '';
@@ -229,21 +264,23 @@ function renderMatches() {
     var awayLogo = away.crest || ('https://crests.football-data.org/' + (away.id || 0) + '.svg');
 
     html += '<div class="match-card ' + (isLive ? 'live' : '') + ' ' + (isFinished ? 'finished' : '') + '" data-match-id="' + match.id + '">';
-    html += '  <div class="match-time-row">';
-    html += '    <span class="match-time">' + time + '</span>';
-    html +=      statusBadge;
-    html +=      scoreText;
-    html += '  </div>';
-    html += '  <div class="match-teams">';
-    html += '    <div class="match-team">';
-    html += '      <img src="' + homeLogo + '" alt="" onerror="this.style.visibility=\'hidden\'">';
-    html += '      <span>' + (home.shortName || home.name || 'Local') + '</span>';
-    html += '    </div>';
-    html += '    <div class="match-team">';
-    html += '      <img src="' + awayLogo + '" alt="" onerror="this.style.visibility=\'hidden\'">';
-    html += '      <span>' + (away.shortName || away.name || 'Visitante') + '</span>';
-    html += '    </div>';
-    html += '  </div>';
+    html += '<div class="match-time-row">';
+    html += '<span class="match-time">' + time + '</span>';
+    html += statusBadge;
+    html += scoreText;
+    html += '</div>';
+
+    html += '<div class="match-teams">';
+    html += '<div class="match-team">';
+    html += '<img src="' + homeLogo + '" alt="" onerror="this.style.visibility=\'hidden\'">';
+    html += '<span>' + (home.shortName || home.name || 'Local') + '</span>';
+    html += '</div>';
+
+    html += '<div class="match-team">';
+    html += '<img src="' + awayLogo + '" alt="" onerror="this.style.visibility=\'hidden\'">';
+    html += '<span>' + (away.shortName || away.name || 'Visitante') + '</span>';
+    html += '</div>';
+    html += '</div>';
     html += '</div>';
   }
 
@@ -257,47 +294,32 @@ function renderMatches() {
   }
 }
 
-function showMatches() {
-  var matchesContainer = getEl('matches-container');
-  var analysisSection = getEl('analysis-section');
-  var ds = document.querySelector('.date-selector');
-  var lf = document.querySelector('.league-filters');
-  var ah = document.querySelector('.app-header');
-
-  if (matchesContainer && matchesContainer.parentElement) {
-    matchesContainer.parentElement.classList.remove('hidden');
-  }
-  if (analysisSection) analysisSection.classList.add('hidden');
-  if (ds) ds.classList.remove('hidden');
-  if (lf) lf.classList.remove('hidden');
-  if (ah) ah.classList.remove('hidden');
-
-  window.scrollTo(0, 0);
-}
-
-function showAnalysis() {
-  var matchesContainer = getEl('matches-container');
-  var analysisSection = getEl('analysis-section');
-  var ds = document.querySelector('.date-selector');
-  var lf = document.querySelector('.league-filters');
-  var ah = document.querySelector('.app-header');
-
-  if (matchesContainer && matchesContainer.parentElement) {
-    matchesContainer.parentElement.classList.add('hidden');
-  }
-  if (analysisSection) analysisSection.classList.remove('hidden');
-  if (ds) ds.classList.add('hidden');
-  if (lf) lf.classList.add('hidden');
-  if (ah) ah.classList.add('hidden');
-
-  window.scrollTo(0, 0);
-}
-
 function analyzeMatch(matchId) {
   showAnalysis();
   activateTab('resumen');
 
-  fetch('/api/analyze/' + matchId)
+  var selected = null;
+  for (var i = 0; i < allMatches.length; i++) {
+    if (String(allMatches[i].id) === String(matchId)) {
+      selected = allMatches[i];
+      break;
+    }
+  }
+
+  var params = new URLSearchParams();
+
+  if (selected) {
+    params.set('home_team', selected.homeTeam && selected.homeTeam.name ? selected.homeTeam.name : 'Local');
+    params.set('away_team', selected.awayTeam && selected.awayTeam.name ? selected.awayTeam.name : 'Visitante');
+    params.set('home_logo', selected.homeTeam && selected.homeTeam.crest ? selected.homeTeam.crest : '');
+    params.set('away_logo', selected.awayTeam && selected.awayTeam.crest ? selected.awayTeam.crest : '');
+    params.set('league', selected.league_name || '');
+    params.set('date', selected.matchDate || '');
+    params.set('time', formatLocalTime(selected.utcDate));
+    params.set('country', selected.country || '');
+  }
+
+  fetch('/api/analyze/' + matchId + '?' + params.toString())
     .then(function (response) {
       if (!response.ok) throw new Error('HTTP ' + response.status);
       return response.json();
@@ -312,80 +334,24 @@ function analyzeMatch(matchId) {
     });
 }
 
-function renderAnalysis(data) {
-  var info = data.match_info || {};
-  var probs = data.probabilities || {};
-  var homeStats = data.home_stats || {};
-  var awayStats = data.away_stats || {};
-
-  var subtitle = (info.league || '') + ' - ' + (info.date || '') + ' - ' + (info.time || '');
-  if (info.venue) subtitle += ' - ' + info.venue;
-
-  var analysisSubtitle = getEl('analysis-subtitle');
-  if (analysisSubtitle) analysisSubtitle.textContent = subtitle;
-
-  var homeNameEl = getEl('home-name');
-  var awayNameEl = getEl('away-name');
-  var homeLogoEl = getEl('home-logo');
-  var awayLogoEl = getEl('away-logo');
-
-  if (homeNameEl) homeNameEl.textContent = info.home_team || 'Local';
-  if (awayNameEl) awayNameEl.textContent = info.away_team || 'Visitante';
-  if (homeLogoEl) homeLogoEl.src = info.home_logo || '';
-  if (awayLogoEl) awayLogoEl.src = info.away_logo || '';
-
-  renderFormBadges(data.home_form || [], 'home-form-badges');
-  renderFormBadges(data.away_form || [], 'away-form-badges');
-  renderProbGrid(probs, homeStats, awayStats);
-  renderGoalsTable(homeStats, awayStats, info);
-  renderCornersTables(homeStats, awayStats, info);
-  renderCardsTable(homeStats, awayStats, info);
-}
-
 function renderFormBadges(form, elementId) {
   var container = getEl(elementId);
   if (!container) return;
 
   if (!form || !form.length) {
-    container.innerHTML = '<span class="no-data">Sin datos</span>';
+    container.innerHTML = '<div class="no-data-small">Sin datos</div>';
     return;
   }
 
   var html = '';
   for (var i = 0; i < form.length; i++) {
-    var f = form[i];
-    var color = f.result === 'W' ? '#22c55e' : (f.result === 'D' ? '#eab308' : '#ef4444');
-    html += '<div class="form-badge" style="background:' + color + '">' + f.result + '</div>';
-  }
-  container.innerHTML = html;
-}
+    var item = form[i];
+    var bg = '#eab308';
 
-function renderProbGrid(probs, home, away) {
-  var container = getEl('prob-grid');
-  if (!container) return;
+    if (item.result === 'W') bg = '#22c55e';
+    if (item.result === 'L') bg = '#ef4444';
 
-  var totalGoals = (((home.avg_total_goals || 0) + (away.avg_total_goals || 0)) / 2).toFixed(2);
-
-  var items = [
-    { label: 'Más de 2.5', value: probs.over_2_5 || 0, sub: 'Media de ' + totalGoals + ' goles' },
-    { label: 'Más de 1.5', value: probs.over_1_5 || 0, sub: 'Over 1.5 goles' },
-    { label: 'AMB', value: probs.btts || 0, sub: 'Ambos marcan' },
-    { label: (home.avg_team_goals || 0).toFixed(2) + ' GF', value: '', sub: 'Local - Media goles' },
-    { label: (away.avg_team_goals || 0).toFixed(2) + ' GF', value: '', sub: 'Visitante - Media goles' },
-    { label: (probs.expected_cards || 0).toFixed(1) + ' Tarjetas', value: '', sub: 'Media tarjetas' },
-    { label: (probs.expected_corners || 0).toFixed(1) + ' Corners', value: '', sub: 'Media corners' }
-  ];
-
-  var html = '';
-  for (var i = 0; i < items.length; i++) {
-    var item = items[i];
-    html += '<div class="prob-box">';
-    if (item.value !== '') {
-      html += '<div class="prob-box-value">' + item.value + '%</div>';
-    }
-    html += '<div class="prob-box-label">' + item.label + '</div>';
-    html += '<div class="prob-box-sub">' + item.sub + '</div>';
-    html += '</div>';
+    html += '<div class="form-badge" style="background:' + bg + '">' + item.result + '</div>';
   }
 
   container.innerHTML = html;
@@ -397,35 +363,66 @@ function getLevelClass(value) {
   return 'low';
 }
 
+function renderProbGrid(probs, homeStats, awayStats) {
+  var container = getEl('prob-grid');
+  if (!container) return;
+
+  var items = [
+    { label: 'Más de 1.5', value: probs.over_1_5 || 0, sub: 'Probabilidad' },
+    { label: 'Más de 2.5', value: probs.over_2_5 || 0, sub: 'Probabilidad' },
+    { label: 'Más de 3.5', value: probs.over_3_5 || 0, sub: 'Probabilidad' },
+    { label: 'AMB', value: probs.btts || 0, sub: 'Ambos marcan' },
+    { label: 'Goles esperados', text: String(probs.total_expected_goals || 0), sub: 'Media estimada' },
+    { label: 'Corners esperados', text: String(probs.expected_corners || 0), sub: 'Media estimada' },
+    { label: 'Tarjetas esperadas', text: String(probs.expected_cards || 0), sub: 'Media estimada' },
+    { label: 'Goles local', text: String(homeStats.avg_team_goals || 0), sub: 'Media anotados' },
+    { label: 'Goles visitante', text: String(awayStats.avg_team_goals || 0), sub: 'Media anotados' }
+  ];
+
+  var html = '';
+  for (var i = 0; i < items.length; i++) {
+    var item = items[i];
+    html += '<div class="prob-box">';
+    if (item.value !== undefined) {
+      html += '<div class="prob-box-value">' + item.value + '%</div>';
+    } else {
+      html += '<div class="prob-box-value">' + item.text + '</div>';
+    }
+    html += '<div class="prob-box-label">' + item.label + '</div>';
+    html += '<div class="prob-box-sub">' + item.sub + '</div>';
+    html += '</div>';
+  }
+
+  container.innerHTML = html;
+}
+
 function renderGoalsTable(home, away, info) {
   var tbody = getEl('goals-table-body');
-  var homeHeader = getEl('goals-home-header');
-  var awayHeader = getEl('goals-away-header');
-
-  if (homeHeader) homeHeader.textContent = info.home_short || 'Local';
-  if (awayHeader) awayHeader.textContent = info.away_short || 'Visitante';
   if (!tbody) return;
 
+  var homeHeader = getEl('goals-home-header');
+  var awayHeader = getEl('goals-away-header');
+  if (homeHeader) homeHeader.textContent = info.home_short || 'Local';
+  if (awayHeader) awayHeader.textContent = info.away_short || 'Visitante';
+
   var rows = [
-    { label: 'Goles/Partido', home: home.avg_total_goals || 0, away: away.avg_total_goals || 0, isPct: false },
-    { label: 'Más de 1.5', home: home.over_1_5_pct || 0, away: away.over_1_5_pct || 0, isPct: true },
-    { label: 'Más de 2.5', home: home.over_2_5_pct || 0, away: away.over_2_5_pct || 0, isPct: true },
-    { label: 'Más de 3.5', home: home.over_3_5_pct || 0, away: away.over_3_5_pct || 0, isPct: true },
-    { label: 'AMB', home: home.btts_pct || 0, away: away.btts_pct || 0, isPct: true }
+    { label: 'Goles/Partido', home: home.avg_total_goals || 0, away: away.avg_total_goals || 0, pct: false },
+    { label: 'Más de 1.5', home: home.over_1_5_pct || 0, away: away.over_1_5_pct || 0, pct: true },
+    { label: 'Más de 2.5', home: home.over_2_5_pct || 0, away: away.over_2_5_pct || 0, pct: true },
+    { label: 'Más de 3.5', home: home.over_3_5_pct || 0, away: away.over_3_5_pct || 0, pct: true },
+    { label: 'AMB', home: home.btts_pct || 0, away: away.btts_pct || 0, pct: true }
   ];
 
   var html = '';
   for (var i = 0; i < rows.length; i++) {
     var r = rows[i];
-    var avg = ((parseFloat(r.home) + parseFloat(r.away)) / 2).toFixed(r.isPct ? 0 : 1);
-    var homeVal = r.isPct ? (r.home + '%') : r.home;
-    var awayVal = r.isPct ? (r.away + '%') : r.away;
+    var avg = ((parseFloat(r.home) + parseFloat(r.away)) / 2).toFixed(r.pct ? 0 : 1);
 
     html += '<tr>';
     html += '<td>' + r.label + '</td>';
-    html += '<td class="' + getLevelClass(r.home) + '">' + homeVal + '</td>';
-    html += '<td class="' + getLevelClass(r.away) + '">' + awayVal + '</td>';
-    html += '<td>' + avg + (r.isPct ? '%' : '') + '</td>';
+    html += '<td class="' + getLevelClass(r.home) + '">' + r.home + (r.pct ? '%' : '') + '</td>';
+    html += '<td class="' + getLevelClass(r.away) + '">' + r.away + (r.pct ? '%' : '') + '</td>';
+    html += '<td>' + avg + (r.pct ? '%' : '') + '</td>';
     html += '</tr>';
   }
 
@@ -433,42 +430,40 @@ function renderGoalsTable(home, away, info) {
 }
 
 function renderCornersTables(home, away, info) {
-  var cornersBody = getEl('corners-table-body');
-  var totalCornersBody = getEl('total-corners-body');
-  var cornersHomeHeader = getEl('corners-home-header');
-  var cornersAwayHeader = getEl('corners-away-header');
+  var body1 = getEl('corners-table-body');
+  var body2 = getEl('total-corners-body');
 
-  if (cornersHomeHeader) cornersHomeHeader.textContent = info.home_short || 'Local';
-  if (cornersAwayHeader) cornersAwayHeader.textContent = info.away_short || 'Visitante';
+  var homeHeader = getEl('corners-home-header');
+  var awayHeader = getEl('corners-away-header');
+  if (homeHeader) homeHeader.textContent = info.home_short || 'Local';
+  if (awayHeader) awayHeader.textContent = info.away_short || 'Visitante';
 
-  if (cornersBody) {
+  if (body1) {
     var rows = [
-      { label: 'Corners/Partido', home: home.avg_corners || 5, away: away.avg_corners || 4.5, isPct: false },
-      { label: 'Más de 4.5', home: 70, away: 60, isPct: true },
-      { label: 'Más de 5.5', home: 55, away: 45, isPct: true },
-      { label: 'Más de 6.5', home: 40, away: 35, isPct: true },
-      { label: 'Más de 8.5', home: 25, away: 20, isPct: true }
+      { label: 'Corners/Partido', home: home.avg_corners || 5, away: away.avg_corners || 4.5, pct: false },
+      { label: 'Más de 4.5', home: 70, away: 60, pct: true },
+      { label: 'Más de 5.5', home: 55, away: 45, pct: true },
+      { label: 'Más de 6.5', home: 40, away: 35, pct: true },
+      { label: 'Más de 8.5', home: 25, away: 20, pct: true }
     ];
 
-    var html = '';
+    var html1 = '';
     for (var i = 0; i < rows.length; i++) {
       var r = rows[i];
-      var avg = ((parseFloat(r.home) + parseFloat(r.away)) / 2).toFixed(r.isPct ? 0 : 1);
-      var homeVal = r.isPct ? (r.home + '%') : r.home;
-      var awayVal = r.isPct ? (r.away + '%') : r.away;
+      var avg = ((parseFloat(r.home) + parseFloat(r.away)) / 2).toFixed(r.pct ? 0 : 1);
 
-      html += '<tr>';
-      html += '<td>' + r.label + '</td>';
-      html += '<td class="' + getLevelClass(r.home) + '">' + homeVal + '</td>';
-      html += '<td class="' + getLevelClass(r.away) + '">' + awayVal + '</td>';
-      html += '<td>' + avg + (r.isPct ? '%' : '') + '</td>';
-      html += '</tr>';
+      html1 += '<tr>';
+      html1 += '<td>' + r.label + '</td>';
+      html1 += '<td class="' + getLevelClass(r.home) + '">' + r.home + (r.pct ? '%' : '') + '</td>';
+      html1 += '<td class="' + getLevelClass(r.away) + '">' + r.away + (r.pct ? '%' : '') + '</td>';
+      html1 += '<td>' + avg + (r.pct ? '%' : '') + '</td>';
+      html1 += '</tr>';
     }
-    cornersBody.innerHTML = html;
+    body1.innerHTML = html1;
   }
 
-  if (totalCornersBody) {
-    var totalRows = [
+  if (body2) {
+    var totals = [
       { label: 'Más de 7.5', home: 75, away: 70 },
       { label: 'Más de 8.5', home: 65, away: 60 },
       { label: 'Más de 9.5', home: 55, away: 50 },
@@ -477,55 +472,86 @@ function renderCornersTables(home, away, info) {
     ];
 
     var html2 = '';
-    for (var j = 0; j < totalRows.length; j++) {
-      var tr = totalRows[j];
-      var avg2 = Math.round((tr.home + tr.away) / 2);
+    for (var j = 0; j < totals.length; j++) {
+      var t = totals[j];
+      var avg2 = Math.round((t.home + t.away) / 2);
 
       html2 += '<tr>';
-      html2 += '<td>' + tr.label + '</td>';
-      html2 += '<td class="' + getLevelClass(tr.home) + '">' + tr.home + '%</td>';
-      html2 += '<td class="' + getLevelClass(tr.away) + '">' + tr.away + '%</td>';
+      html2 += '<td>' + t.label + '</td>';
+      html2 += '<td class="' + getLevelClass(t.home) + '">' + t.home + '%</td>';
+      html2 += '<td class="' + getLevelClass(t.away) + '">' + t.away + '%</td>';
       html2 += '<td>' + avg2 + '%</td>';
       html2 += '</tr>';
     }
-
-    totalCornersBody.innerHTML = html2;
+    body2.innerHTML = html2;
   }
 }
 
 function renderCardsTable(home, away, info) {
   var tbody = getEl('cards-table-body');
-  var homeHeader = getEl('cards-home-header');
-  var awayHeader = getEl('cards-away-header');
-
-  if (homeHeader) homeHeader.textContent = info.home_short || 'Local';
-  if (awayHeader) awayHeader.textContent = info.away_short || 'Visitante';
   if (!tbody) return;
 
+  var homeHeader = getEl('cards-home-header');
+  var awayHeader = getEl('cards-away-header');
+  if (homeHeader) homeHeader.textContent = info.home_short || 'Local';
+  if (awayHeader) awayHeader.textContent = info.away_short || 'Visitante';
+
   var rows = [
-    { label: 'Tarjetas/Partido', home: home.avg_cards || 2.5, away: away.avg_cards || 2.3, isPct: false },
-    { label: 'Más de 2.5', home: 80, away: 75, isPct: true },
-    { label: 'Más de 3.5', home: 65, away: 60, isPct: true },
-    { label: 'Más de 4.5', home: 50, away: 45, isPct: true },
-    { label: 'Más de 5.5', home: 35, away: 30, isPct: true }
+    { label: 'Tarjetas/Partido', home: home.avg_cards || 2.5, away: away.avg_cards || 2.3, pct: false },
+    { label: 'Más de 2.5', home: 80, away: 75, pct: true },
+    { label: 'Más de 3.5', home: 65, away: 60, pct: true },
+    { label: 'Más de 4.5', home: 50, away: 45, pct: true },
+    { label: 'Más de 5.5', home: 35, away: 30, pct: true }
   ];
 
   var html = '';
   for (var i = 0; i < rows.length; i++) {
     var r = rows[i];
-    var avg = ((parseFloat(r.home) + parseFloat(r.away)) / 2).toFixed(r.isPct ? 0 : 1);
-    var homeVal = r.isPct ? (r.home + '%') : r.home;
-    var awayVal = r.isPct ? (r.away + '%') : r.away;
+    var avg = ((parseFloat(r.home) + parseFloat(r.away)) / 2).toFixed(r.pct ? 0 : 1);
 
     html += '<tr>';
     html += '<td>' + r.label + '</td>';
-    html += '<td class="' + getLevelClass(r.home) + '">' + homeVal + '</td>';
-    html += '<td class="' + getLevelClass(r.away) + '">' + awayVal + '</td>';
-    html += '<td>' + avg + (r.isPct ? '%' : '') + '</td>';
+    html += '<td class="' + getLevelClass(r.home) + '">' + r.home + (r.pct ? '%' : '') + '</td>';
+    html += '<td class="' + getLevelClass(r.away) + '">' + r.away + (r.pct ? '%' : '') + '</td>';
+    html += '<td>' + avg + (r.pct ? '%' : '') + '</td>';
     html += '</tr>';
   }
 
   tbody.innerHTML = html;
+}
+
+function renderAnalysis(data) {
+  var info = data.match_info || {};
+  var probs = data.probabilities || {};
+  var homeStats = data.home_stats || {};
+  var awayStats = data.away_stats || {};
+
+  var subtitleParts = [];
+  if (info.league) subtitleParts.push(info.league);
+  if (info.date) subtitleParts.push(info.date);
+  if (info.time) subtitleParts.push(info.time);
+  if (info.country) subtitleParts.push(info.country);
+
+  var subtitle = subtitleParts.join(' - ');
+  var subtitleEl = getEl('analysis-subtitle');
+  if (subtitleEl) subtitleEl.textContent = subtitle;
+
+  var homeName = getEl('home-name');
+  var awayName = getEl('away-name');
+  var homeLogo = getEl('home-logo');
+  var awayLogo = getEl('away-logo');
+
+  if (homeName) homeName.textContent = info.home_team || 'Local';
+  if (awayName) awayName.textContent = info.away_team || 'Visitante';
+  if (homeLogo) homeLogo.src = info.home_logo || '';
+  if (awayLogo) awayLogo.src = info.away_logo || '';
+
+  renderFormBadges(data.home_form || [], 'home-form-badges');
+  renderFormBadges(data.away_form || [], 'away-form-badges');
+  renderProbGrid(probs, homeStats, awayStats);
+  renderGoalsTable(homeStats, awayStats, info);
+  renderCornersTables(homeStats, awayStats, info);
+  renderCardsTable(homeStats, awayStats, info);
 }
 
 try {
@@ -536,5 +562,7 @@ try {
 } catch (e) {
   console.error('INIT ERROR:', e);
   var mc = getEl('matches-container');
-  if (mc) mc.innerHTML = '<div class="no-matches">Error: ' + e.message + '</div>';
+  if (mc) {
+    mc.innerHTML = '<div class="no-matches">Error: ' + e.message + '</div>';
+  }
 }
