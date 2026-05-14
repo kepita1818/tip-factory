@@ -46,7 +46,7 @@ TOP_COMPETITIONS = {
     "BSA": "Brazil Serie A",
     "CL": "Champions League",
     "EL": "Europa League",
-    "EC": "Euro Cup"
+    "EC": "European Championship"
 }
 
 
@@ -371,8 +371,7 @@ def season_stats_for_team(team_id, matches):
             "home_avg_goals_for": 0,
             "away_avg_goals_for": 0,
             "home_avg_goals_against": 0,
-            "away_avg_goals_against": 0,
-            "recent_matches": []
+            "away_avg_goals_against": 0
         }
 
     return {
@@ -395,8 +394,7 @@ def season_stats_for_team(team_id, matches):
         "home_avg_goals_for": round(home_goals_for / home_played, 2) if home_played else 0,
         "away_avg_goals_for": round(away_goals_for / away_played, 2) if away_played else 0,
         "home_avg_goals_against": round(home_goals_against / home_played, 2) if home_played else 0,
-        "away_avg_goals_against": round(away_goals_against / away_played, 2) if away_played else 0,
-        "recent_matches": valid_matches[:5]
+        "away_avg_goals_against": round(away_goals_against / away_played, 2) if away_played else 0
     }
 
 
@@ -546,58 +544,23 @@ def analyze(
             "home_form": [],
             "away_form": [],
             "home_stats": {
-                "position": 0,
-                "played": 0,
-                "won": 0,
-                "draw": 0,
-                "lost": 0,
-                "goals_for": 0,
-                "goals_against": 0,
-                "points": 0,
-                "form_string": "",
-                "avg_total_goals": 0,
-                "avg_team_goals": 0,
-                "avg_conceded": 0,
-                "btts_pct": 0,
-                "over_1_5_pct": 0,
-                "over_2_5_pct": 0,
-                "over_3_5_pct": 0,
-                "clean_sheet_pct": 0,
-                "failed_to_score_pct": 0,
-                "avg_corners": None,
-                "avg_cards": None
+                "position": 0, "played": 0, "won": 0, "draw": 0, "lost": 0,
+                "goals_for": 0, "goals_against": 0, "points": 0, "form_string": "",
+                "avg_total_goals": 0, "avg_team_goals": 0, "avg_conceded": 0,
+                "btts_pct": 0, "over_1_5_pct": 0, "over_2_5_pct": 0, "over_3_5_pct": 0,
+                "clean_sheet_pct": 0, "failed_to_score_pct": 0
             },
             "away_stats": {
-                "position": 0,
-                "played": 0,
-                "won": 0,
-                "draw": 0,
-                "lost": 0,
-                "goals_for": 0,
-                "goals_against": 0,
-                "points": 0,
-                "form_string": "",
-                "avg_total_goals": 0,
-                "avg_team_goals": 0,
-                "avg_conceded": 0,
-                "btts_pct": 0,
-                "over_1_5_pct": 0,
-                "over_2_5_pct": 0,
-                "over_3_5_pct": 0,
-                "clean_sheet_pct": 0,
-                "failed_to_score_pct": 0,
-                "avg_corners": None,
-                "avg_cards": None
+                "position": 0, "played": 0, "won": 0, "draw": 0, "lost": 0,
+                "goals_for": 0, "goals_against": 0, "points": 0, "form_string": "",
+                "avg_total_goals": 0, "avg_team_goals": 0, "avg_conceded": 0,
+                "btts_pct": 0, "over_1_5_pct": 0, "over_2_5_pct": 0, "over_3_5_pct": 0,
+                "clean_sheet_pct": 0, "failed_to_score_pct": 0
             },
             "h2h": {"matches": [], "stats": {"home_wins": 0, "away_wins": 0, "draws": 0, "home_goals": 0, "away_goals": 0, "total_matches": 0}},
             "probabilities": {
-                "over_1_5": 0,
-                "over_2_5": 0,
-                "over_3_5": 0,
-                "btts": 0,
-                "total_expected_goals": 0,
-                "expected_corners": None,
-                "expected_cards": None
+                "over_1_5": 0, "over_2_5": 0, "over_3_5": 0, "btts": 0,
+                "total_expected_goals": 0, "expected_corners": None, "expected_cards": None
             },
             "odds": {"home": 0, "draw": 0, "away": 0}
         }
@@ -646,9 +609,7 @@ def analyze(
         "over_2_5_pct": home_season["over_2_5_pct"],
         "over_3_5_pct": home_season["over_3_5_pct"],
         "clean_sheet_pct": home_season["clean_sheet_pct"],
-        "failed_to_score_pct": home_season["failed_to_score_pct"],
-        "avg_corners": None,
-        "avg_cards": None
+        "failed_to_score_pct": home_season["failed_to_score_pct"]
     }
 
     away_stats = {
@@ -669,9 +630,7 @@ def analyze(
         "over_2_5_pct": away_season["over_2_5_pct"],
         "over_3_5_pct": away_season["over_3_5_pct"],
         "clean_sheet_pct": away_season["clean_sheet_pct"],
-        "failed_to_score_pct": away_season["failed_to_score_pct"],
-        "avg_corners": None,
-        "avg_cards": None
+        "failed_to_score_pct": away_season["failed_to_score_pct"]
     }
 
     expected_goals = round(home_season["home_avg_goals_for"] + away_season["away_avg_goals_for"], 2)
@@ -753,10 +712,7 @@ def analyze(
         "away_form": away_form,
         "home_stats": home_stats,
         "away_stats": away_stats,
-        "h2h": {
-            "matches": h2h_matches,
-            "stats": h2h_stats
-        },
+        "h2h": {"matches": h2h_matches, "stats": h2h_stats},
         "probabilities": probabilities,
         "odds": {"home": 0, "draw": 0, "away": 0}
     }
