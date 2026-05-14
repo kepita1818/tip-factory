@@ -15,7 +15,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-app = FastAPI(title="TipFactory", version="6.1.0")
+app = FastAPI(title="TipFactory", version="6.2.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -182,52 +182,113 @@ def fetch_fdio_matches(date_str):
     return matches
 
 
-def find_team_id(team_name):
+def normalize_name(name):
+    if not name:
+        return ""
+    replacements = {
+        " cf": "",
+        " fc": "",
+        " de futbol": "",
+        " fútbol": "",
+        ".": "",
+        ",": "",
+        "-": " "
+    }
+    text = name.strip().lower()
+    for old, new in replacements.items():
+        text = text.replace(old, new)
+    return " ".join(text.split())
+
+
+def find_team_id(team_name, competition_id=None):
     if not team_name:
         return None
+
+    target = normalize_name(team_name)
+
+    if competition_id:
+        comp_data = fdorg_request(
+            f"competitions/{competition_id}/teams",
+            cache_key=f"comp_teams_{competition_id}",
+            ttl=86400
+        )
+        if comp_data and isinstance(comp_data, dict):
+            for team in comp_data.get("teams", []):
+                options = [
+                    normalize_name(team.get("name", "")),
+                    normalize_name(team.get("shortName", "")),
+                    normalize_name(team.get("tla", ""))
+                ]
+                if target in options:
+                    return team.get("id")
+
+            for team in comp_data.get("teams", []):
+                options = [
+                    normalize_name(team.get("name", "")),
+                    normalize_name(team.get("shortName", ""))
+                ]
+                if any(target in opt or opt in target for opt in options if opt):
+                    return team.get("id")
 
     data = fdorg_request("teams", cache_key="fdorg_all_teams", ttl=86400)
     if not data or not isinstance(data, dict):
         return None
 
-    items = data.get("teams", [])
-    target = team_name.strip().lower()
-
-    for team in items:
-        names = [
-            (team.get("name") or "").lower(),
-            (team.get("shortName") or "").lower(),
-            (team.get("tla") or "").lower()
+    for team in data.get("teams", []):
+        options = [
+            normalize_name(team.get("name", "")),
+            normalize_name(team.get("shortName", "")),
+            normalize_name(team.get("tla", ""))
         ]
-        if target in names:
+        if target in options:
             return team.get("id")
 
-    for team in items:
-        names = [
-            (team.get("name") or "").lower(),
-            (team.get("shortName") or "").lower()
+    for team in data.get("teams", []):
+        options = [
+            normalize_name(team.get("name", "")),
+            normalize_name(team.get("shortName", ""))
         ]
-        if any(target in n or n in target for n in names if n):
+        if any(target in opt or opt in target for opt in options if opt):
             return team.get("id")
 
     return None
 
 
-def get_team_recent_matches(team_id, limit=10):
+def get_team_recent_matches(team_id, competition_id=None, limit=10):
     if not team_id:
         return []
 
+    params = {
+        "status": "FINISHED",
+        "limit": limit
+    }
+
+    if competition_id:
+        params["competitions"] = competition_id
+
     data = fdorg_request(
         f"teams/{team_id}/matches",
-        params={"status": "FINISHED", "limit": limit},
-        cache_key=f"fdorg_recent_{team_id}_{limit}",
+        params=params,
+        cache_key=f"fdorg_recent_{team_id}_{competition_id}_{limit}",
         ttl=1800
     )
 
     if not data or not isinstance(data, dict):
         return []
 
-    return data.get("matches", [])
+    matches = data.get("matches", [])
+
+    if not matches and competition_id:
+        data = fdorg_request(
+            f"teams/{team_id}/matches",
+            params={"status": "FINISHED", "limit": limit},
+            cache_key=f"fdorg_recent_fallback_{team_id}_{limit}",
+            ttl=1800
+        )
+        if data and isinstance(data, dict):
+            matches = data.get("matches", [])
+
+    return matches
 
 
 def build_form_and_stats(team_id, matches):
@@ -325,7 +386,7 @@ def build_form_and_stats(team_id, matches):
         "goals_for": gf,
         "goals_against": ga,
         "points": won * 3 + draw,
-        "form_string": "",
+        "form_string": "".join([f["result"] for f in form]),
         "avg_total_goals": round((gf + ga) / played, 2),
         "avg_team_goals": round(gf / played, 2),
         "avg_conceded": round(ga / played, 2),
@@ -370,7 +431,6 @@ def test_fdio():
         "raw_type": type(raw).__name__ if raw is not None else None,
         "top_keys": list(raw.keys())[:20] if isinstance(raw, dict) else [],
         "items_count": len(items),
-        "sample": items[:2],
         "normalized_sample": normalized
     }
 
@@ -385,13 +445,14 @@ def analyze(
     league: str = Query(""),
     date: str = Query(""),
     time: str = Query("--:--"),
-    country: str = Query("")
+    country: str = Query(""),
+    competition_id: int = Query(None)
 ):
-    home_id = find_team_id(home_team)
-    away_id = find_team_id(away_team)
+    home_id = find_team_id(home_team, competition_id)
+    away_id = find_team_id(away_team, competition_id)
 
-    home_recent = get_team_recent_matches(home_id, 10)
-    away_recent = get_team_recent_matches(away_id, 10)
+    home_recent = get_team_recent_matches(home_id, competition_id, 10)
+    away_recent = get_team_recent_matches(away_id, competition_id, 10)
 
     home_form, home_stats = build_form_and_stats(home_id, home_recent)
     away_form, away_stats = build_form_and_stats(away_id, away_recent)
@@ -437,10 +498,13 @@ def analyze(
         "stats_available": bool(home_stats["played"] or away_stats["played"]),
         "debug": {
             "match_id": match_id,
+            "competition_id": competition_id,
             "home_id": home_id,
             "away_id": away_id,
             "home_recent_count": len(home_recent),
-            "away_recent_count": len(away_recent)
+            "away_recent_count": len(away_recent),
+            "home_form_string": home_stats.get("form_string", ""),
+            "away_form_string": away_stats.get("form_string", "")
         }
     })
 
@@ -453,7 +517,7 @@ def health():
         "cache_size": len(CACHE),
         "footballdata_io": "configured" if FOOTBALLDATA_IO_KEY else "missing",
         "football_data_org": "configured" if FOOTBALL_DATA_ORG_KEY else "missing",
-        "version": "6.1.0"
+        "version": "6.2.0"
     }
 
 
