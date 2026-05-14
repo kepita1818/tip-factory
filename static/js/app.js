@@ -98,96 +98,48 @@ function setupEventListeners() {
     }
 }
 
-function loadMatches(forceRefresh) {
+function loadMatches() {
     var dateStr = formatDateISO(currentDate);
     var matchesContainer = getEl('matches-container');
     if (matchesContainer) {
         matchesContainer.innerHTML = '<div class="loading">Cargando partidos...</div>';
     }
 
-    var url = '/api/matches?date=' + encodeURIComponent(dateStr);
-    if (forceRefresh) {
-        url += '&force=true';
-    }
-
-    fetch(url)
+    fetch('/api/matches?date=' + encodeURIComponent(dateStr))
         .then(function(response) {
             if (!response.ok) throw new Error('HTTP ' + response.status);
             return response.json();
         })
         .then(function(data) {
-            // Handle new response format
-            if (data && data.matches && Array.isArray(data.matches)) {
-                allMatches = data.matches;
+            // Handle BOTH response formats:
+            // New: {matches: [...], requested_date, source_date, is_exact}
+            // Old: [...] (plain array)
+            if (data && typeof data === 'object' && !Array.isArray(data)) {
+                allMatches = data.matches || [];
                 allMatches._meta = {
                     requestedDate: data.requested_date,
                     sourceDate: data.source_date,
-                    isExact: data.is_exact,
-                    hasMatches: data.has_matches
+                    isExact: data.is_exact
                 };
             } else if (Array.isArray(data)) {
                 allMatches = data;
-                allMatches._meta = { isExact: true, hasMatches: data.length > 0 };
+                allMatches._meta = { isExact: true };
             } else {
-                throw new Error('Respuesta invalida del servidor');
+                throw new Error('Respuesta invalida');
             }
 
-            if (!allMatches._meta.hasMatches) {
-                // Show "no matches" with option to search nearby
-                var noMatchesHtml = '<div class="no-matches">';
-                noMatchesHtml += '<div style="font-size:16px;font-weight:600;margin-bottom:8px;">No hay partidos para ' + formatDate(currentDate) + '</div>';
-                noMatchesHtml += '<div style="font-size:13px;color:var(--text-muted);margin-bottom:12px;">No se encontraron partidos en las principales ligas para esta fecha.</div>';
-                noMatchesHtml += '<button onclick="searchFallback()" style="background:var(--primary);color:#fff;border:none;padding:10px 20px;border-radius:8px;cursor:pointer;font-weight:600;margin-right:8px;">Buscar fechas cercanas</button>';
-                noMatchesHtml += '<button onclick="loadMatches(true)" style="background:var(--bg-card);color:var(--text-main);border:1px solid var(--border);padding:10px 20px;border-radius:8px;cursor:pointer;font-weight:600;">Recargar</button>';
-                noMatchesHtml += '</div>';
+            if (allMatches.length === 0) {
                 if (matchesContainer) {
-                    matchesContainer.innerHTML = noMatchesHtml;
+                    matchesContainer.innerHTML = '<div class="no-matches">No hay partidos para ' + formatDate(currentDate) + '<br><small>Prueba con otra fecha</small></div>';
                 }
                 return;
             }
-
             renderMatches();
         })
         .catch(function(e) {
-            console.error('Error cargando partidos:', e);
+            console.error('Error:', e);
             if (matchesContainer) {
-                matchesContainer.innerHTML = '<div class="no-matches">Error cargando partidos: ' + e.message + '<br><small>Intenta recargar la página</small></div>';
-            }
-        });
-}
-
-function searchFallback() {
-    var dateStr = formatDateISO(currentDate);
-    var matchesContainer = getEl('matches-container');
-    if (matchesContainer) {
-        matchesContainer.innerHTML = '<div class="loading">Buscando fechas cercanas...</div>';
-    }
-
-    fetch('/api/matches/search-fallback?date=' + encodeURIComponent(dateStr), {method: 'POST'})
-        .then(function(response) {
-            if (!response.ok) throw new Error('HTTP ' + response.status);
-            return response.json();
-        })
-        .then(function(data) {
-            if (data && data.matches && Array.isArray(data.matches)) {
-                allMatches = data.matches;
-                allMatches._meta = {
-                    requestedDate: data.requested_date,
-                    sourceDate: data.source_date,
-                    isExact: data.is_exact,
-                    hasMatches: data.has_matches
-                };
-                renderMatches();
-            } else {
-                if (matchesContainer) {
-                    matchesContainer.innerHTML = '<div class="no-matches">No se encontraron partidos en fechas cercanas.<br><small>Prueba con otra fecha</small></div>';
-                }
-            }
-        })
-        .catch(function(e) {
-            console.error('Error fallback:', e);
-            if (matchesContainer) {
-                matchesContainer.innerHTML = '<div class="no-matches">Error buscando fechas cercanas.<br><small>Intenta de nuevo</small></div>';
+                matchesContainer.innerHTML = '<div class="no-matches">Error: ' + e.message + '<br><small>Intenta recargar</small></div>';
             }
         });
 }
@@ -195,20 +147,14 @@ function searchFallback() {
 function renderMatches() {
     var matches = allMatches;
     var matchesContainer = getEl('matches-container');
-    var meta = matches._meta || { isExact: true, hasMatches: true };
+    var meta = matches._meta || { isExact: true };
 
-    // Show notice only for fallback matches
+    // Show notice if showing matches from different date
     var dateNotice = '';
     if (!meta.isExact && meta.sourceDate) {
         var sourceDateParts = meta.sourceDate.split('-');
         var sourceDateFormatted = sourceDateParts[2] + '/' + sourceDateParts[1] + '/' + sourceDateParts[0];
-        var reqDateParts = meta.requestedDate.split('-');
-        var reqDateFormatted = reqDateParts[2] + '/' + reqDateParts[1] + '/' + reqDateParts[0];
-        dateNotice = '<div class="date-notice">';
-        dateNotice += '<div style="font-weight:700;margin-bottom:4px;">📅 Fecha alternativa</div>';
-        dateNotice += 'No hay partidos para el <b>' + reqDateFormatted + '</b>. ';
-        dateNotice += 'Mostrando partidos del <b>' + sourceDateFormatted + '</b>.';
-        dateNotice += '</div>';
+        dateNotice = '<div class="date-notice">📅 Mostrando partidos del ' + sourceDateFormatted + ' (no hay partidos para la fecha seleccionada)</div>';
     }
 
     if (currentFilter !== 'all') {
@@ -260,7 +206,7 @@ function renderMatches() {
         var currentDateStr = formatDateISO(currentDate);
         if (matchDateStr && matchDateStr !== currentDateStr) {
             var mdParts = matchDateStr.split('-');
-            html += '<span class="match-time" style="background:rgba(234,179,8,0.2);color:var(--warning);">' + mdParts[2] + '/' + mdParts[1] + '</span>';
+            html += '<span class="match-time">' + mdParts[2] + '/' + mdParts[1] + '</span>';
         } else {
             html += '<span class="match-time">' + time + '</span>';
         }
@@ -337,7 +283,12 @@ function analyzeMatch(matchId) {
 
     fetch('/api/analyze/' + matchId)
         .then(function(response) {
-            if (!response.ok) throw new Error('HTTP ' + response.status);
+            if (!response.ok) {
+                if (response.status === 404) {
+                    throw new Error('Partido no disponible. Los datos detallados pueden no estar incluidos en el plan gratuito de la API.');
+                }
+                throw new Error('HTTP ' + response.status);
+            }
             return response.json();
         })
         .then(function(data) {
