@@ -150,9 +150,7 @@ function setupEventListeners() {
     });
   }
 
-  if (backBtn) {
-    backBtn.addEventListener('click', showMatches);
-  }
+  if (backBtn) backBtn.addEventListener('click', showMatches);
 
   var tabBtns = document.querySelectorAll('.tab-btn');
   for (var k = 0; k < tabBtns.length; k++) {
@@ -221,10 +219,29 @@ function renderMatches() {
     var match = matches[i];
     var home = match.homeTeam || {};
     var away = match.awayTeam || {};
+    var competition = match.competition || {};
 
     html += ''
       + '<div class="match-card"'
-      + ' data-match-id="' + valueOrDash(match.id) + '">'
+      + ' data-match-id="' + valueOrDash(match.id) + '"'
+      + ' data-home-id="' + valueOrDash(home.id) + '"'
+      + ' data-away-id="' + valueOrDash(away.id) + '"'
+      + ' data-competition-id="' + valueOrDash(competition.id) + '"'
+      + ' data-home-team="' + encodeURIComponent(home.name || "Local") + '"'
+      + ' data-away-team="' + encodeURIComponent(away.name || "Visitante") + '"'
+      + ' data-home-short="' + encodeURIComponent(home.shortName || home.name || "Local") + '"'
+      + ' data-away-short="' + encodeURIComponent(away.shortName || away.name || "Visitante") + '"'
+      + ' data-home-logo="' + encodeURIComponent(home.crest || "") + '"'
+      + ' data-away-logo="' + encodeURIComponent(away.crest || "") + '"'
+      + ' data-league="' + encodeURIComponent(match.league_name || "") + '"'
+      + ' data-country="' + encodeURIComponent(match.country || "") + '"'
+      + ' data-date="' + encodeURIComponent(match.matchDate || "") + '"'
+      + ' data-time="' + encodeURIComponent(formatLocalTime(match.utcDate)) + '"'
+      + ' data-venue="' + encodeURIComponent(match.venue || "") + '"'
+      + ' data-home-score="' + valueOrDash(match.homeScore === null ? "" : match.homeScore) + '"'
+      + ' data-away-score="' + valueOrDash(match.awayScore === null ? "" : match.awayScore) + '"'
+      + ' data-matchday="' + valueOrDash(match.matchday || 0) + '"'
+      + ' data-status="' + encodeURIComponent(match.statusText || "SCHEDULED") + '">'
 
       + '<div class="match-time-row">'
       + '<span class="match-time">' + formatLocalTime(match.utcDate) + '</span>'
@@ -287,7 +304,7 @@ function renderProbabilities(data) {
   html += '<div class="prob-box"><div class="prob-box-value">' + pct(p.over_2_5) + '</div><div class="prob-box-label">Más de 2.5</div><div class="prob-box-sub">Últimos partidos</div></div>';
   html += '<div class="prob-box"><div class="prob-box-value">' + pct(p.over_3_5) + '</div><div class="prob-box-label">Más de 3.5</div><div class="prob-box-sub">Últimos partidos</div></div>';
   html += '<div class="prob-box"><div class="prob-box-value">' + pct(p.btts) + '</div><div class="prob-box-label">AMB</div><div class="prob-box-sub">Ambos marcan</div></div>';
-  html += '<div class="prob-box"><div class="prob-box-value">' + dec(p.total_expected_goals) + '</div><div class="prob-box-label">xG total</div><div class="prob-box-sub">Estimado</div></div>';
+  html += '<div class="prob-box"><div class="prob-box-value">' + dec(p.total_expected_goals) + '</div><div class="prob-box-label">Goles esperados</div><div class="prob-box-sub">Media</div></div>';
   html += '<div class="prob-box"><div class="prob-box-value">' + dec(p.home_xg) + ' - ' + dec(p.away_xg) + '</div><div class="prob-box-label">xG</div><div class="prob-box-sub">Local / Visitante</div></div>';
 
   var probGrid = getEl('prob-grid');
@@ -303,8 +320,8 @@ function renderMiniStats(data) {
   html += '<div class="mini-stat-box"><div class="mini-stat-value">' + valueOrDash(as.played) + '</div><div class="mini-stat-label">Partidos visitante</div></div>';
   html += '<div class="mini-stat-box"><div class="mini-stat-value">' + valueOrDash(hs.avg_team_goals) + '</div><div class="mini-stat-label">Goles local</div></div>';
   html += '<div class="mini-stat-box"><div class="mini-stat-value">' + valueOrDash(as.avg_team_goals) + '</div><div class="mini-stat-label">Goles visitante</div></div>';
-  html += '<div class="mini-stat-box"><div class="mini-stat-value">' + valueOrDash((data.probabilities || {}).home_xg) + '</div><div class="mini-stat-label">xG local</div></div>';
-  html += '<div class="mini-stat-box"><div class="mini-stat-value">' + valueOrDash((data.probabilities || {}).away_xg) + '</div><div class="mini-stat-label">xG visitante</div></div>';
+  html += '<div class="mini-stat-box"><div class="mini-stat-value">' + valueOrDash(hs.clean_sheet_pct) + '%</div><div class="mini-stat-label">Portería a 0 local</div></div>';
+  html += '<div class="mini-stat-box"><div class="mini-stat-value">' + valueOrDash(as.clean_sheet_pct) + '%</div><div class="mini-stat-label">Portería a 0 visitante</div></div>';
 
   var grid = getEl('mini-stats-grid');
   if (grid) grid.innerHTML = html;
@@ -399,10 +416,7 @@ function renderAnalysisText(data) {
   var html = '';
   html += '<p><strong>' + valueOrDash(mi.home_team) + '</strong> llega con racha ' + valueOrDash(hs.form_string || 'Sin datos') + ' y media de ' + valueOrDash(hs.avg_team_goals) + ' goles.</p>';
   html += '<p><strong>' + valueOrDash(mi.away_team) + '</strong> llega con racha ' + valueOrDash(as.form_string || 'Sin datos') + ' y media de ' + valueOrDash(as.avg_team_goals) + ' goles.</p>';
-
-  if (debug.competition) {
-    html += '<p>Competicion detectada: ' + valueOrDash(debug.competition.name) + ' (' + valueOrDash(debug.competition.code) + ').</p>';
-  }
+  html += '<p>Competicion: ' + valueOrDash(mi.league) + ' · IDs ' + valueOrDash(debug.home_id) + ' vs ' + valueOrDash(debug.away_id) + '.</p>';
 
   var analysisBox = getEl('analysis-text-box');
   if (analysisBox) analysisBox.innerHTML = html;
@@ -428,8 +442,12 @@ function openAnalysis(card) {
   if (!card) return;
 
   var matchId = card.dataset.matchId;
-  if (!matchId || matchId === '-' || matchId === '{match_id}') {
-    console.error('match_id invalido:', matchId);
+  var homeId = card.dataset.homeId;
+  var awayId = card.dataset.awayId;
+  var competitionId = card.dataset.competitionId;
+
+  if (!matchId || !homeId || !awayId || !competitionId) {
+    console.error('Faltan ids para analizar', { matchId: matchId, homeId: homeId, awayId: awayId, competitionId: competitionId });
     return;
   }
 
@@ -439,7 +457,28 @@ function openAnalysis(card) {
   var analysisBox = getEl('analysis-text-box');
   if (analysisBox) analysisBox.innerHTML = 'Cargando análisis...';
 
-  fetch('/api/analyze/' + encodeURIComponent(matchId))
+  var params = new URLSearchParams({
+    home_id: homeId,
+    away_id: awayId,
+    competition_id: competitionId,
+    home_team: decodeURIComponent(card.dataset.homeTeam || 'Local'),
+    away_team: decodeURIComponent(card.dataset.awayTeam || 'Visitante'),
+    home_short: decodeURIComponent(card.dataset.homeShort || 'Local'),
+    away_short: decodeURIComponent(card.dataset.awayShort || 'Visitante'),
+    home_logo: decodeURIComponent(card.dataset.homeLogo || ''),
+    away_logo: decodeURIComponent(card.dataset.awayLogo || ''),
+    league: decodeURIComponent(card.dataset.league || ''),
+    country: decodeURIComponent(card.dataset.country || ''),
+    date: decodeURIComponent(card.dataset.date || ''),
+    time: decodeURIComponent(card.dataset.time || '--:--'),
+    venue: decodeURIComponent(card.dataset.venue || ''),
+    home_score: card.dataset.homeScore || '',
+    away_score: card.dataset.awayScore || '',
+    matchday: card.dataset.matchday || '0',
+    status: decodeURIComponent(card.dataset.status || 'SCHEDULED')
+  });
+
+  fetch('/api/analyze/' + encodeURIComponent(matchId) + '?' + params.toString())
     .then(function (response) {
       if (!response.ok) {
         return response.text().then(function (txt) {
