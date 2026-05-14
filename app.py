@@ -1,9 +1,9 @@
 import os
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime
 
 import requests
-from fastapi import FastAPI, HTTPException, Query, Request
+from fastapi import FastAPI, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
@@ -15,7 +15,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-app = FastAPI(title="TipFactory", version="10.1.0")
+app = FastAPI(title="TipFactory", version="10.2.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -328,8 +328,6 @@ def matches(date: str = Query(None)):
     if not date:
         date = datetime.utcnow().strftime("%Y-%m-%d")
 
-    logger.info(f"BUSCANDO PARTIDOS PARA: {date}")
-
     all_matches = []
     found_competitions = []
 
@@ -348,7 +346,6 @@ def matches(date: str = Query(None)):
             if comp_matches:
                 all_matches.extend(comp_matches)
                 found_competitions.append(comp_name)
-                logger.info(f"{comp_name}: {len(comp_matches)} partidos")
 
     seen = set()
     unique_matches = []
@@ -370,21 +367,30 @@ def matches(date: str = Query(None)):
 
 
 @app.get("/api/analyze/{match_id}")
-def analyze(match_id: int):
+def analyze(
+    match_id: int,
+    home_id: int = Query(...),
+    away_id: int = Query(...),
+    competition_id: int = Query(...),
+    home_team: str = Query("Local"),
+    away_team: str = Query("Visitante"),
+    home_short: str = Query("Local"),
+    away_short: str = Query("Visitante"),
+    home_logo: str = Query(""),
+    away_logo: str = Query(""),
+    league: str = Query(""),
+    country: str = Query(""),
+    date: str = Query(""),
+    time: str = Query("--:--"),
+    venue: str = Query(""),
+    home_score: str = Query(""),
+    away_score: str = Query(""),
+    matchday: int = Query(0),
+    status: str = Query("SCHEDULED")
+):
     logger.info(f"ANALIZANDO PARTIDO {match_id}")
 
-    match = api_get(f"matches/{match_id}", cache_key=f"match_{match_id}", ttl=300)
-    if not match:
-        raise HTTPException(status_code=404, detail="Partido no encontrado")
-
-    match_info = format_match(match)
-
-    home_id = safe_get(match, "homeTeam", "id", default=None)
-    away_id = safe_get(match, "awayTeam", "id", default=None)
-    competition_id = safe_get(match, "competition", "id", default=None)
-
-    season = match.get("season", {}) or {}
-    season_year = int((season.get("startDate") or "2025-01-01")[:4])
+    season_year = datetime.utcnow().year
 
     home_recent = get_team_recent_matches(home_id, competition_id, 10)
     away_recent = get_team_recent_matches(away_id, competition_id, 10)
@@ -395,13 +401,6 @@ def analyze(match_id: int):
     home_form, home_stats = build_form_and_stats(home_id, home_recent, home_standings)
     away_form, away_stats = build_form_and_stats(away_id, away_recent, away_standings)
 
-    h2h_data = api_get(
-        f"matches/{match_id}/head2head",
-        params={"limit": 10},
-        cache_key=f"h2h_{match_id}",
-        ttl=3600
-    )
-
     h2h_matches = []
     h2h_stats = {
         "home_wins": 0,
@@ -411,6 +410,13 @@ def analyze(match_id: int):
         "away_goals": 0,
         "total_matches": 0
     }
+
+    h2h_data = api_get(
+        f"matches/{match_id}/head2head",
+        params={"limit": 10},
+        cache_key=f"h2h_{match_id}",
+        ttl=3600
+    )
 
     if h2h_data and h2h_data.get("aggregates"):
         agg = h2h_data["aggregates"]
@@ -445,24 +451,24 @@ def analyze(match_id: int):
 
     return JSONResponse({
         "match_info": {
-            "home_team": safe_get(match, "homeTeam", "name", default="Local"),
-            "away_team": safe_get(match, "awayTeam", "name", default="Visitante"),
-            "home_short": safe_get(match, "homeTeam", "shortName", default="Local"),
-            "away_short": safe_get(match, "awayTeam", "shortName", default="Visitante"),
-            "home_logo": safe_get(match, "homeTeam", "crest", default=""),
-            "away_logo": safe_get(match, "awayTeam", "crest", default=""),
-            "league": safe_get(match, "competition", "name", default=""),
-            "country": safe_get(match, "area", "name", default="") or safe_get(match, "competition", "area", "name", default=""),
-            "date": (match.get("utcDate") or "")[:10],
-            "time": (match.get("utcDate") or "")[11:16],
-            "venue": match.get("venue", ""),
-            "status": match.get("status", "SCHEDULED"),
+            "home_team": home_team,
+            "away_team": away_team,
+            "home_short": home_short,
+            "away_short": away_short,
+            "home_logo": home_logo,
+            "away_logo": away_logo,
+            "league": league,
+            "country": country,
+            "date": date,
+            "time": time,
+            "venue": venue,
+            "status": status,
             "minute": 0,
-            "matchday": match.get("matchday", 0),
-            "home_score": match_info.get("homeScore"),
-            "away_score": match_info.get("awayScore"),
-            "halfTimeHome": match_info.get("halfTimeHome"),
-            "halfTimeAway": match_info.get("halfTimeAway")
+            "matchday": matchday,
+            "home_score": None if home_score == "" else home_score,
+            "away_score": None if away_score == "" else away_score,
+            "halfTimeHome": None,
+            "halfTimeAway": None
         },
         "home_form": home_form,
         "away_form": away_form,
@@ -483,8 +489,8 @@ def analyze(match_id: int):
             "match_id": match_id,
             "competition": {
                 "id": competition_id,
-                "code": safe_get(match, "competition", "code", default=""),
-                "name": safe_get(match, "competition", "name", default="")
+                "code": "",
+                "name": league
             },
             "home_id": home_id,
             "away_id": away_id,
@@ -523,7 +529,7 @@ def health():
         "time": datetime.now().isoformat(),
         "cache_size": len(CACHE),
         "api_key": "configured" if API_KEY else "missing",
-        "version": "10.1.0"
+        "version": "10.2.0"
     }
 
 
