@@ -111,11 +111,9 @@ function loadMatches() {
             return response.json();
         })
         .then(function(data) {
-            // Handle BOTH response formats:
-            // New: {matches: [...], requested_date, source_date, is_exact}
-            // Old: [...] (plain array)
-            if (data && typeof data === 'object' && !Array.isArray(data)) {
-                allMatches = data.matches || [];
+            // Handle structured response {matches, requested_date, source_date, is_exact}
+            if (data && data.matches && Array.isArray(data.matches)) {
+                allMatches = data.matches;
                 allMatches._meta = {
                     requestedDate: data.requested_date,
                     sourceDate: data.source_date,
@@ -285,7 +283,7 @@ function analyzeMatch(matchId) {
         .then(function(response) {
             if (!response.ok) {
                 if (response.status === 404) {
-                    throw new Error('Partido no disponible. Los datos detallados pueden no estar incluidos en el plan gratuito de la API.');
+                    throw new Error('Partido no disponible. Los datos detallados pueden no estar incluidos en tu plan API.');
                 }
                 throw new Error('HTTP ' + response.status);
             }
