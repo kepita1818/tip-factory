@@ -236,7 +236,7 @@ function renderMatches() {
   }
 
   matchesContainer.innerHTML = html;
-
+     
   var cards = document.querySelectorAll('.match-card');
   for (var c = 0; c < cards.length; c++) {
     cards[c].addEventListener('click', function () {
