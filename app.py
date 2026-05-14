@@ -12,7 +12,7 @@ from fastapi.templating import Jinja2Templates
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
 
-app = FastAPI(title="TipFactory", version="2.1.0")
+app = FastAPI(title="TipFactory", version="2.3.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -71,9 +71,10 @@ def api_get(endpoint, params=None, cache_key=None, ttl=300):
 
     try:
         url = f"{BASE_URL}/{endpoint.lstrip('/')}"
-        resp = requests.get(url, headers=HEADERS, params=params, timeout=20)
+        resp = requests.get(url, headers=HEADERS, params=params, timeout=30)
 
         if resp.status_code == 404:
+            logger.warning(f"NOT FOUND {endpoint} {params}")
             return None
         if resp.status_code in (401, 403):
             logger.error(f"AUTH ERROR {resp.status_code} on {endpoint}")
@@ -110,24 +111,6 @@ def parse_score_value(v):
         return int(v)
     except Exception:
         return None
-
-
-def extract_season_year(match_detail, competition_id):
-    season_from_match = safe_get(match_detail or {}, "season", "startDate", default="")
-    if isinstance(season_from_match, str) and len(season_from_match) >= 4:
-        return int(season_from_match[:4])
-
-    comp_data = api_get(
-        f"competitions/{competition_id}",
-        cache_key=f"competition_{competition_id}",
-        ttl=3600
-    )
-
-    start_date = safe_get(comp_data or {}, "currentSeason", "startDate", default="")
-    if isinstance(start_date, str) and len(start_date) >= 4:
-        return int(start_date[:4])
-
-    return datetime.utcnow().year
 
 
 def format_match(m):
@@ -188,13 +171,51 @@ def format_match(m):
     }
 
 
+def extract_season_year(match_detail, competition_id):
+    season_from_match = safe_get(match_detail or {}, "season", "startDate", default="")
+    if isinstance(season_from_match, str) and len(season_from_match) >= 4:
+        return int(season_from_match[:4])
+
+    comp_data = api_get(
+        f"competitions/{competition_id}",
+        cache_key=f"competition_{competition_id}",
+        ttl=3600
+    )
+
+    start_date = safe_get(comp_data or {}, "currentSeason", "startDate", default="")
+    if isinstance(start_date, str) and len(start_date) >= 4:
+        return int(start_date[:4])
+
+    return datetime.utcnow().year
+
+
+def get_team_matches(team_id, competition_id, season_year, venue=None, limit=10):
+    params = {
+        "season": season_year,
+        "competitions": str(competition_id),
+        "status": "FINISHED",
+        "limit": limit
+    }
+    if venue:
+        params["venue"] = venue
+
+    data = api_get(
+        f"teams/{team_id}/matches",
+        params=params,
+        cache_key=f"team_matches_{team_id}_{competition_id}_{season_year}_{venue}_{limit}",
+        ttl=1800
+    )
+
+    return data.get("matches", []) if isinstance(data, dict) else []
+
+
 def extract_team_view(team_id, matches):
     played = won = draw = lost = 0
     gf = ga = 0
     over15 = over25 = over35 = btts = clean_sheet = failed_to_score = 0
     form = []
 
-    for m in matches:
+    for m in matches[:10]:
         home = m.get("homeTeam", {}) or {}
         away = m.get("awayTeam", {}) or {}
         full = safe_get(m, "score", "fullTime", default={}) or {}
@@ -274,28 +295,6 @@ def extract_team_view(team_id, matches):
     }
 
 
-def get_team_matches(team_id, competition_id=None, venue=None, limit=10):
-    if not team_id:
-        return []
-
-    params = {"status": "FINISHED", "limit": limit}
-
-    if competition_id:
-        params["competitions"] = str(competition_id)
-
-    if venue:
-        params["venue"] = venue
-
-    data = api_get(
-        f"teams/{team_id}/matches",
-        params=params,
-        cache_key=f"tm_{team_id}_{competition_id}_{venue}_{limit}",
-        ttl=1800
-    )
-
-    return data.get("matches", []) if isinstance(data, dict) else []
-
-
 def find_team_row(table_rows, team_id):
     for row in table_rows:
         if safe_get(row, "team", "id") == team_id:
@@ -314,26 +313,21 @@ def find_team_row(table_rows, team_id):
 
 
 def get_standings_bundle(team_id, competition_id, season_year):
-    if not team_id or not competition_id:
-        return {"TOTAL": None, "HOME": None, "AWAY": None}
-
     data = api_get(
         f"competitions/{competition_id}/standings",
         params={"season": season_year},
-        cache_key=f"st_{competition_id}_{season_year}",
+        cache_key=f"standings_{competition_id}_{season_year}",
         ttl=3600
     )
 
     result = {"TOTAL": None, "HOME": None, "AWAY": None}
-
     if not data or not data.get("standings"):
         return result
 
     for standing in data.get("standings", []):
         standing_type = standing.get("type")
-        table = standing.get("table", [])
         if standing_type in result:
-            result[standing_type] = find_team_row(table, team_id)
+            result[standing_type] = find_team_row(standing.get("table", []), team_id)
 
     return result
 
@@ -460,10 +454,10 @@ def analyze(
 
     season_year = extract_season_year(match_detail, competition_id)
 
-    home_recent_all = get_team_matches(home_id, competition_id, venue=None, limit=10)
-    away_recent_all = get_team_matches(away_id, competition_id, venue=None, limit=10)
-    home_recent_home = get_team_matches(home_id, competition_id, venue="HOME", limit=10)
-    away_recent_away = get_team_matches(away_id, competition_id, venue="AWAY", limit=10)
+    home_recent_home = get_team_matches(home_id, competition_id, season_year, venue="HOME", limit=10)
+    away_recent_away = get_team_matches(away_id, competition_id, season_year, venue="AWAY", limit=10)
+    home_recent_all = get_team_matches(home_id, competition_id, season_year, venue=None, limit=10)
+    away_recent_all = get_team_matches(away_id, competition_id, season_year, venue=None, limit=10)
 
     if len(home_recent_home) >= 3:
         home_base = extract_team_view(home_id, home_recent_home)
@@ -484,9 +478,6 @@ def analyze(
 
     home_stats = merge_stats(home_base, home_bundle["TOTAL"], home_bundle["HOME"] if home_mode == "HOME" else home_bundle["TOTAL"])
     away_stats = merge_stats(away_base, away_bundle["TOTAL"], away_bundle["AWAY"] if away_mode == "AWAY" else away_bundle["TOTAL"])
-
-    home_form = home_base["form"]
-    away_form = away_base["form"]
 
     h2h_data = api_get(
         f"matches/{match_id}/head2head",
@@ -557,8 +548,8 @@ def analyze(
             "halfTimeHome": safe_get(match_detail or {}, "score", "halfTime", "home", default=None),
             "halfTimeAway": safe_get(match_detail or {}, "score", "halfTime", "away", default=None)
         },
-        "home_form": home_form,
-        "away_form": away_form,
+        "home_form": home_base["form"],
+        "away_form": away_base["form"],
         "home_stats": home_stats,
         "away_stats": away_stats,
         "h2h": {
@@ -578,10 +569,10 @@ def analyze(
             "away_id": away_id,
             "competition_id": competition_id,
             "season_year_used": season_year,
-            "home_recent_all_count": len(home_recent_all),
-            "away_recent_all_count": len(away_recent_all),
             "home_recent_home_count": len(home_recent_home),
             "away_recent_away_count": len(away_recent_away),
+            "home_recent_all_count": len(home_recent_all),
+            "away_recent_all_count": len(away_recent_all),
             "home_mode_used": home_mode,
             "away_mode_used": away_mode,
             "home_total_found": bool(home_bundle["TOTAL"]),
@@ -599,7 +590,7 @@ def health():
         "time": datetime.now().isoformat(),
         "cache_size": len(CACHE),
         "api_key": "configured" if API_KEY else "missing",
-        "version": "2.1.0"
+        "version": "2.3.0"
     }
 
 
