@@ -134,51 +134,13 @@ def home(request: Request):
     return templates.TemplateResponse("index.html", {"request": request})
 
 @app.get("/api/matches")
-def matches(date: str = Query(None), force: bool = Query(False)):
+def matches(date: str = Query(None)):
     if not date:
         date = datetime.now().strftime("%Y-%m-%d")
 
-    logger.info(f"BUSCANDO PARTIDOS PARA: {date} (force={force})")
+    logger.info(f"BUSCANDO PARTIDOS PARA: {date}")
 
-    cache_key = f"matches_{date}"
-
-    # Clear cache if force refresh
-    if force and cache_key in _cache:
-        del _cache[cache_key]
-        logger.info(f"Cache cleared for {cache_key}")
-
-    # Try exact date
-    data = api_request('matches', {'dateFrom': date, 'dateTo': date}, cache_key, 300)
-
-    if data and data.get('matches'):
-        matches_list = [format_match(m) for m in data['matches']]
-        logger.info(f"ENCONTRADOS {len(matches_list)} partidos en {date}")
-        return {
-            "matches": matches_list,
-            "requested_date": date,
-            "source_date": date,
-            "is_exact": True,
-            "has_matches": True
-        }
-
-    logger.warning(f"NO HAY PARTIDOS para {date}")
-    return {
-        "matches": [],
-        "requested_date": date,
-        "source_date": None,
-        "is_exact": True,
-        "has_matches": False
-    }
-
-@app.post("/api/matches/search-fallback")
-def search_fallback(date: str = Query(None)):
-    """Search nearby dates when exact date has no matches"""
-    if not date:
-        date = datetime.now().strftime("%Y-%m-%d")
-
-    logger.info(f"FALLBACK search for {date}")
-
-    for delta in [-1, 1, -2, 2, -3, 3, -4, 4, -5, 5, -6, 6, -7, 7]:
+    for delta in [0, -1, 1, -2, 2, -3, 3, -4, 4, -5, 5, -6, 6, -7, 7]:
         try:
             check_date = (datetime.strptime(date, "%Y-%m-%d") + timedelta(days=delta)).strftime("%Y-%m-%d")
 
@@ -186,25 +148,24 @@ def search_fallback(date: str = Query(None)):
 
             if data and data.get('matches'):
                 matches_list = [format_match(m) for m in data['matches']]
-                logger.info(f"FALLBACK: {len(matches_list)} partidos en {check_date}")
+                logger.info(f"ENCONTRADOS {len(matches_list)} partidos en {check_date}")
                 return {
                     "matches": matches_list,
                     "requested_date": date,
                     "source_date": check_date,
-                    "is_exact": False,
-                    "has_matches": True
+                    "is_exact": check_date == date
                 }
 
         except Exception as e:
-            logger.error(f"Error fallback {check_date}: {e}")
+            logger.error(f"Error buscando {check_date}: {e}")
             continue
 
+    logger.warning(f"NO HAY PARTIDOS para {date}")
     return {
         "matches": [],
         "requested_date": date,
         "source_date": None,
-        "is_exact": True,
-        "has_matches": False
+        "is_exact": True
     }
 
 @app.get("/api/analyze/{match_id}")
