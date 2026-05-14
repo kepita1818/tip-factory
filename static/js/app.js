@@ -37,6 +37,11 @@ function valueOrNoData(value, suffix) {
   return String(value) + (suffix || '');
 }
 
+function num(value, fallback) {
+  var n = parseFloat(value);
+  return isNaN(n) ? (fallback || 0) : n;
+}
+
 function updateDateDisplay() {
   var dateDisplay = getEl('current-date');
   var datePicker = getEl('date-picker');
@@ -123,11 +128,8 @@ function setupEventListeners() {
 
   if (dateDisplay && datePicker) {
     dateDisplay.addEventListener('click', function () {
-      if (datePicker.showPicker) {
-        datePicker.showPicker();
-      } else {
-        datePicker.focus();
-      }
+      if (datePicker.showPicker) datePicker.showPicker();
+      else datePicker.focus();
     });
 
     datePicker.addEventListener('change', function (e) {
@@ -254,11 +256,8 @@ function renderMatches() {
     var isFinished = match.status === 'FT';
 
     var statusBadge = '';
-    if (isLive) {
-      statusBadge = '<span class="status-badge live">LIVE</span>';
-    } else if (isFinished) {
-      statusBadge = '<span class="status-badge finished">FT</span>';
-    }
+    if (isLive) statusBadge = '<span class="status-badge live">LIVE</span>';
+    else if (isFinished) statusBadge = '<span class="status-badge finished">FT</span>';
 
     var scoreText = '';
     if (match.homeScore !== null && match.homeScore !== undefined && match.awayScore !== null && match.awayScore !== undefined) {
@@ -352,13 +351,10 @@ function renderFormBadges(form, elementId) {
   for (var i = 0; i < form.length; i++) {
     var item = form[i];
     var bg = '#eab308';
-
     if (item.result === 'W') bg = '#22c55e';
     if (item.result === 'L') bg = '#ef4444';
-
     html += '<div class="form-badge" style="background:' + bg + '">' + item.result + '</div>';
   }
-
   container.innerHTML = html;
 }
 
@@ -379,11 +375,10 @@ function renderProbGrid(probs, homeStats, awayStats) {
     { label: 'Más de 2.5', value: valueOrNoData(probs.over_2_5, '%'), sub: 'Temporada completa' },
     { label: 'Más de 3.5', value: valueOrNoData(probs.over_3_5, '%'), sub: 'Temporada completa' },
     { label: 'AMB', value: valueOrNoData(probs.btts, '%'), sub: 'Ambos marcan' },
-    { label: 'Goles esperados', value: valueOrNoData(probs.total_expected_goals, ''), sub: 'Cálculo local+visitante' },
-    { label: 'Corners esperados', value: valueOrNoData(probs.expected_corners, ''), sub: 'Solo si la API lo da' },
-    { label: 'Tarjetas esperadas', value: valueOrNoData(probs.expected_cards, ''), sub: 'Solo si la API lo da' },
+    { label: 'Goles esperados', value: valueOrNoData(probs.total_expected_goals, ''), sub: 'Local casa + visitante fuera' },
     { label: 'Goles local', value: valueOrNoData(homeStats.avg_team_goals, ''), sub: 'Media temporada' },
-    { label: 'Goles visitante', value: valueOrNoData(awayStats.avg_team_goals, ''), sub: 'Media temporada' }
+    { label: 'Goles visitante', value: valueOrNoData(awayStats.avg_team_goals, ''), sub: 'Media temporada' },
+    { label: 'Portería a cero', value: valueOrNoData(homeStats.clean_sheet_pct, '%'), sub: 'Local temporada' }
   ];
 
   var html = '';
@@ -397,6 +392,109 @@ function renderProbGrid(probs, homeStats, awayStats) {
   }
 
   container.innerHTML = html;
+}
+
+function renderMiniStats(home, away, probs) {
+  var container = getEl('mini-stats-grid');
+  if (!container) return;
+
+  var items = [
+    { label: 'Partidos jugados', value: Math.max(num(home.played), num(away.played)) },
+    { label: 'Puntos local', value: num(home.points) },
+    { label: 'Puntos visitante', value: num(away.points) },
+    { label: 'BTTS medio', value: valueOrNoData(((num(home.btts_pct) + num(away.btts_pct)) / 2).toFixed(1), '%') },
+    { label: 'Media goles local', value: valueOrNoData(home.avg_team_goals, '') },
+    { label: 'Media goles visitante', value: valueOrNoData(away.avg_team_goals, '') }
+  ];
+
+  var html = '';
+  for (var i = 0; i < items.length; i++) {
+    html += '<div class="mini-stat-box">';
+    html += '<div class="mini-stat-value">' + items[i].value + '</div>';
+    html += '<div class="mini-stat-label">' + items[i].label + '</div>';
+    html += '</div>';
+  }
+
+  container.innerHTML = html;
+}
+
+function renderSeasonTable(home, away, info) {
+  var tbody = getEl('season-table-body');
+  if (!tbody) return;
+
+  var homeHeader = getEl('season-home-header');
+  var awayHeader = getEl('season-away-header');
+  if (homeHeader) homeHeader.textContent = info.home_short || 'Local';
+  if (awayHeader) awayHeader.textContent = info.away_short || 'Visitante';
+
+  var rows = [
+    { label: 'PJ', home: home.played, away: away.played },
+    { label: 'PG', home: home.won, away: away.won },
+    { label: 'PE', home: home.draw, away: away.draw },
+    { label: 'PP', home: home.lost, away: away.lost },
+    { label: 'GF', home: home.goals_for, away: away.goals_for },
+    { label: 'GC', home: home.goals_against, away: away.goals_against },
+    { label: 'Puntos', home: home.points, away: away.points },
+    { label: 'Más de 2.5', home: valueOrNoData(home.over_2_5_pct, '%'), away: valueOrNoData(away.over_2_5_pct, '%') },
+    { label: 'AMB', home: valueOrNoData(home.btts_pct, '%'), away: valueOrNoData(away.btts_pct, '%') },
+    { label: 'Portería a cero', home: valueOrNoData(home.clean_sheet_pct, '%'), away: valueOrNoData(away.clean_sheet_pct, '%') }
+  ];
+
+  var html = '';
+  for (var i = 0; i < rows.length; i++) {
+    html += '<tr>';
+    html += '<td>' + rows[i].label + '</td>';
+    html += '<td>' + rows[i].home + '</td>';
+    html += '<td>' + rows[i].away + '</td>';
+    html += '</tr>';
+  }
+
+  tbody.innerHTML = html;
+}
+
+function buildAnalysisText(info, home, away, probs) {
+  var lines = [];
+
+  var over25 = num(probs.over_2_5);
+  var btts = num(probs.btts);
+  var homeGoals = num(home.avg_team_goals);
+  var awayGoals = num(away.avg_team_goals);
+  var homeConcede = num(home.avg_conceded);
+  var awayConcede = num(away.avg_conceded);
+
+  lines.push(
+    '<p><strong>' + (info.home_team || 'Local') + '</strong> llega con ' +
+    valueOrNoData(home.points, '') + ' puntos y una media de ' +
+    valueOrNoData(home.avg_team_goals, '') + ' goles por partido, mientras que <strong>' +
+    (info.away_team || 'Visitante') + '</strong> registra ' +
+    valueOrNoData(away.avg_team_goals, '') + ' goles de media en la temporada.</p>'
+  );
+
+  if (over25 >= 60) {
+    lines.push('<p>El cruce apunta a un partido abierto, porque el promedio combinado del mercado Más de 2.5 es alto y supera el 60%.</p>');
+  } else if (over25 >= 45) {
+    lines.push('<p>El mercado de goles está equilibrado, con una tendencia intermedia para el Más de 2.5.</p>');
+  } else {
+    lines.push('<p>Por números de temporada, no parece el mejor partido para esperar demasiados goles.</p>');
+  }
+
+  if (btts >= 60) {
+    lines.push('<p>También hay buena base estadística para Ambos Marcan, ya que los dos equipos presentan porcentajes sólidos en ese mercado.</p>');
+  } else if (btts <= 40) {
+    lines.push('<p>Ambos Marcan no destaca especialmente según los datos acumulados de la temporada.</p>');
+  }
+
+  if ((homeGoals + awayGoals) > 2.4 || (homeConcede + awayConcede) > 2.2) {
+    lines.push('<p>La suma de promedios ofensivos y defensivos sugiere un ritmo competitivo razonable y opciones de ver llegadas en ambas áreas.</p>');
+  }
+
+  return lines.join('');
+}
+
+function renderAnalysisText(info, home, away, probs) {
+  var box = getEl('analysis-text-box');
+  if (!box) return;
+  box.innerHTML = buildAnalysisText(info, home, away, probs);
 }
 
 function renderGoalsTable(home, away, info) {
@@ -446,13 +544,11 @@ function renderCornersTables(home, away, info) {
   if (awayHeader) awayHeader.textContent = info.away_short || 'Visitante';
 
   if (body1) {
-    body1.innerHTML =
-      '<tr><td>Corners</td><td>Sin datos</td><td>Sin datos</td><td>API no disponible</td></tr>';
+    body1.innerHTML = '<tr><td>Corners</td><td>Sin datos</td><td>Sin datos</td><td>API no disponible</td></tr>';
   }
 
   if (body2) {
-    body2.innerHTML =
-      '<tr><td>Total corners</td><td>Sin datos</td><td>Sin datos</td><td>API no disponible</td></tr>';
+    body2.innerHTML = '<tr><td>Total corners</td><td>Sin datos</td><td>Sin datos</td><td>API no disponible</td></tr>';
   }
 }
 
@@ -465,8 +561,7 @@ function renderCardsTable(home, away, info) {
   if (homeHeader) homeHeader.textContent = info.home_short || 'Local';
   if (awayHeader) awayHeader.textContent = info.away_short || 'Visitante';
 
-  tbody.innerHTML =
-    '<tr><td>Tarjetas</td><td>Sin datos</td><td>Sin datos</td><td>API no disponible</td></tr>';
+  tbody.innerHTML = '<tr><td>Tarjetas</td><td>Sin datos</td><td>Sin datos</td><td>API no disponible</td></tr>';
 }
 
 function renderAnalysis(data) {
@@ -498,6 +593,9 @@ function renderAnalysis(data) {
   renderFormBadges(data.home_form || [], 'home-form-badges');
   renderFormBadges(data.away_form || [], 'away-form-badges');
   renderProbGrid(probs, homeStats, awayStats);
+  renderMiniStats(homeStats, awayStats, probs);
+  renderSeasonTable(homeStats, awayStats, info);
+  renderAnalysisText(info, homeStats, awayStats, probs);
   renderGoalsTable(homeStats, awayStats, info);
   renderCornersTables(homeStats, awayStats, info);
   renderCardsTable(homeStats, awayStats, info);
