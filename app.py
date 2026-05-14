@@ -3,19 +3,16 @@ import logging
 from datetime import datetime
 
 import requests
-from fastapi import FastAPI, Query, Request
+from fastapi import FastAPI, Query, Request, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse, HTMLResponse
+from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
-logging.basicConfig(
-    format="%(asctime)s - %(levelname)s - %(message)s",
-    level=logging.INFO
-)
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
 
-app = FastAPI(title="TipFactory", version="10.2.0")
+app = FastAPI(title="TipFactory", version="1.0.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -28,13 +25,13 @@ app.add_middleware(
 app.mount("/static", StaticFiles(directory="static"), name="static")
 templates = Jinja2Templates(directory="templates")
 
-API_KEY = os.environ.get("API_FOOTBALL_KEY", "").strip()
+API_KEY = os.getenv("API_FOOTBALL_KEY", "").strip()
 BASE_URL = "https://api.football-data.org/v4"
 HEADERS = {"X-Auth-Token": API_KEY} if API_KEY else {}
 
 CACHE = {}
 
-TOP_COMPETITIONS = {
+COMPETITIONS = {
     "PD": "La Liga",
     "PL": "Premier League",
     "SA": "Serie A",
@@ -46,6 +43,8 @@ TOP_COMPETITIONS = {
     "CL": "Champions League",
     "EL": "Europa League"
 }
+
+DEFAULT_COMPETITIONS = ["PD", "PL", "SA", "BL1", "FL1", "PPL", "DED", "BSA", "CL", "EL"]
 
 
 def cache_get(key, ttl=300):
@@ -74,14 +73,13 @@ def api_get(endpoint, params=None, cache_key=None, ttl=300):
         url = f"{BASE_URL}/{endpoint.lstrip('/')}"
         resp = requests.get(url, headers=HEADERS, params=params, timeout=20)
 
-        if resp.status_code == 429:
-            logger.error(f"RATE LIMIT {endpoint}")
+        if resp.status_code == 404:
             return None
         if resp.status_code in (401, 403):
-            logger.error(f"AUTH ERROR {resp.status_code} {endpoint}")
+            logger.error(f"AUTH ERROR {resp.status_code} on {endpoint}")
             return None
-        if resp.status_code == 404:
-            logger.warning(f"NOT FOUND {endpoint}")
+        if resp.status_code == 429:
+            logger.error(f"RATE LIMIT on {endpoint}")
             return None
 
         resp.raise_for_status()
@@ -92,7 +90,7 @@ def api_get(endpoint, params=None, cache_key=None, ttl=300):
 
         return data
     except Exception as e:
-        logger.error(f"API error in {endpoint}: {e}")
+        logger.error(f"API error on {endpoint}: {e}")
         return None
 
 
@@ -114,8 +112,6 @@ def format_match(m):
     ft = score.get("fullTime", {}) if isinstance(score, dict) else {}
     ht = score.get("halfTime", {}) if isinstance(score, dict) else {}
 
-    match_date = (m.get("utcDate") or "")[:10]
-
     status = m.get("status", "SCHEDULED")
     status_map = {
         "SCHEDULED": "NS",
@@ -133,7 +129,7 @@ def format_match(m):
     return {
         "id": m.get("id"),
         "utcDate": m.get("utcDate"),
-        "matchDate": match_date,
+        "matchDate": (m.get("utcDate") or "")[:10],
         "status": status_map.get(status, status),
         "statusText": status,
         "minute": 0,
@@ -165,7 +161,7 @@ def format_match(m):
     }
 
 
-def build_form_and_stats(team_id, matches, standings=None):
+def build_stats(team_id, matches, standings=None):
     played = won = draw = lost = 0
     gf = ga = 0
     over15 = over25 = over35 = btts = clean_sheet = failed_to_score = 0
@@ -253,54 +249,34 @@ def build_form_and_stats(team_id, matches, standings=None):
     return form, stats
 
 
-def get_team_recent_matches(team_id, competition_id, limit=10):
+def get_team_matches(team_id, competition_id=None, limit=10):
     if not team_id:
         return []
 
-    params = {
-        "status": "FINISHED",
-        "limit": limit
-    }
-
+    params = {"status": "FINISHED", "limit": limit}
     if competition_id:
         params["competitions"] = str(competition_id)
 
-    data = api_get(
-        f"teams/{team_id}/matches",
-        params=params,
-        cache_key=f"team_matches_{team_id}_{competition_id}_{limit}",
-        ttl=1800
-    )
-
+    data = api_get(f"teams/{team_id}/matches", params=params, cache_key=f"tm_{team_id}_{competition_id}_{limit}", ttl=1800)
     matches = data.get("matches", []) if isinstance(data, dict) else []
-
-    if not matches:
-        data = api_get(
-            f"teams/{team_id}/matches",
-            params={"status": "FINISHED", "limit": limit},
-            cache_key=f"team_matches_fallback_{team_id}_{limit}",
-            ttl=1800
-        )
-        matches = data.get("matches", []) if isinstance(data, dict) else []
 
     return matches
 
 
-def get_team_standings(team_id, competition_id, season_year):
+def get_standings(team_id, competition_id, season_year):
     if not team_id or not competition_id:
         return None
 
     data = api_get(
         f"competitions/{competition_id}/standings",
         params={"season": season_year},
-        cache_key=f"standings_{competition_id}_{season_year}",
+        cache_key=f"st_{competition_id}_{season_year}",
         ttl=3600
     )
-
     if not data or not data.get("standings"):
         return None
 
-    for standing in data.get("standings", []):
+    for standing in data["standings"]:
         for row in standing.get("table", []):
             if safe_get(row, "team", "id") == team_id:
                 return {
@@ -324,45 +300,44 @@ def home(request: Request):
 
 
 @app.get("/api/matches")
-def matches(date: str = Query(None)):
+def api_matches(date: str = Query(None)):
     if not date:
         date = datetime.utcnow().strftime("%Y-%m-%d")
 
-    all_matches = []
-    found_competitions = []
+    collected = []
+    found = []
 
-    for comp_code, comp_name in TOP_COMPETITIONS.items():
+    for code in DEFAULT_COMPETITIONS:
         data = api_get(
-            f"competitions/{comp_code}/matches",
+            f"competitions/{code}/matches",
             params={"dateFrom": date, "dateTo": date},
-            cache_key=f"comp_{comp_code}_{date}",
+            cache_key=f"matches_{code}_{date}",
             ttl=300
         )
 
         if data and data.get("matches"):
             comp_matches = [format_match(m) for m in data["matches"]]
             comp_matches = [m for m in comp_matches if m["matchDate"] == date]
-
             if comp_matches:
-                all_matches.extend(comp_matches)
-                found_competitions.append(comp_name)
+                collected.extend(comp_matches)
+                found.append({"code": code, "name": COMPETITIONS.get(code, code)})
 
     seen = set()
-    unique_matches = []
-    for m in all_matches:
+    unique = []
+    for m in collected:
         if m["id"] not in seen:
             seen.add(m["id"])
-            unique_matches.append(m)
+            unique.append(m)
 
-    unique_matches.sort(key=lambda x: x.get("utcDate", ""))
+    unique.sort(key=lambda x: x.get("utcDate", ""))
 
     return {
-        "matches": unique_matches,
+        "matches": unique,
         "requested_date": date,
-        "source_date": date if unique_matches else None,
+        "source_date": date if unique else None,
         "is_exact": True,
-        "source": "football-data.org",
-        "competitions_found": found_competitions
+        "competitions_found": found,
+        "source": "football-data.org"
     }
 
 
@@ -388,18 +363,23 @@ def analyze(
     matchday: int = Query(0),
     status: str = Query("SCHEDULED")
 ):
-    logger.info(f"ANALIZANDO PARTIDO {match_id}")
-
     season_year = datetime.utcnow().year
 
-    home_recent = get_team_recent_matches(home_id, competition_id, 10)
-    away_recent = get_team_recent_matches(away_id, competition_id, 10)
+    home_recent = get_team_matches(home_id, competition_id, 10)
+    away_recent = get_team_matches(away_id, competition_id, 10)
 
-    home_standings = get_team_standings(home_id, competition_id, season_year)
-    away_standings = get_team_standings(away_id, competition_id, season_year)
+    home_standings = get_standings(home_id, competition_id, season_year)
+    away_standings = get_standings(away_id, competition_id, season_year)
 
-    home_form, home_stats = build_form_and_stats(home_id, home_recent, home_standings)
-    away_form, away_stats = build_form_and_stats(away_id, away_recent, away_standings)
+    home_form, home_stats = build_stats(home_id, home_recent, home_standings)
+    away_form, away_stats = build_stats(away_id, away_recent, away_standings)
+
+    h2h_data = api_get(
+        f"matches/{match_id}/head2head",
+        params={"limit": 5},
+        cache_key=f"h2h_{match_id}",
+        ttl=3600
+    )
 
     h2h_matches = []
     h2h_stats = {
@@ -410,13 +390,6 @@ def analyze(
         "away_goals": 0,
         "total_matches": 0
     }
-
-    h2h_data = api_get(
-        f"matches/{match_id}/head2head",
-        params={"limit": 10},
-        cache_key=f"h2h_{match_id}",
-        ttl=3600
-    )
 
     if h2h_data and h2h_data.get("aggregates"):
         agg = h2h_data["aggregates"]
@@ -479,45 +452,15 @@ def analyze(
             "stats": h2h_stats
         },
         "probabilities": probabilities,
-        "odds": {
-            "home": 0,
-            "draw": 0,
-            "away": 0
-        },
+        "odds": {"home": 0, "draw": 0, "away": 0},
         "stats_available": bool(home_stats["played"] or away_stats["played"]),
         "debug": {
             "match_id": match_id,
-            "competition": {
-                "id": competition_id,
-                "code": "",
-                "name": league
-            },
             "home_id": home_id,
             "away_id": away_id,
+            "competition_id": competition_id,
             "home_recent_count": len(home_recent),
-            "away_recent_count": len(away_recent),
-            "home_recent_raw": [
-                {
-                    "date": (m.get("utcDate") or "")[:10],
-                    "home": safe_get(m, "homeTeam", "name", default=""),
-                    "away": safe_get(m, "awayTeam", "name", default=""),
-                    "homeScore": safe_get(m, "score", "fullTime", "home", default=None),
-                    "awayScore": safe_get(m, "score", "fullTime", "away", default=None),
-                    "competition": safe_get(m, "competition", "name", default="")
-                }
-                for m in home_recent[:10]
-            ],
-            "away_recent_raw": [
-                {
-                    "date": (m.get("utcDate") or "")[:10],
-                    "home": safe_get(m, "homeTeam", "name", default=""),
-                    "away": safe_get(m, "awayTeam", "name", default=""),
-                    "homeScore": safe_get(m, "score", "fullTime", "home", default=None),
-                    "awayScore": safe_get(m, "score", "fullTime", "away", default=None),
-                    "competition": safe_get(m, "competition", "name", default="")
-                }
-                for m in away_recent[:10]
-            ]
+            "away_recent_count": len(away_recent)
         }
     })
 
@@ -529,11 +472,11 @@ def health():
         "time": datetime.now().isoformat(),
         "cache_size": len(CACHE),
         "api_key": "configured" if API_KEY else "missing",
-        "version": "10.2.0"
+        "version": "1.0.0"
     }
 
 
 if __name__ == "__main__":
     import uvicorn
-    port = int(os.environ.get("PORT", 8000))
+    port = int(os.getenv("PORT", 8000))
     uvicorn.run("app:app", host="0.0.0.0", port=port)
