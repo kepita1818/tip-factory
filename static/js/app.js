@@ -22,9 +22,11 @@ function formatDateISO(date) {
   return year + '-' + month + '-' + day;
 }
 
-function formatLocalTime(utcDateString) {
-  if (!utcDateString) return '--:--';
-  var date = new Date(utcDateString);
+function formatLocalTime(dateString) {
+  if (!dateString) return '--:--';
+  var date = new Date(dateString.replace(' ', 'T'));
+  if (isNaN(date.getTime())) return dateString.slice(11, 16) || '--:--';
+
   return date.toLocaleTimeString('es-ES', {
     hour: '2-digit',
     minute: '2-digit',
@@ -157,13 +159,11 @@ function loadMatches() {
 function renderMatches() {
   var matchesContainer = getEl('matches-container');
   var matches = Array.isArray(allMatches) ? allMatches.slice() : [];
-  var meta = allMatches.meta || {};
 
   if (currentFilter !== 'all') {
     matches = matches.filter(function (m) {
       var country = (m.country || '').toLowerCase();
-      var filter = currentFilter.toLowerCase();
-      return country.indexOf(filter) !== -1;
+      return country.indexOf(currentFilter.toLowerCase()) !== -1;
     });
   }
 
@@ -172,15 +172,11 @@ function renderMatches() {
   });
 
   if (!matches.length) {
-    matchesContainer.innerHTML = '<div class="no-matches">No hay partidos para esta fecha<br><small>Revisa /api/test-fdio y la consola</small></div>';
+    matchesContainer.innerHTML = '<div class="no-matches">No hay partidos para esta fecha</div>';
     return;
   }
 
   var html = '';
-
-  if (!meta.isExact && meta.sourceDate) {
-    html += '<div class="date-notice">Mostrando partidos de ' + meta.sourceDate + '</div>';
-  }
 
   for (var i = 0; i < matches.length; i++) {
     var match = matches[i];
