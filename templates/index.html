@@ -26,14 +26,14 @@
 
     <div class="league-filters">
       <button class="filter-btn active" data-filter="all">Todos</button>
-      <button class="filter-btn" data-filter="Spain">Importar España</button>
-      <button class="filter-btn" data-filter="England">Importar Inglaterra</button>
-      <button class="filter-btn" data-filter="Italy">Importar Italia</button>
-      <button class="filter-btn" data-filter="Germany">Importar Alemania</button>
-      <button class="filter-btn" data-filter="France">Importar Francia</button>
-      <button class="filter-btn" data-filter="Portugal">Importar Portugal</button>
-      <button class="filter-btn" data-filter="Netherlands">Importar Holanda</button>
-      <button class="filter-btn" data-filter="Brazil">Importar Brasil</button>
+      <button class="filter-btn" data-filter="Spain">España</button>
+      <button class="filter-btn" data-filter="England">Inglaterra</button>
+      <button class="filter-btn" data-filter="Italy">Italia</button>
+      <button class="filter-btn" data-filter="Germany">Alemania</button>
+      <button class="filter-btn" data-filter="France">Francia</button>
+      <button class="filter-btn" data-filter="Portugal">Portugal</button>
+      <button class="filter-btn" data-filter="Netherlands">Holanda</button>
+      <button class="filter-btn" data-filter="Brazil">Brasil</button>
     </div>
 
     <div class="matches-section" id="matches-section">
@@ -59,26 +59,57 @@
         <div class="card teams-form-card">
           <div class="teams-row">
             <div class="team-block">
-              <img id="home-logo" src="" alt="Home Logo" onerror="this.style.display='none'">
+              <img id="home-logo" src="" alt="Escudo local" onerror="this.style.display='none'">
               <span id="home-name">Local</span>
             </div>
 
             <div class="vs-center">VS</div>
 
             <div class="team-block">
-              <img id="away-logo" src="" alt="Away Logo" onerror="this.style.display='none'">
+              <img id="away-logo" src="" alt="Escudo visitante" onerror="this.style.display='none'">
               <span id="away-name">Visitante</span>
             </div>
           </div>
 
           <div class="form-row">
-            <div class="form-badges" id="home-form-badges"></div>
-            <div class="form-badges" id="away-form-badges"></div>
+            <div class="form-side">
+              <div class="form-side-label">Forma local</div>
+              <div class="form-badges" id="home-form-badges"></div>
+            </div>
+
+            <div class="form-side">
+              <div class="form-side-label">Forma visitante</div>
+              <div class="form-badges form-badges-right" id="away-form-badges"></div>
+            </div>
           </div>
         </div>
 
         <div class="card prob-grid-card">
           <div class="prob-grid" id="prob-grid"></div>
+        </div>
+
+        <div class="card">
+          <div class="card-title">Claves del partido</div>
+          <div class="mini-stats-grid" id="mini-stats-grid"></div>
+        </div>
+
+        <div class="card">
+          <div class="card-title">Datos de temporada</div>
+          <table class="stats-table">
+            <thead>
+              <tr>
+                <th>Métrica</th>
+                <th id="season-home-header">Local</th>
+                <th id="season-away-header">Visitante</th>
+              </tr>
+            </thead>
+            <tbody id="season-table-body"></tbody>
+          </table>
+        </div>
+
+        <div class="card">
+          <div class="card-title">Análisis</div>
+          <div class="analysis-text-box" id="analysis-text-box"></div>
         </div>
       </div>
 
@@ -101,7 +132,7 @@
 
       <div class="tab-content" id="tab-corners">
         <div class="card">
-          <div class="card-title">Corners en contra</div>
+          <div class="card-title">Corners</div>
           <table class="stats-table">
             <thead>
               <tr>
