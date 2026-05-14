@@ -472,25 +472,50 @@ function poissonOver(lambda, threshold) {
 }
 
 function renderCornersTable(data) {
-  const home = data.home_stats;
-  const away = data.away_stats;
-  const tbody = document.getElementById('total-corners-body'); // Ajusta al ID de tu tabla
+  var home = data.home_stats;
+  var away = data.away_stats;
+  var tbody = getEl('total-corners-body');
   if (!tbody) return;
 
-  tbody.innerHTML = `
-    <tr>
-      <td>Over 8.5 Córners</td>
-      <td class="${getProbClass(home.over_85_corners_pct)}">${home.over_85_corners_pct}%</td>
-      <td class="${getProbClass(away.over_85_corners_pct)}">${away.over_85_corners_pct}%</td>
-      <td>${((home.over_85_corners_pct + away.over_85_corners_pct)/2).toFixed(0)}%</td>
-    </tr>
-    <tr>
-      <td>Over 9.5 Córners</td>
-      <td class="${getProbClass(home.over_95_corners_pct)}">${home.over_95_corners_pct}%</td>
-      <td class="${getProbClass(away.over_95_corners_pct)}">${away.over_95_corners_pct}%</td>
-      <td>${((home.over_95_corners_pct + away.over_95_corners_pct)/2).toFixed(0)}%</td>
-    </tr>
-  `;
+  // Sacamos los porcentajes de los últimos 10 partidos de cada uno
+  var lines = [
+    { label: 'Over 8.5', h: home.over_85_corners_pct, a: away.over_85_corners_pct },
+    { label: 'Over 9.5', h: home.over_95_corners_pct, a: away.over_95_corners_pct },
+    { label: 'Over 10.5', h: home.over_105_corners_pct, a: away.over_105_corners_pct }
+  ];
+
+  tbody.innerHTML = lines.map(function(l) {
+    var media = ((l.h + l.a) / 2).toFixed(0);
+    return '<tr>' +
+      '<td>' + l.label + '</td>' +
+      '<td class="' + getProbClass(l.h) + '">' + l.h + '%</td>' +
+      '<td class="' + getProbClass(l.a) + '">' + l.a + '%</td>' +
+      '<td>' + media + '%</td>' +
+    '</tr>';
+  }).join('');
+}
+
+function renderCardsTable(data) {
+  var home = data.home_stats;
+  var away = data.away_stats;
+  var tbody = getEl('cards-table-body');
+  if (!tbody) return;
+
+  var lines = [
+    { label: 'Over 3.5 Tarjetas', h: home.over_35_cards_pct, a: away.over_35_cards_pct },
+    { label: 'Over 4.5 Tarjetas', h: home.over_45_cards_pct, a: away.over_45_cards_pct },
+    { label: 'Over 5.5 Tarjetas', h: home.over_55_cards_pct, a: away.over_55_cards_pct }
+  ];
+
+  tbody.innerHTML = lines.map(function(l) {
+    var media = ((l.h + l.a) / 2).toFixed(0);
+    return '<tr>' +
+      '<td>' + l.label + '</td>' +
+      '<td class="' + getProbClass(l.h) + '">' + l.h + '%</td>' +
+      '<td class="' + getProbClass(l.a) + '">' + l.a + '%</td>' +
+      '<td>' + media + '%</td>' +
+    '</tr>';
+  }).join('');
 }
 
 function renderCardsTable(data) {
