@@ -8,6 +8,7 @@
   />
   <title>TipFactory</title>
   <link rel="stylesheet" href="/static/css/style.css" />
+<base target="_blank">
 </head>
 <body>
   <div id="app">
@@ -42,6 +43,74 @@
       <button class="filter-btn" data-filter="europa">Europa</button>
       <button class="filter-btn" data-filter="mls">MLS</button>
       <button class="filter-btn" data-filter="mexico">México</button>
+      <button class="filter-btn" data-filter="colombia">Colombia</button>
+      <button class="filter-btn" data-filter="chile">Chile</button>
+      <button class="filter-btn" data-filter="uruguay">Uruguay</button>
+      <button class="filter-btn" data-filter="peru">Perú</button>
+      <button class="filter-btn" data-filter="ecuador">Ecuador</button>
+      <button class="filter-btn" data-filter="japan">Japón</button>
+      <button class="filter-btn" data-filter="korea">Corea</button>
+      <button class="filter-btn" data-filter="china">China</button>
+      <button class="filter-btn" data-filter="saudi">Arabia</button>
+      <button class="filter-btn" data-filter="egypt">Egipto</button>
+      <button class="filter-btn" data-filter="south africa">Sudáfrica</button>
+      <button class="filter-btn" data-filter="morocco">Marruecos</button>
+      <button class="filter-btn" data-filter="tunisia">Túnez</button>
+      <button class="filter-btn" data-filter="algeria">Argelia</button>
+      <button class="filter-btn" data-filter="nigeria">Nigeria</button>
+      <button class="filter-btn" data-filter="ghana">Ghana</button>
+      <button class="filter-btn" data-filter="belgium">Bélgica</button>
+      <button class="filter-btn" data-filter="switzerland">Suiza</button>
+      <button class="filter-btn" data-filter="austria">Austria</button>
+      <button class="filter-btn" data-filter="denmark">Dinamarca</button>
+      <button class="filter-btn" data-filter="norway">Noruega</button>
+      <button class="filter-btn" data-filter="finland">Finlandia</button>
+      <button class="filter-btn" data-filter="czech">Rep. Checa</button>
+      <button class="filter-btn" data-filter="greece">Grecia</button>
+      <button class="filter-btn" data-filter="turkey">Turquía</button>
+      <button class="filter-btn" data-filter="ukraine">Ucrania</button>
+      <button class="filter-btn" data-filter="croatia">Croacia</button>
+      <button class="filter-btn" data-filter="romania">Rumanía</button>
+      <button class="filter-btn" data-filter="scotland">Escocia</button>
+      <button class="filter-btn" data-filter="russia">Rusia</button>
+      <button class="filter-btn" data-filter="poland">Polonia</button>
+      <button class="filter-btn" data-filter="costa rica">Costa Rica</button>
+      <button class="filter-btn" data-filter="guatemala">Guatemala</button>
+      <button class="filter-btn" data-filter="honduras">Honduras</button>
+      <button class="filter-btn" data-filter="el salvador">El Salvador</button>
+      <button class="filter-btn" data-filter="panama">Panamá</button>
+      <button class="filter-btn" data-filter="jamaica">Jamaica</button>
+      <button class="filter-btn" data-filter="usl">USL</button>
+      <button class="filter-btn" data-filter="canada">Canadá</button>
+      <button class="filter-btn" data-filter="iran">Irán</button>
+      <button class="filter-btn" data-filter="qatar">Qatar</button>
+      <button class="filter-btn" data-filter="uae">Emiratos</button>
+      <button class="filter-btn" data-filter="indonesia">Indonesia</button>
+      <button class="filter-btn" data-filter="malaysia">Malasia</button>
+      <button class="filter-btn" data-filter="singapore">Singapur</button>
+      <button class="filter-btn" data-filter="vietnam">Vietnam</button>
+      <button class="filter-btn" data-filter="hong kong">Hong Kong</button>
+      <button class="filter-btn" data-filter="taiwan">Taiwán</button>
+      <button class="filter-btn" data-filter="kenya">Kenia</button>
+      <button class="filter-btn" data-filter="tanzania">Tanzania</button>
+      <button class="filter-btn" data-filter="uganda">Uganda</button>
+      <button class="filter-btn" data-filter="zambia">Zambia</button>
+      <button class="filter-btn" data-filter="zimbabwe">Zimbabue</button>
+      <button class="filter-btn" data-filter="ivory coast">Costa de Marfil</button>
+      <button class="filter-btn" data-filter="senegal">Senegal</button>
+      <button class="filter-btn" data-filter="world cup">Mundial</button>
+      <button class="filter-btn" data-filter="euro">Euro</button>
+      <button class="filter-btn" data-filter="copa america">Copa América</button>
+      <button class="filter-btn" data-filter="nations">Nations League</button>
+      <button class="filter-btn" data-filter="africa cup">África</button>
+      <button class="filter-btn" data-filter="gold cup">Gold Cup</button>
+      <button class="filter-btn" data-filter="asian cup">Asia</button>
+      <button class="filter-btn" data-filter="women">Femenino</button>
+      <button class="filter-btn" data-filter="olympic">Olímpico</button>
+      <button class="filter-btn" data-filter="u20">U-20</button>
+      <button class="filter-btn" data-filter="u17">U-17</button>
+      <button class="filter-btn" data-filter="futsal">Futsal</button>
+      <button class="filter-btn" data-filter="beach">Beach Soccer</button>
     </div>
 
     <section id="matches-section">
@@ -134,11 +203,11 @@
 
       <div class="tab-content" id="tab-corners">
         <div class="card">
-          <div class="card-title">Corners en contra</div>
+          <div class="card-title">Corners por equipo</div>
           <table class="stats-table" id="corners-table">
             <thead>
               <tr>
-                <th>Mercado</th>
+                <th>Métrica</th>
                 <th id="corners-home-header">Local</th>
                 <th id="corners-away-header">Visitante</th>
                 <th>Media</th>
@@ -149,7 +218,7 @@
         </div>
 
         <div class="card">
-          <div class="card-title">Total de corners</div>
+          <div class="card-title">Total de corners (líneas)</div>
           <table class="stats-table" id="total-corners-table">
             <thead>
               <tr>
@@ -166,11 +235,11 @@
 
       <div class="tab-content" id="tab-tarjetas">
         <div class="card">
-          <div class="card-title">Tarjetas</div>
+          <div class="card-title">Tarjetas por equipo</div>
           <table class="stats-table" id="cards-table">
             <thead>
               <tr>
-                <th>Mercado</th>
+                <th>Métrica</th>
                 <th id="cards-home-header">Local</th>
                 <th id="cards-away-header">Visitante</th>
                 <th>Media</th>
