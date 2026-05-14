@@ -12,7 +12,7 @@ from fastapi.templating import Jinja2Templates
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
 
-app = FastAPI(title="TipFactory", version="8.1.0")
+app = FastAPI(title="TipFactory", version="9.0.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -41,32 +41,65 @@ LEAGUE_IDS = {
     "SA": 135,     # Serie A
     "BL1": 78,     # Bundesliga
     "FL1": 61,     # Ligue 1
-    
+
     # OTRAS EUROPEAS
     "PPL": 94,     # Primeira Liga
     "DED": 88,     # Eredivisie
     "ELC": 40,     # Championship (ENG)
     "SB": 203,     # Superettan (SWE)
-    "SP": 197,     # La Liga 2 (ESP)
+    "SP": 207,     # La Liga 2 (ESP) - CORREGIDO
     "SI": 131,     # Serie B (ITA)
     "SD": 81,      # 2. Bundesliga (GER)
     "FL2": 62,     # Ligue 2 (FRA)
     "PLN": 106,    # Ekstraklasa (POL)
     "RU": 235,     # Premier League (RUS)
     "BE": 144,     # Jupiler Pro League (BEL)
-    "CH": 207,     # Super League (SUI)
+    "CH": 207,     # Super League (SUI) - CORREGIDO
     "AU": 218,     # Bundesliga (AUT)
     "DK": 119,     # Superliga (DEN)
     "NO": 103,     # Eliteserien (NOR)
     "FI": 244,     # Veikkausliiga (FIN)
     "CZ": 346,     # First League (CZE)
-    "GR": 197,     # Super League (GRE)
-    "TR": 203,     # Süper Lig (TUR)
+    "GR": 197,     # Super League (GRE) - CORREGIDO
+    "TR": 203,     # Süper Lig (TUR) - CORREGIDO
     "UA": 333,     # Premier League (UKR)
     "HR": 210,     # HNL (CRO)
     "RO": 283,     # Liga I (ROU)
     "SC": 180,     # Premiership (SCO)
-    
+    "SPL": 179,    # Scottish Championship
+    "NIR": 182,    # NIFL Premiership
+    "IRL": 357,    # Premier Division (IRL)
+    "SVK": 332,    # Super Liga (SVK)
+    "SVN": 373,    # Prva Liga (SVN)
+    "BGR": 172,    # First League (BGR)
+    "SRB": 286,    # Super Liga (SRB)
+    "HUN": 271,    # OTP Bank Liga (HUN)
+    "ISR": 383,    # Ligat Ha'Al (ISR)
+    "KAZ": 389,    # Premier League (KAZ)
+    "MDA": 406,    # Super Liga (MDA)
+    "GEO": 358,    # Erovnuli Liga (GEO)
+    "ARM": 342,    # Premier League (ARM)
+    "AZE": 391,    # Premier League (AZE)
+    "EST": 332,    # Meistriliiga (EST)
+    "LVA": 353,    # Virsliga (LVA)
+    "LTU": 362,    # A Lyga (LTU)
+    "FRO": 374,    # Premier League (FRO)
+    "GIB": 384,    # National League (GIB)
+    "MLT": 377,    # Premier League (MLT)
+    "CYP": 148,    # First Division (CYP)
+    "LUX": 214,    # National Division (LUX)
+    "AND": 400,    # Primera Divisió (AND)
+    "SMR": 388,    # Campionato (SMR)
+    "LIE": 385,    # Premier League (LIE)
+    "KOS": 394,    # Superliga (KOS)
+    "MKD": 345,    # First League (MKD)
+    "MNE": 360,    # First League (MNE)
+    "ALB": 309,    # Superliga (ALB)
+    "BIH": 318,    # Premier League (BIH)
+    "WAL": 109,    # Cymru Premier (WAL)
+    "GRL": 375,    # Premier League (GRL)
+    "ISL": 166,    # Besta deild (ISL)
+
     # SUDAMÉRICA
     "BSA": 71,     # Brasileirao
     "CLI": 13,     # Copa Libertadores
@@ -80,7 +113,23 @@ LEAGUE_IDS = {
     "PER": 281,    # Liga 1 (PER)
     "VEN": 277,    # Primera División (VEN)
     "BOL": 344,    # División Profesional (BOL)
-    
+    "BRA_B": 72,   # Serie B (BRA)
+    "BRA_C": 73,   # Serie C (BRA)
+    "BRA_D": 74,   # Serie D (BRA)
+    "ARG_B": 129,  # Primera Nacional (ARG)
+    "CHI_B": 266,  # Primera B (CHI)
+    "URU_B": 269,  # Segunda División (URU)
+    "COL_B": 240,  # Primera B (COL)
+    "ECU_B": 243,  # Serie B (ECU)
+    "PAR_B": 253,  # División Intermedia (PAR)
+    "PER_B": 282,  # Liga 2 (PER)
+    "VEN_B": 278,  # Segunda División (VEN)
+    "BOL_B": 345,  # División Profesional B (BOL)
+    "CHL_CUP": 44, # Copa Chile
+    "ARG_CUP": 130, # Copa Argentina
+    "BRA_CUP": 75,  # Copa do Brasil
+    "URU_CUP": 270, # Copa Uruguay
+
     # CONCACAF
     "MLS": 253,    # Major League Soccer
     "MX": 262,     # Liga MX
@@ -90,7 +139,35 @@ LEAGUE_IDS = {
     "SV": 279,     # Primera División (SLV)
     "PA": 287,     # LPF (PAN)
     "JM": 357,     # Premier League (JAM)
-    
+    "USL": 255,    # USL Championship
+    "USL1": 256,   # USL League One
+    "NASL": 257,   # NASL
+    "MX_B": 263,   # Liga de Expansión MX
+    "MX_ASC": 264, # Liga Premier MX
+    "CAN": 259,    # Canadian Premier League
+    "CUB": 372,    # Campeonato Nacional (CUB)
+    "DOM": 373,    # Liga Dominicana (DOM)
+    "NCA": 374,    # Primera División (NCA)
+    "TRI": 375,    # TT Pro League (TRI)
+    "HAI": 376,    # Ligue Haïtienne (HAI)
+    "SKN": 377,    # SKNFA Premier League (SKN)
+    "LCA": 378,    # SLFA First Division (LCA)
+    "VIN": 379,    # Vincy Premier League (VIN)
+    "BRB": 380,    # BFA Premier League (BRB)
+    "GRN": 381,    # GFA Premier League (GRN)
+    "ATG": 382,    # ABFA Premier League (ATG)
+    "BER": 383,    # Bermudian Premier Division (BER)
+    "CAY": 384,    # CIFA Premier League (CAY)
+    "TCA": 385,    # Provo Premier League (TCA)
+    "VIR": 386,    # U.S. Virgin Islands Championship (VIR)
+    "PUR": 387,    # Liga Puerto Rico (PUR)
+    "ARU": 388,    # Aruban Division di Honor (ARU)
+    "BOE": 389,    # Bonaire League (BOE)
+    "CUR": 390,    # Curaçao Promé Divishon (CUR)
+    "SXM": 391,    # SXM Premier League (SXM)
+    "MAF": 392,    # Saint-Martin Championship (MAF)
+    "GUA": 393,    # Liga Nacional de Guatemala (GUA)
+
     # ASIA
     "JP": 98,      # J1 League (JPN)
     "KR": 292,     # K League 1 (KOR)
@@ -102,7 +179,40 @@ LEAGUE_IDS = {
     "AE": 301,     # UAE Pro League
     "QA": 340,     # Stars League (QAT)
     "IR": 291,     # Persian Gulf Pro League
-    
+    "JP_B": 99,    # J2 League (JPN)
+    "JP_C": 100,   # J3 League (JPN)
+    "KR_B": 293,   # K League 2 (KOR)
+    "CN_B": 170,   # China League One (CHN)
+    "IDN": 274,    # Liga 1 (IDN)
+    "MYS": 274,    # Super League (MYS)
+    "SGP": 275,    # Premier League (SGP)
+    "VNM": 276,    # V.League 1 (VNM)
+    "PHL": 277,    # Philippines Football League (PHL)
+    "HKG": 278,    # Hong Kong Premier League (HKG)
+    "TWN": 279,    # Taiwan Football Premier League (TWN)
+    "MAC": 280,    # Liga de Elite (MAC)
+    "BGD": 281,    # Bangladesh Premier League (BGD)
+    "PAK": 282,    # Pakistan Premier League (PAK)
+    "LKA": 283,    # Sri Lanka Champions League (LKA)
+    "NEP": 284,    # Martyr's Memorial A-Division (NEP)
+    "BHU": 285,    # Bhutan Premier League (BHU)
+    "MDV": 286,    # Dhivehi Premier League (MDV)
+    "KGZ": 287,    # Kyrgyz Premier League (KGZ)
+    "TJK": 288,    # Tajikistan League (TJK)
+    "TKM": 289,    # Ýokary Liga (TKM)
+    "UZB": 290,    # Uzbekistan League (UZB)
+    "AFG": 291,    # Afghan Premier League (AFG)
+    "MNG": 292,    # Mongolian Premier League (MNG)
+    "BRN": 293,    # Bahraini Premier League (BRN)
+    "IRQ": 294,    # Iraqi Premier League (IRQ)
+    "JOR": 295,    # Jordanian Pro League (JOR)
+    "KUW": 296,    # Kuwaiti Premier League (KUW)
+    "LBN": 297,    # Lebanese Premier League (LBN)
+    "OMA": 298,    # Oman Professional League (OMA)
+    "PLE": 299,    # West Bank Premier League (PLE)
+    "SYR": 300,    # Syrian Premier League (SYR)
+    "YEM": 301,    # Yemeni League (YEM)
+
     # ÁFRICA
     "EG": 233,     # Premier League (EGY)
     "ZA": 289,     # Premier Division (RSA)
@@ -111,7 +221,71 @@ LEAGUE_IDS = {
     "DZ": 186,     # Ligue 1 (ALG)
     "NG": 371,     # NPFL (NGA)
     "GH": 376,     # Premier League (GHA)
-    
+    "CIV": 377,    # Ligue 1 (CIV)
+    "SEN": 378,    # Ligue 1 (SEN)
+    "MLI": 379,    # Première Division (MLI)
+    "BFA": 380,    # Première Division (BFA)
+    "NER": 381,    # Championnat National (NER)
+    "BEN": 382,    # Championnat National (BEN)
+    "TGO": 383,    # Championnat National (TGO)
+    "GIN": 384,    # Ligue 1 (GIN)
+    "SLE": 385,    # Premier League (SLE)
+    "LBR": 386,    # Premier League (LBR)
+    "GAB": 387,    # Championnat National (GAB)
+    "CMR": 388,    # Elite One (CMR)
+    "CAF": 389,    # CAF Champions League
+    "CAF_CC": 390, # CAF Confederation Cup
+    "RSA_B": 391,  # National First Division (RSA)
+    "MAR_B": 392,  # Botola 2 (MAR)
+    "TUN_B": 393,  # Ligue 2 (TUN)
+    "ALG_B": 394,  # Ligue 2 (ALG)
+    "EGY_B": 395,  # Egyptian Second Division (EGY)
+    "GHA_B": 396,  # Division One (GHA)
+    "NGA_B": 397,  # Nigeria National League (NGA)
+    "KEN": 398,    # Kenyan Premier League (KEN)
+    "TAN": 399,    # Tanzanian Premier League (TAN)
+    "UGA": 400,    # Uganda Premier League (UGA)
+    "RWA": 401,    # Rwanda Premier League (RWA)
+    "BDI": 402,    # Burundi Premier League (BDI)
+    "ETH": 403,    # Ethiopian Premier League (ETH)
+    "SOM": 404,    # Somali First Division (SOM)
+    "DJI": 405,    # Djibouti Premier League (DJI)
+    "ERI": 406,    # Eritrean Premier League (ERI)
+    "SSD": 407,    # South Sudan Football Championship (SSD)
+    "ZAM": 408,    # Super League (ZAM)
+    "ZIM": 409,    # Premier Soccer League (ZIM)
+    "MWI": 410,    # Super League (MWI)
+    "MOZ": 411,    # Moçambola (MOZ)
+    "ANG": 412,    # Girabola (ANG)
+    "COD": 413,    # Linafoot (COD)
+    "CGO": 414,    # Ligue 1 (CGO)
+    "GAB_B": 415,  # D2 (GAB)
+    "EQG": 416,    # Liga Nacional (EQG)
+    "STP": 417,    # Campeonato Nacional (STP)
+    "CHA": 418,    # Chad Premier League (CHA)
+    "CAF": 419,    # CAF Champions League
+    "CAF_CC": 420, # CAF Confederation Cup
+
+    # OCEANÍA
+    "NZL": 421,    # New Zealand National League (NZL)
+    "AUS_NPL": 422, # National Premier Leagues (AUS)
+    "PNG": 423,    # Papua New Guinea National Soccer League (PNG)
+    "FIJ": 424,    # Fiji Premier League (FIJ)
+    "SOL": 425,    # Solomon Islands S-League (SOL)
+    "VAN": 426,    # Vanuatu Premia Divisen (VAN)
+    "NCL": 427,    # New Caledonia Super Ligue (NCL)
+    "TAH": 428,    # Tahiti Ligue 1 (TAH)
+    "SAM": 429,    # Samoa National League (SAM)
+    "TGA": 430,    # Tonga Major League (TGA)
+    "COK": 431,    # Cook Islands Round Cup (COK)
+    "NIU": 432,    # Niue Soccer Tournament (NIU)
+    "KIR": 433,    # Kiribati National Championship (KIR)
+    "NRU": 434,    # Nauru Soccer League (NRU)
+    "TUV": 435,    # Tuvalu A-Division (TUV)
+    "PLW": 436,    # Palau Soccer League (PLW)
+    "FSM": 437,    # FSM National League (FSM)
+    "MHL": 438,    # Marshall Islands Soccer League (MHL)
+
     # INTERNACIONAL
     "CL": 2,       # Champions League
     "EL": 3,       # Europa League
@@ -123,6 +297,44 @@ LEAGUE_IDS = {
     "GOLD": 22,    # Gold Cup
     "ASIA": 7,     # Asian Cup
     "NATIONS": 5,  # UEFA Nations League
+    "WCC": 10,     # FIFA Club World Cup
+    "UEL": 11,     # UEFA Super Cup
+    "REC": 12,     # Recopa Sudamericana
+    "SUD": 13,     # Copa Libertadores
+    "SUD2": 14,    # Copa Sudamericana
+    "AFC_CL": 15,  # AFC Champions League
+    "AFC_CC": 16,  # AFC Cup
+    "CAF_CL": 17,  # CAF Champions League
+    "CAF_CC2": 18, # CAF Confederation Cup
+    "CONCAF_CL": 19, # CONCACAF Champions League
+    "CONCAF_CC": 20, # CONCACAF League
+    "OFC_CL": 21,  # OFC Champions League
+    "WOMEN_WC": 23, # FIFA Women's World Cup
+    "WOMEN_EURO": 24, # UEFA Women's Euro
+    "WOMEN_COPA": 25, # Copa América Femenina
+    "WOMEN_AFCON": 26, # Africa Women Cup of Nations
+    "WOMEN_ASIA": 27, # AFC Women's Asian Cup
+    "WOMEN_GOLD": 28, # CONCACAF W Championship
+    "WOMEN_OFC": 29,  # OFC Women's Nations Cup
+    "OLY": 30,      # Olympic Games
+    "U20_WC": 31,   # FIFA U-20 World Cup
+    "U17_WC": 32,   # FIFA U-17 World Cup
+    "U21_EURO": 33, # UEFA U-21 Championship
+    "U19_EURO": 34, # UEFA U-19 Championship
+    "U17_EURO": 35, # UEFA U-17 Championship
+    "U20_AFCON": 36, # Africa U-20 Cup of Nations
+    "U17_AFCON": 37, # Africa U-17 Cup of Nations
+    "U23_ASIA": 38,  # AFC U-23 Asian Cup
+    "U20_ASIA": 39,  # AFC U-20 Asian Cup
+    "U17_ASIA": 40,  # AFC U-17 Asian Cup
+    "U20_CONCAF": 41, # CONCACAF U-20 Championship
+    "U17_CONCAF": 42, # CONCACAF U-17 Championship
+    "U20_SUD": 43,   # CONMEBOL U-20
+    "U17_SUD": 44,   # CONMEBOL U-17
+    "U20_OFC": 45,   # OFC U-20 Championship
+    "U17_OFC": 46,   # OFC U-17 Championship
+    "FUTSAL_WC": 47, # FIFA Futsal World Cup
+    "BEACH_WC": 48,  # FIFA Beach Soccer World Cup
 }
 
 COMPETITIONS = {
@@ -139,9 +351,6 @@ COMPETITIONS = {
     "SD": "2. Bundesliga",
     "FL2": "Ligue 2",
     "BSA": "Brasileirao",
-    "CL": "Champions League",
-    "EL": "Europa League",
-    "ECL": "Conference League",
     "CLI": "Copa Libertadores",
     "CSA": "Copa Sudamericana",
     "ARG": "Liga Argentina",
@@ -154,10 +363,110 @@ COMPETITIONS = {
     "EG": "Premier League Egypt",
     "WC": "World Cup",
     "EURO": "Euro",
+    "CL": "Champions League",
+    "EL": "Europa League",
+    "ECL": "Conference League",
+    "NATIONS": "Nations League",
+    "AFCON": "Africa Cup",
+    "COPA": "Copa América",
+    "GOLD": "Gold Cup",
+    "ASIA": "Asian Cup",
+    "BRA_B": "Série B Brasil",
+    "BRA_C": "Série C Brasil",
+    "ARG_B": "Primera Nacional",
+    "MX_B": "Liga Expansión MX",
+    "JP_B": "J2 League",
+    "KR_B": "K League 2",
+    "CN": "Super League China",
+    "AU_A": "A-League",
+    "IN": "ISL India",
+    "TH": "Thai League",
+    "ZA": "Premier Division RSA",
+    "MA": "Botola Pro",
+    "TN": "Ligue 1 Túnez",
+    "DZ": "Ligue 1 Argelia",
+    "NG": "NPFL Nigeria",
+    "GH": "Premier League Ghana",
+    "BE": "Jupiler Pro League",
+    "CH": "Super League Suiza",
+    "AU": "Bundesliga Austria",
+    "DK": "Superliga Dinamarca",
+    "NO": "Eliteserien",
+    "FI": "Veikkausliiga",
+    "CZ": "First League Checa",
+    "GR": "Super League Grecia",
+    "TR": "Süper Lig",
+    "UA": "Premier League Ucrania",
+    "HR": "HNL Croacia",
+    "RO": "Liga I Rumanía",
+    "SC": "Premiership Escocia",
+    "RU": "Premier League Rusia",
+    "PLN": "Ekstraklasa Polonia",
+    "ECU": "Serie A Ecuador",
+    "PER": "Liga 1 Perú",
+    "CHI": "Primera División Chile",
+    "URU": "Primera División Uruguay",
+    "PAR": "Primera División Paraguay",
+    "VEN": "Primera División Venezuela",
+    "BOL": "División Profesional Bolivia",
+    "CRC": "Primera División Costa Rica",
+    "GT": "Liga Nacional Guatemala",
+    "HN": "Liga Nacional Honduras",
+    "SV": "Primera División El Salvador",
+    "PA": "LPF Panamá",
+    "JM": "Premier League Jamaica",
+    "USL": "USL Championship",
+    "CAN": "Canadian Premier League",
+    "IR": "Persian Gulf Pro League",
+    "QA": "Stars League Qatar",
+    "AE": "UAE Pro League",
+    "IDN": "Liga 1 Indonesia",
+    "MYS": "Super League Malasia",
+    "SGP": "Premier League Singapur",
+    "VNM": "V.League 1",
+    "HKG": "Hong Kong Premier League",
+    "TWN": "Taiwan Football Premier League",
+    "KEN": "Kenyan Premier League",
+    "TAN": "Tanzanian Premier League",
+    "UGA": "Uganda Premier League",
+    "ZAM": "Super League Zambia",
+    "ZIM": "Premier Soccer League Zimbabwe",
+    "CIV": "Ligue 1 Costa de Marfil",
+    "SEN": "Ligue 1 Senegal",
+    "WCC": "FIFA Club World Cup",
+    "UEL": "UEFA Super Cup",
+    "REC": "Recopa Sudamericana",
+    "AFC_CL": "AFC Champions League",
+    "CAF_CL": "CAF Champions League",
+    "CONCAF_CL": "CONCACAF Champions League",
+    "OFC_CL": "OFC Champions League",
+    "WOMEN_WC": "Women's World Cup",
+    "WOMEN_EURO": "Women's Euro",
+    "OLY": "Olympic Games",
+    "U20_WC": "U-20 World Cup",
+    "U17_WC": "U-17 World Cup",
+    "FUTSAL_WC": "Futsal World Cup",
+    "BEACH_WC": "Beach Soccer World Cup",
 }
 
 # Ligas que aparecen por defecto en los filtros
-DEFAULT_COMPETITIONS = ["PD", "PL", "SA", "BL1", "FL1", "PPL", "DED", "BSA", "CL", "EL"]
+DEFAULT_COMPETITIONS = [
+    "PD", "PL", "SA", "BL1", "FL1", "PPL", "DED", "BSA", "CL", "EL",
+    "ARG", "COL", "MX", "MLS", "JP", "KR", "SA_A", "EG", "ZA", "MA",
+    "BE", "CH", "AU", "DK", "NO", "FI", "CZ", "GR", "TR", "UA",
+    "HR", "RO", "SC", "RU", "PLN", "ECU", "PER", "CHI", "URU", "PAR",
+    "VEN", "BOL", "CRC", "GT", "HN", "SV", "PA", "JM", "USL", "CAN",
+    "IR", "QA", "AE", "IDN", "MYS", "SGP", "VNM", "HKG", "TWN", "KEN",
+    "TAN", "UGA", "ZAM", "ZIM", "CIV", "SEN", "WCC", "UEL", "REC", "AFC_CL",
+    "CAF_CL", "CONCAF_CL", "OFC_CL", "WOMEN_WC", "WOMEN_EURO", "OLY", "U20_WC",
+    "U17_WC", "FUTSAL_WC", "BEACH_WC", "NATIONS", "AFCON", "COPA", "GOLD", "ASIA",
+    "BRA_B", "BRA_C", "ARG_B", "MX_B", "JP_B", "KR_B", "CN", "AU_A", "IN", "TH",
+    "NG", "GH", "TN", "DZ", "ELC", "SP", "SI", "SD", "FL2", "SPL",
+    "NIR", "IRL", "SVK", "SVN", "BGR", "SRB", "HUN", "ISR", "KAZ", "MDA",
+    "GEO", "ARM", "AZE", "EST", "LVA", "LTU", "FRO", "GIB", "MLT", "CYP",
+    "LUX", "AND", "SMR", "LIE", "KOS", "MKD", "MNE", "ALB", "BIH", "WAL",
+    "GRL", "ISL", "BRA_CUP", "ARG_CUP", "CHL_CUP", "URU_CUP",
+]
 
 
 def cache_get(key, ttl=1800):
@@ -179,7 +488,7 @@ def api_get(endpoint, params=None, cache_key=None, ttl=1800):
             return cached
 
     try:
-        url = f"{BASE_URL}/{endpoint.lstrip('/')}"
+        url = f"{BASE_URL}/{endpoint.lstrip('/')}/"
         logger.info(f"API CALL: {url} | params={params}")
         resp = requests.get(url, headers=HEADERS, params=params, timeout=30)
 
@@ -266,6 +575,22 @@ def get_team_stats(team_id, league_id, season):
     failed_to_score = response.get("failed_to_score", {})
     form = response.get("form", "")
 
+    # Extraer estadísticas de corners y tarjetas si están disponibles
+    lineups = response.get("lineups", [])
+    cards = response.get("cards", {})
+
+    # Intentar obtener corners desde diferentes ubicaciones posibles
+    corners = 0
+    if isinstance(response.get("corners"), dict):
+        corners = response.get("corners", {}).get("total", 0)
+
+    # Tarjetas
+    yellow_cards = 0
+    red_cards = 0
+    if isinstance(cards, dict):
+        yellow_cards = cards.get("yellow", {}).get("total", 0) if isinstance(cards.get("yellow"), dict) else 0
+        red_cards = cards.get("red", {}).get("total", 0) if isinstance(cards.get("red"), dict) else 0
+
     played = safe_get(fixtures, "played", "total", default=0)
     wins = safe_get(fixtures, "wins", "total", default=0)
     draws = safe_get(fixtures, "draws", "total", default=0)
@@ -314,7 +639,14 @@ def get_team_stats(team_id, league_id, season):
         "form_string": form or "",
         "form": form_list,
         "biggest_win": safe_get(biggest, "wins", default=""),
-        "biggest_loss": safe_get(biggest, "loses", default="")
+        "biggest_loss": safe_get(biggest, "loses", default=""),
+        # Nuevos campos para corners y tarjetas
+        "corners_total": corners,
+        "yellow_cards": yellow_cards,
+        "red_cards": red_cards,
+        "avg_corners": round(corners / played, 2) if played else 0,
+        "avg_yellow_cards": round(yellow_cards / played, 2) if played else 0,
+        "avg_red_cards": round(red_cards / played, 2) if played else 0,
     }
 
 
@@ -476,6 +808,59 @@ def get_predictions(fixture_id):
         "percent_home": safe_get(comparison, "home", default=""),
         "percent_draw": safe_get(comparison, "draw", default=""),
         "percent_away": safe_get(comparison, "away", default="")
+    }
+
+
+def get_fixture_statistics(fixture_id):
+    """
+    Obtiene estadísticas de un partido específico desde API-Football v3
+    Endpoint: /fixtures/statistics?fixture={id}
+    Devuelve corners, tarjetas, posesión, tiros, etc.
+    """
+    if not fixture_id:
+        return None
+
+    data = api_get(
+        "fixtures/statistics",
+        params={"fixture": fixture_id},
+        cache_key=f"fixture_stats_{fixture_id}",
+        ttl=600
+    )
+
+    if not data or not isinstance(data, dict):
+        return None
+
+    response = data.get("response", [])
+    if not response:
+        return None
+
+    # La respuesta tiene dos elementos: [home_stats, away_stats]
+    home_stats = {}
+    away_stats = {}
+
+    for team_stats in response:
+        team = team_stats.get("team", {})
+        stats = team_stats.get("statistics", [])
+
+        team_id = team.get("id")
+        parsed = {}
+
+        for stat in stats:
+            stat_type = stat.get("type", "").lower().replace(" ", "_")
+            value = stat.get("value")
+            parsed[stat_type] = value
+
+        if team_id:
+            # Determinar si es local o visitante comparando con los IDs conocidos
+            # Por ahora guardamos por team_id
+            if not home_stats:
+                home_stats = parsed
+            else:
+                away_stats = parsed
+
+    return {
+        "home": home_stats,
+        "away": away_stats
     }
 
 
@@ -706,7 +1091,13 @@ def analyze(
             "btts_pct": 0, "over_1_5_pct": 0, "over_2_5_pct": 0, "over_3_5_pct": 0,
             "clean_sheet_pct": 0, "failed_to_score_pct": 0,
             "form_string": home_table.get("form", ""),
-            "form": []
+            "form": [],
+            "corners_total": 0,
+            "yellow_cards": 0,
+            "red_cards": 0,
+            "avg_corners": 0,
+            "avg_yellow_cards": 0,
+            "avg_red_cards": 0,
         }
         home_mode = "STANDINGS_FALLBACK"
 
@@ -724,7 +1115,13 @@ def analyze(
             "btts_pct": 0, "over_1_5_pct": 0, "over_2_5_pct": 0, "over_3_5_pct": 0,
             "clean_sheet_pct": 0, "failed_to_score_pct": 0,
             "form_string": away_table.get("form", ""),
-            "form": []
+            "form": [],
+            "corners_total": 0,
+            "yellow_cards": 0,
+            "red_cards": 0,
+            "avg_corners": 0,
+            "avg_yellow_cards": 0,
+            "avg_red_cards": 0,
         }
         away_mode = "STANDINGS_FALLBACK"
 
@@ -733,6 +1130,9 @@ def analyze(
 
     # === PREDICCIONES ===
     predictions = get_predictions(match_id)
+
+    # === ESTADÍSTICAS DEL PARTIDO (Corners, Tarjetas, etc.) ===
+    fixture_stats = get_fixture_statistics(match_id)
 
     # === PROBABILIDADES ===
     probabilities = {
@@ -788,6 +1188,7 @@ def analyze(
         "predictions": predictions,
         "probabilities": probabilities,
         "odds": odds,
+        "fixture_statistics": fixture_stats,
         "stats_available": bool(home_stats["played"] or away_stats["played"]),
         "debug": {
             "match_id": match_id,
@@ -812,7 +1213,7 @@ def health():
         "time": datetime.now().isoformat(),
         "cache_size": len(CACHE),
         "api_football": "configured",
-        "version": "8.1.0"
+        "version": "9.0.0"
     }
 
 
