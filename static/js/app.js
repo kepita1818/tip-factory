@@ -134,7 +134,10 @@ function loadMatches() {
   if (matchesContainer) matchesContainer.innerHTML = '<div class="loading">Cargando partidos...</div>';
 
   fetch('/api/matches?date=' + encodeURIComponent(dateStr))
-    .then(function (r) { return r.json(); })
+    .then(function (r) {
+      if (!r.ok) return r.text().then(function (t) { throw new Error('HTTP ' + r.status + ' - ' + t); });
+      return r.json();
+    })
     .then(function (data) {
       allMatches = Array.isArray(data.matches) ? data.matches : [];
       renderMatches();
@@ -190,8 +193,8 @@ function renderMatches() {
       + ' data-date="' + encodeURIComponent(m.matchDate || '') + '"'
       + ' data-time="' + encodeURIComponent(formatLocalTime(m.utcDate)) + '"'
       + ' data-venue="' + encodeURIComponent(m.venue || '') + '"'
-      + ' data-home-score="' + valueOrDash(m.homeScore === null ? '' : m.homeScore) + '"'
-      + ' data-away-score="' + valueOrDash(m.awayScore === null ? '' : m.awayScore) + '"'
+      + ' data-home-score="' + (m.homeScore === null || m.homeScore === undefined ? '' : m.homeScore) + '"'
+      + ' data-away-score="' + (m.awayScore === null || m.awayScore === undefined ? '' : m.awayScore) + '"'
       + ' data-matchday="' + valueOrDash(m.matchday || 0) + '"'
       + ' data-status="' + encodeURIComponent(m.statusText || 'SCHEDULED') + '">'
       + '<div class="match-time-row"><span class="match-time">' + formatLocalTime(m.utcDate) + '</span><span>' + valueOrDash(m.league_name) + '</span></div>'
@@ -212,6 +215,12 @@ function renderMatches() {
   }
 }
 
+function formBadgeStyle(result) {
+  if (result === 'W') return 'background:#22c55e;';
+  if (result === 'D') return 'background:#eab308;color:#111;';
+  return 'background:#ef4444;';
+}
+
 function renderFormBadges(list, elementId) {
   var el = getEl(elementId);
   if (!el) return;
@@ -221,7 +230,7 @@ function renderFormBadges(list, elementId) {
   }
   var html = '';
   for (var i = 0; i < list.length; i++) {
-    html += '<div class="form-badge">' + list[i].result + '</div>';
+    html += '<div class="form-badge" style="' + formBadgeStyle(list[i].result) + '">' + list[i].result + '</div>';
   }
   el.innerHTML = html;
 }
@@ -243,10 +252,12 @@ function renderMiniStats(data) {
   var hs = data.home_stats || {};
   var as = data.away_stats || {};
   var html = '';
-  html += '<div class="mini-stat-box"><div class="mini-stat-value">' + valueOrDash(hs.played) + '</div><div class="mini-stat-label">PJ local</div></div>';
-  html += '<div class="mini-stat-box"><div class="mini-stat-value">' + valueOrDash(as.played) + '</div><div class="mini-stat-label">PJ visita</div></div>';
+  html += '<div class="mini-stat-box"><div class="mini-stat-value">' + valueOrDash(hs.played) + '</div><div class="mini-stat-label">PJ local casa</div></div>';
+  html += '<div class="mini-stat-box"><div class="mini-stat-value">' + valueOrDash(as.played) + '</div><div class="mini-stat-label">PJ visita fuera</div></div>';
   html += '<div class="mini-stat-box"><div class="mini-stat-value">' + valueOrDash(hs.avg_team_goals) + '</div><div class="mini-stat-label">Goles local</div></div>';
-  html += '<div class="mini-stat-box"><div class="mini-stat-value">' + valueOrDash(as.avg_team_goals) + '</div><div class="mini-stat-label">Goles visita</div></div>';
+  html += '<div class="mini-stat-box"><div class="mini-stat-value">' + valueOrDash(as.avg_team_goals) + '</div><div class="mini-stat-label">Goles visitante</div></div>';
+  html += '<div class="mini-stat-box"><div class="mini-stat-value">' + pct(hs.clean_sheet_pct) + '</div><div class="mini-stat-label">Portería a 0 local</div></div>';
+  html += '<div class="mini-stat-box"><div class="mini-stat-value">' + pct(as.clean_sheet_pct) + '</div><div class="mini-stat-label">Portería a 0 visitante</div></div>';
   var grid = getEl('mini-stats-grid');
   if (grid) grid.innerHTML = html;
 }
@@ -254,6 +265,13 @@ function renderMiniStats(data) {
 function renderSeasonTable(data) {
   var hs = data.home_stats || {};
   var as = data.away_stats || {};
+  var mi = data.match_info || {};
+
+  var homeHeader = getEl('season-home-header');
+  var awayHeader = getEl('season-away-header');
+  if (homeHeader) homeHeader.textContent = mi.home_short || 'Local';
+  if (awayHeader) awayHeader.textContent = mi.away_short || 'Visitante';
+
   var rows = [
     ['PJ', hs.played, as.played],
     ['PG', hs.won, as.won],
@@ -263,10 +281,12 @@ function renderSeasonTable(data) {
     ['GC', hs.goals_against, as.goals_against],
     ['Puntos', hs.points, as.points]
   ];
+
   var html = '';
   for (var i = 0; i < rows.length; i++) {
     html += '<tr><td>' + rows[i][0] + '</td><td>' + valueOrDash(rows[i][1]) + '</td><td>' + valueOrDash(rows[i][2]) + '</td></tr>';
   }
+
   var body = getEl('season-table-body');
   if (body) body.innerHTML = html;
 }
@@ -274,16 +294,25 @@ function renderSeasonTable(data) {
 function renderGoalsTable(data) {
   var hs = data.home_stats || {};
   var as = data.away_stats || {};
+  var mi = data.match_info || {};
+
+  var homeHeader = getEl('goals-home-header');
+  var awayHeader = getEl('goals-away-header');
+  if (homeHeader) homeHeader.textContent = mi.home_short || 'Local';
+  if (awayHeader) awayHeader.textContent = mi.away_short || 'Visitante';
+
   var rows = [
-    ['Over 1.5', pct(hs.over_1_5_pct), pct(as.over_1_5_pct)],
-    ['Over 2.5', pct(hs.over_2_5_pct), pct(as.over_2_5_pct)],
-    ['Over 3.5', pct(hs.over_3_5_pct), pct(as.over_3_5_pct)],
-    ['BTTS', pct(hs.btts_pct), pct(as.btts_pct)]
+    ['Over 1.5', pct(hs.over_1_5_pct), pct(as.over_1_5_pct), pct((num(hs.over_1_5_pct) + num(as.over_1_5_pct)) / 2)],
+    ['Over 2.5', pct(hs.over_2_5_pct), pct(as.over_2_5_pct), pct((num(hs.over_2_5_pct) + num(as.over_2_5_pct)) / 2)],
+    ['Over 3.5', pct(hs.over_3_5_pct), pct(as.over_3_5_pct), pct((num(hs.over_3_5_pct) + num(as.over_3_5_pct)) / 2)],
+    ['BTTS', pct(hs.btts_pct), pct(as.btts_pct), pct((num(hs.btts_pct) + num(as.btts_pct)) / 2)]
   ];
+
   var html = '';
   for (var i = 0; i < rows.length; i++) {
-    html += '<tr><td>' + rows[i][0] + '</td><td>' + rows[i][1] + '</td><td>' + rows[i][2] + '</td></tr>';
+    html += '<tr><td>' + rows[i][0] + '</td><td>' + rows[i][1] + '</td><td>' + rows[i][2] + '</td><td>' + rows[i][3] + '</td></tr>';
   }
+
   var body = getEl('goals-table-body');
   if (body) body.innerHTML = html;
 }
@@ -295,11 +324,27 @@ function fillHeader(data) {
   var awayName = getEl('away-name');
   var homeLogo = getEl('home-logo');
   var awayLogo = getEl('away-logo');
+
   if (subtitle) subtitle.textContent = (mi.league || '') + (mi.country ? ' · ' + mi.country : '');
   if (homeName) homeName.textContent = mi.home_team || 'Local';
   if (awayName) awayName.textContent = mi.away_team || 'Visitante';
   if (homeLogo) homeLogo.src = mi.home_logo || '';
   if (awayLogo) awayLogo.src = mi.away_logo || '';
+}
+
+function renderAnalysisText(data) {
+  var hs = data.home_stats || {};
+  var as = data.away_stats || {};
+  var mi = data.match_info || {};
+  var d = data.debug || {};
+
+  var html = '';
+  html += '<p><strong>' + valueOrDash(mi.home_team) + '</strong> en casa: ' + valueOrDash(hs.form_string || 'Sin datos') + ', media de ' + valueOrDash(hs.avg_team_goals) + ' goles.</p>';
+  html += '<p><strong>' + valueOrDash(mi.away_team) + '</strong> fuera: ' + valueOrDash(as.form_string || 'Sin datos') + ', media de ' + valueOrDash(as.avg_team_goals) + ' goles.</p>';
+  html += '<p>Filtros usados: local=' + valueOrDash(d.home_venue_filter) + ', visitante=' + valueOrDash(d.away_venue_filter) + '.</p>';
+
+  var box = getEl('analysis-text-box');
+  if (box) box.innerHTML = html;
 }
 
 function openAnalysis(card) {
@@ -344,7 +389,7 @@ function openAnalysis(card) {
       renderMiniStats(data);
       renderSeasonTable(data);
       renderGoalsTable(data);
-      if (box) box.innerHTML = '<p><strong>' + valueOrDash(data.match_info.home_team) + '</strong> vs <strong>' + valueOrDash(data.match_info.away_team) + '</strong></p>';
+      renderAnalysisText(data);
     })
     .catch(function (error) {
       if (box) box.innerHTML = 'Error cargando análisis: ' + error.message;
