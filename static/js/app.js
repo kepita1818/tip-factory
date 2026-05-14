@@ -23,7 +23,11 @@ function formatLocalTime(utcDateString) {
   if (!utcDateString) return '--:--';
   var date = new Date(utcDateString);
   if (isNaN(date.getTime())) return '--:--';
-  return date.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit', hour12: false });
+  return date.toLocaleTimeString('es-ES', {
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false
+  });
 }
 
 function updateDateDisplay() {
@@ -68,8 +72,10 @@ function showAnalysis() {
 function activateTab(tabName) {
   var tabs = document.querySelectorAll('.tab-btn');
   var contents = document.querySelectorAll('.tab-content');
+
   for (var i = 0; i < tabs.length; i++) tabs[i].classList.remove('active');
   for (var j = 0; j < contents.length; j++) contents[j].classList.remove('active');
+
   var tab = document.querySelector('.tab-btn[data-tab="' + tabName + '"]');
   var content = getEl('tab-' + tabName);
   if (tab) tab.classList.add('active');
@@ -83,23 +89,28 @@ function setupEventListeners() {
   var datePicker = getEl('date-picker');
   var backBtn = getEl('back-btn');
 
-  if (prevBtn) prevBtn.addEventListener('click', function () {
-    currentDate.setDate(currentDate.getDate() - 1);
-    updateDateDisplay();
-    loadMatches();
-  });
+  if (prevBtn) {
+    prevBtn.addEventListener('click', function () {
+      currentDate.setDate(currentDate.getDate() - 1);
+      updateDateDisplay();
+      loadMatches();
+    });
+  }
 
-  if (nextBtn) nextBtn.addEventListener('click', function () {
-    currentDate.setDate(currentDate.getDate() + 1);
-    updateDateDisplay();
-    loadMatches();
-  });
+  if (nextBtn) {
+    nextBtn.addEventListener('click', function () {
+      currentDate.setDate(currentDate.getDate() + 1);
+      updateDateDisplay();
+      loadMatches();
+    });
+  }
 
   if (dateDisplay && datePicker) {
     dateDisplay.addEventListener('click', function () {
       if (datePicker.showPicker) datePicker.showPicker();
       else datePicker.focus();
     });
+
     datePicker.addEventListener('change', function (e) {
       currentDate = new Date(e.target.value + 'T12:00:00');
       updateDateDisplay();
@@ -131,7 +142,10 @@ function setupEventListeners() {
 function loadMatches() {
   var dateStr = formatDateISO(currentDate);
   var matchesContainer = getEl('matches-container');
-  if (matchesContainer) matchesContainer.innerHTML = '<div class="loading">Cargando partidos...</div>';
+
+  if (matchesContainer) {
+    matchesContainer.innerHTML = '<div class="loading">Cargando partidos...</div>';
+  }
 
   fetch('/api/matches?date=' + encodeURIComponent(dateStr))
     .then(function (r) {
@@ -143,7 +157,9 @@ function loadMatches() {
       renderMatches();
     })
     .catch(function (error) {
-      if (matchesContainer) matchesContainer.innerHTML = '<div class="no-matches">Error cargando partidos: ' + error.message + '</div>';
+      if (matchesContainer) {
+        matchesContainer.innerHTML = '<div class="no-matches">Error cargando partidos: ' + error.message + '</div>';
+      }
     });
 }
 
@@ -160,14 +176,14 @@ function renderMatches() {
     });
   }
 
+  matches.sort(function (a, b) {
+    return (a.utcDate || '').localeCompare(b.utcDate || '');
+  });
+
   if (!matches.length) {
     matchesContainer.innerHTML = '<div class="no-matches">No hay partidos para esta fecha</div>';
     return;
   }
-
-  matches.sort(function (a, b) {
-    return (a.utcDate || '').localeCompare(b.utcDate || '');
-  });
 
   var html = '';
   for (var i = 0; i < matches.length; i++) {
@@ -197,10 +213,24 @@ function renderMatches() {
       + ' data-away-score="' + (m.awayScore === null || m.awayScore === undefined ? '' : m.awayScore) + '"'
       + ' data-matchday="' + valueOrDash(m.matchday || 0) + '"'
       + ' data-status="' + encodeURIComponent(m.statusText || 'SCHEDULED') + '">'
-      + '<div class="match-time-row"><span class="match-time">' + formatLocalTime(m.utcDate) + '</span><span>' + valueOrDash(m.league_name) + '</span></div>'
+
+      + '<div class="match-time-row">'
+      + '<span class="match-time">' + formatLocalTime(m.utcDate) + '</span>'
+      + '<span>' + valueOrDash(m.league_name) + '</span>'
+      + '</div>'
+
       + '<div class="match-teams">'
-      + '<div class="match-team"><img src="' + (home.crest || '') + '" onerror="this.style.display=\'none\'"><span>' + valueOrDash(home.name) + '</span>' + (m.homeScore !== null && m.homeScore !== undefined ? '<span class="match-score">' + m.homeScore + '</span>' : '') + '</div>'
-      + '<div class="match-team"><img src="' + (away.crest || '') + '" onerror="this.style.display=\'none\'"><span>' + valueOrDash(away.name) + '</span>' + (m.awayScore !== null && m.awayScore !== undefined ? '<span class="match-score">' + m.awayScore + '</span>' : '') + '</div>'
+      + '<div class="match-team">'
+      + '<img src="' + (home.crest || '') + '" onerror="this.style.display=\'none\'">'
+      + '<span>' + valueOrDash(home.name) + '</span>'
+      + (m.homeScore !== null && m.homeScore !== undefined ? '<span class="match-score">' + m.homeScore + '</span>' : '')
+      + '</div>'
+
+      + '<div class="match-team">'
+      + '<img src="' + (away.crest || '') + '" onerror="this.style.display=\'none\'">'
+      + '<span>' + valueOrDash(away.name) + '</span>'
+      + (m.awayScore !== null && m.awayScore !== undefined ? '<span class="match-score">' + m.awayScore + '</span>' : '')
+      + '</div>'
       + '</div>'
       + '</div>';
   }
@@ -224,10 +254,12 @@ function formBadgeStyle(result) {
 function renderFormBadges(list, elementId) {
   var el = getEl(elementId);
   if (!el) return;
+
   if (!list || !list.length) {
     el.innerHTML = '<span class="no-data-small">Sin datos</span>';
     return;
   }
+
   var html = '';
   for (var i = 0; i < list.length; i++) {
     html += '<div class="form-badge" style="' + formBadgeStyle(list[i].result) + '">' + list[i].result + '</div>';
@@ -238,11 +270,13 @@ function renderFormBadges(list, elementId) {
 function renderProbabilities(data) {
   var p = data.probabilities || {};
   var html = '';
-  html += '<div class="prob-box"><div class="prob-box-value">' + pct(p.over_1_5) + '</div><div class="prob-box-label">Más de 1.5</div></div>';
-  html += '<div class="prob-box"><div class="prob-box-value">' + pct(p.over_2_5) + '</div><div class="prob-box-label">Más de 2.5</div></div>';
-  html += '<div class="prob-box"><div class="prob-box-value">' + pct(p.over_3_5) + '</div><div class="prob-box-label">Más de 3.5</div></div>';
-  html += '<div class="prob-box"><div class="prob-box-value">' + pct(p.btts) + '</div><div class="prob-box-label">AMB</div></div>';
-  html += '<div class="prob-box"><div class="prob-box-value">' + dec(p.total_expected_goals) + '</div><div class="prob-box-label">Goles esperados</div></div>';
+
+  html += '<div class="prob-box"><div class="prob-box-value">' + pct(p.over_1_5) + '</div><div class="prob-box-label">Más de 1.5</div><div class="prob-box-sub">Promedio de ambos</div></div>';
+  html += '<div class="prob-box"><div class="prob-box-value">' + pct(p.over_2_5) + '</div><div class="prob-box-label">Más de 2.5</div><div class="prob-box-sub">Promedio de ambos</div></div>';
+  html += '<div class="prob-box"><div class="prob-box-value">' + pct(p.over_3_5) + '</div><div class="prob-box-label">Más de 3.5</div><div class="prob-box-sub">Promedio de ambos</div></div>';
+  html += '<div class="prob-box"><div class="prob-box-value">' + pct(p.btts) + '</div><div class="prob-box-label">AMB</div><div class="prob-box-sub">Ambos marcan</div></div>';
+  html += '<div class="prob-box"><div class="prob-box-value">' + dec(p.total_expected_goals) + '</div><div class="prob-box-label">Goles esperados</div><div class="prob-box-sub">Media ofensiva</div></div>';
+  html += '<div class="prob-box"><div class="prob-box-value">' + dec(data.odds.home) + ' / ' + dec(data.odds.draw) + ' / ' + dec(data.odds.away) + '</div><div class="prob-box-label">Cuotas</div><div class="prob-box-sub">Si la API las trae</div></div>';
 
   var grid = getEl('prob-grid');
   if (grid) grid.innerHTML = html;
@@ -251,13 +285,16 @@ function renderProbabilities(data) {
 function renderMiniStats(data) {
   var hs = data.home_stats || {};
   var as = data.away_stats || {};
+  var d = data.debug || {};
   var html = '';
-  html += '<div class="mini-stat-box"><div class="mini-stat-value">' + valueOrDash(hs.played) + '</div><div class="mini-stat-label">PJ local casa</div></div>';
-  html += '<div class="mini-stat-box"><div class="mini-stat-value">' + valueOrDash(as.played) + '</div><div class="mini-stat-label">PJ visita fuera</div></div>';
+
+  html += '<div class="mini-stat-box"><div class="mini-stat-value">' + valueOrDash(hs.played) + '</div><div class="mini-stat-label">PJ local (' + valueOrDash(d.home_mode_used) + ')</div></div>';
+  html += '<div class="mini-stat-box"><div class="mini-stat-value">' + valueOrDash(as.played) + '</div><div class="mini-stat-label">PJ visitante (' + valueOrDash(d.away_mode_used) + ')</div></div>';
   html += '<div class="mini-stat-box"><div class="mini-stat-value">' + valueOrDash(hs.avg_team_goals) + '</div><div class="mini-stat-label">Goles local</div></div>';
   html += '<div class="mini-stat-box"><div class="mini-stat-value">' + valueOrDash(as.avg_team_goals) + '</div><div class="mini-stat-label">Goles visitante</div></div>';
   html += '<div class="mini-stat-box"><div class="mini-stat-value">' + pct(hs.clean_sheet_pct) + '</div><div class="mini-stat-label">Portería a 0 local</div></div>';
   html += '<div class="mini-stat-box"><div class="mini-stat-value">' + pct(as.clean_sheet_pct) + '</div><div class="mini-stat-label">Portería a 0 visitante</div></div>';
+
   var grid = getEl('mini-stats-grid');
   if (grid) grid.innerHTML = html;
 }
@@ -273,13 +310,13 @@ function renderSeasonTable(data) {
   if (awayHeader) awayHeader.textContent = mi.away_short || 'Visitante';
 
   var rows = [
-    ['PJ', hs.played, as.played],
+    ['Posición', hs.position, as.position],
+    ['Puntos', hs.points, as.points],
     ['PG', hs.won, as.won],
     ['PE', hs.draw, as.draw],
     ['PP', hs.lost, as.lost],
     ['GF', hs.goals_for, as.goals_for],
-    ['GC', hs.goals_against, as.goals_against],
-    ['Puntos', hs.points, as.points]
+    ['GC', hs.goals_against, as.goals_against]
   ];
 
   var html = '';
@@ -317,8 +354,31 @@ function renderGoalsTable(data) {
   if (body) body.innerHTML = html;
 }
 
+function renderEmptyOtherTables(data) {
+  var mi = data.match_info || {};
+
+  var cornersHome = getEl('corners-home-header');
+  var cornersAway = getEl('corners-away-header');
+  var cardsHome = getEl('cards-home-header');
+  var cardsAway = getEl('cards-away-header');
+
+  if (cornersHome) cornersHome.textContent = mi.home_short || 'Local';
+  if (cornersAway) cornersAway.textContent = mi.away_short || 'Visitante';
+  if (cardsHome) cardsHome.textContent = mi.home_short || 'Local';
+  if (cardsAway) cardsAway.textContent = mi.away_short || 'Visitante';
+
+  var cornersBody = getEl('corners-table-body');
+  var totalCornersBody = getEl('total-corners-body');
+  var cardsBody = getEl('cards-table-body');
+
+  if (cornersBody) cornersBody.innerHTML = '<tr><td>Corners</td><td>Sin datos</td><td>Sin datos</td><td>Sin datos</td></tr>';
+  if (totalCornersBody) totalCornersBody.innerHTML = '<tr><td>Total</td><td>Sin datos</td><td>Sin datos</td><td>Sin datos</td></tr>';
+  if (cardsBody) cardsBody.innerHTML = '<tr><td>Tarjetas</td><td>Sin datos</td><td>Sin datos</td><td>Sin datos</td></tr>';
+}
+
 function fillHeader(data) {
   var mi = data.match_info || {};
+
   var subtitle = getEl('analysis-subtitle');
   var homeName = getEl('home-name');
   var awayName = getEl('away-name');
@@ -339,9 +399,9 @@ function renderAnalysisText(data) {
   var d = data.debug || {};
 
   var html = '';
-  html += '<p><strong>' + valueOrDash(mi.home_team) + '</strong> en casa: ' + valueOrDash(hs.form_string || 'Sin datos') + ', media de ' + valueOrDash(hs.avg_team_goals) + ' goles.</p>';
-  html += '<p><strong>' + valueOrDash(mi.away_team) + '</strong> fuera: ' + valueOrDash(as.form_string || 'Sin datos') + ', media de ' + valueOrDash(as.avg_team_goals) + ' goles.</p>';
-  html += '<p>Filtros usados: local=' + valueOrDash(d.home_venue_filter) + ', visitante=' + valueOrDash(d.away_venue_filter) + '.</p>';
+  html += '<p><strong>' + valueOrDash(mi.home_team) + '</strong> llega con ' + valueOrDash(hs.played) + ' partidos usados y racha ' + valueOrDash(hs.form_string || 'Sin datos') + '.</p>';
+  html += '<p><strong>' + valueOrDash(mi.away_team) + '</strong> llega con ' + valueOrDash(as.played) + ' partidos usados y racha ' + valueOrDash(as.form_string || 'Sin datos') + '.</p>';
+  html += '<p>Modo local: ' + valueOrDash(d.home_mode_used) + '. Modo visitante: ' + valueOrDash(d.away_mode_used) + '.</p>';
 
   var box = getEl('analysis-text-box');
   if (box) box.innerHTML = html;
@@ -349,6 +409,7 @@ function renderAnalysisText(data) {
 
 function openAnalysis(card) {
   var matchId = card.dataset.matchId;
+
   var params = new URLSearchParams({
     home_id: card.dataset.homeId,
     away_id: card.dataset.awayId,
@@ -389,6 +450,7 @@ function openAnalysis(card) {
       renderMiniStats(data);
       renderSeasonTable(data);
       renderGoalsTable(data);
+      renderEmptyOtherTables(data);
       renderAnalysisText(data);
     })
     .catch(function (error) {
