@@ -15,7 +15,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-app = FastAPI(title="TipFactory", version="6.0.0")
+app = FastAPI(title="TipFactory", version="6.1.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -127,68 +127,44 @@ def extract_list_payload(data):
 
 
 def normalize_match(raw):
-    home_block = raw.get("homeTeam") or raw.get("home_team") or raw.get("home") or {}
-    away_block = raw.get("awayTeam") or raw.get("away_team") or raw.get("away") or {}
-    league_block = raw.get("competition") or raw.get("league") or {}
-    country_block = raw.get("country") or raw.get("area") or {}
+    league = raw.get("league", {}) or {}
+    home = raw.get("home_team", {}) or {}
+    away = raw.get("away_team", {}) or {}
+    venue = raw.get("venue", {}) or {}
+    score = raw.get("score", {}) or {}
 
-    home_name = home_block.get("name") or raw.get("home_name") or raw.get("homeTeamName") or "Local"
-    away_name = away_block.get("name") or raw.get("away_name") or raw.get("awayTeamName") or "Visitante"
-
-    home_logo = home_block.get("logo") or home_block.get("crest") or raw.get("home_logo") or ""
-    away_logo = away_block.get("logo") or away_block.get("crest") or raw.get("away_logo") or ""
-
-    league_name = league_block.get("name") or raw.get("competition_name") or raw.get("league_name") or ""
-    country_name = country_block.get("name") or raw.get("country_name") or ""
-
-    utc_date = (
-        raw.get("utcDate")
-        or raw.get("date")
-        or raw.get("starting_at")
-        or raw.get("kickoff")
-        or raw.get("start_time")
-        or ""
-    )
-
-    score_block = raw.get("score") or raw.get("scores") or {}
-    home_score = score_block.get("home")
-    away_score = score_block.get("away")
-
-    if home_score is None:
-        home_score = raw.get("home_score")
-    if away_score is None:
-        away_score = raw.get("away_score")
+    utc_date = raw.get("match_date", "") or ""
 
     return {
-        "id": raw.get("id") or raw.get("fixture_id") or raw.get("match_id") or 0,
+        "id": raw.get("match_id") or raw.get("id") or 0,
         "utcDate": utc_date,
         "matchDate": utc_date[:10] if utc_date else "",
-        "status": raw.get("status") or raw.get("state") or "NS",
-        "statusText": raw.get("status") or raw.get("state") or "SCHEDULED",
-        "minute": raw.get("minute") or 0,
-        "venue": raw.get("venue") or raw.get("stadium") or "",
-        "matchday": raw.get("matchday") or 0,
+        "status": raw.get("status", "NS"),
+        "statusText": raw.get("status", "NS"),
+        "minute": 0,
+        "venue": venue.get("stadium_name", "") or "",
+        "matchday": raw.get("game_week", 0) or 0,
         "homeTeam": {
-            "id": home_block.get("id"),
-            "name": home_name,
-            "shortName": home_name[:15],
-            "crest": home_logo
+            "id": home.get("team_id"),
+            "name": home.get("team_name", "Local"),
+            "shortName": home.get("team_name", "Local")[:15],
+            "crest": home.get("team_logo", "") or ""
         },
         "awayTeam": {
-            "id": away_block.get("id"),
-            "name": away_name,
-            "shortName": away_name[:15],
-            "crest": away_logo
+            "id": away.get("team_id"),
+            "name": away.get("team_name", "Visitante"),
+            "shortName": away.get("team_name", "Visitante")[:15],
+            "crest": away.get("team_logo", "") or ""
         },
         "competition": {
-            "id": league_block.get("id"),
-            "name": league_name,
-            "code": league_block.get("code") or ""
+            "id": league.get("league_id"),
+            "name": league.get("competition_name", "") or league.get("name", ""),
+            "code": ""
         },
-        "league_name": league_name,
-        "country": country_name,
-        "homeScore": home_score,
-        "awayScore": away_score,
+        "league_name": league.get("competition_name", "") or league.get("name", ""),
+        "country": league.get("country", ""),
+        "homeScore": score.get("home"),
+        "awayScore": score.get("away"),
         "halfTimeHome": None,
         "halfTimeAway": None
     }
@@ -196,21 +172,13 @@ def normalize_match(raw):
 
 def fetch_fdio_matches(date_str):
     raw = fdio_request("fixtures/today", cache_key=f"fdio_today_{date_str}", ttl=180)
-
-    logger.info(f"FDIO RAW TYPE: {type(raw).__name__}")
     items = extract_list_payload(raw)
-    logger.info(f"FDIO ITEMS COUNT BEFORE NORMALIZE: {len(items)}")
-
     matches = [normalize_match(x) for x in items]
 
     if date_str:
-        filtered = []
-        for m in matches:
-            if m["matchDate"] == date_str or m["matchDate"] == "":
-                filtered.append(m)
-        matches = filtered
+        matches = [m for m in matches if m["matchDate"] == date_str]
 
-    logger.info(f"FDIO MATCHES COUNT AFTER FILTER: {len(matches)}")
+    logger.info(f"FDIO MATCHES COUNT: {len(matches)}")
     return matches
 
 
@@ -395,13 +363,15 @@ def matches(date: str = Query(None)):
 def test_fdio():
     raw = fdio_request("fixtures/today", cache_key=None, ttl=0)
     items = extract_list_payload(raw)
+    normalized = [normalize_match(x) for x in items[:3]]
 
     return {
         "has_raw": bool(raw),
         "raw_type": type(raw).__name__ if raw is not None else None,
         "top_keys": list(raw.keys())[:20] if isinstance(raw, dict) else [],
         "items_count": len(items),
-        "sample": items[:2]
+        "sample": items[:2],
+        "normalized_sample": normalized
     }
 
 
@@ -483,7 +453,7 @@ def health():
         "cache_size": len(CACHE),
         "footballdata_io": "configured" if FOOTBALLDATA_IO_KEY else "missing",
         "football_data_org": "configured" if FOOTBALL_DATA_ORG_KEY else "missing",
-        "version": "6.0.0"
+        "version": "6.1.0"
     }
 
 
