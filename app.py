@@ -12,7 +12,7 @@ from fastapi.templating import Jinja2Templates
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
 
-app = FastAPI(title="TipFactory", version="2.0.0")
+app = FastAPI(title="TipFactory", version="2.1.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -110,6 +110,24 @@ def parse_score_value(v):
         return int(v)
     except Exception:
         return None
+
+
+def extract_season_year(match_detail, competition_id):
+    season_from_match = safe_get(match_detail or {}, "season", "startDate", default="")
+    if isinstance(season_from_match, str) and len(season_from_match) >= 4:
+        return int(season_from_match[:4])
+
+    comp_data = api_get(
+        f"competitions/{competition_id}",
+        cache_key=f"competition_{competition_id}",
+        ttl=3600
+    )
+
+    start_date = safe_get(comp_data or {}, "currentSeason", "startDate", default="")
+    if isinstance(start_date, str) and len(start_date) >= 4:
+        return int(start_date[:4])
+
+    return datetime.utcnow().year
 
 
 def format_match(m):
@@ -256,29 +274,11 @@ def extract_team_view(team_id, matches):
     }
 
 
-def merge_standings_with_stats(standings, base_stats):
-    if standings:
-        base_stats["position"] = standings.get("position", 0)
-        base_stats["points"] = standings.get("points", 0)
-        base_stats["won"] = standings.get("won", base_stats["won"])
-        base_stats["draw"] = standings.get("draw", base_stats["draw"])
-        base_stats["lost"] = standings.get("lost", base_stats["lost"])
-        base_stats["goals_for"] = standings.get("goals_for", base_stats["goals_for"])
-        base_stats["goals_against"] = standings.get("goals_against", base_stats["goals_against"])
-    else:
-        base_stats["position"] = 0
-        base_stats["points"] = base_stats["won"] * 3 + base_stats["draw"]
-    return base_stats
-
-
 def get_team_matches(team_id, competition_id=None, venue=None, limit=10):
     if not team_id:
         return []
 
-    params = {
-        "status": "FINISHED",
-        "limit": limit
-    }
+    params = {"status": "FINISHED", "limit": limit}
 
     if competition_id:
         params["competitions"] = str(competition_id)
@@ -296,9 +296,26 @@ def get_team_matches(team_id, competition_id=None, venue=None, limit=10):
     return data.get("matches", []) if isinstance(data, dict) else []
 
 
-def get_standings(team_id, competition_id, season_year):
+def find_team_row(table_rows, team_id):
+    for row in table_rows:
+        if safe_get(row, "team", "id") == team_id:
+            return {
+                "position": row.get("position", 0),
+                "played": row.get("playedGames", 0),
+                "won": row.get("won", 0),
+                "draw": row.get("draw", 0),
+                "lost": row.get("lost", 0),
+                "goals_for": row.get("goalsFor", 0),
+                "goals_against": row.get("goalsAgainst", 0),
+                "points": row.get("points", 0),
+                "form": row.get("form", "")
+            }
+    return None
+
+
+def get_standings_bundle(team_id, competition_id, season_year):
     if not team_id or not competition_id:
-        return None
+        return {"TOTAL": None, "HOME": None, "AWAY": None}
 
     data = api_get(
         f"competitions/{competition_id}/standings",
@@ -306,25 +323,43 @@ def get_standings(team_id, competition_id, season_year):
         cache_key=f"st_{competition_id}_{season_year}",
         ttl=3600
     )
+
+    result = {"TOTAL": None, "HOME": None, "AWAY": None}
+
     if not data or not data.get("standings"):
-        return None
+        return result
 
-    for standing in data["standings"]:
-        for row in standing.get("table", []):
-            if safe_get(row, "team", "id") == team_id:
-                return {
-                    "position": row.get("position", 0),
-                    "played": row.get("playedGames", 0),
-                    "won": row.get("won", 0),
-                    "draw": row.get("draw", 0),
-                    "lost": row.get("lost", 0),
-                    "goals_for": row.get("goalsFor", 0),
-                    "goals_against": row.get("goalsAgainst", 0),
-                    "points": row.get("points", 0),
-                    "form": row.get("form", "")
-                }
+    for standing in data.get("standings", []):
+        standing_type = standing.get("type")
+        table = standing.get("table", [])
+        if standing_type in result:
+            result[standing_type] = find_team_row(table, team_id)
 
-    return None
+    return result
+
+
+def merge_stats(base_stats, standings_total=None, standings_split=None):
+    merged = dict(base_stats)
+
+    if standings_total:
+        merged["position"] = standings_total.get("position", 0)
+        merged["points"] = standings_total.get("points", 0)
+    else:
+        merged["position"] = 0
+        merged["points"] = merged["won"] * 3 + merged["draw"]
+
+    source = standings_split or standings_total
+    if source:
+        merged["played"] = source.get("played", merged["played"])
+        merged["won"] = source.get("won", merged["won"])
+        merged["draw"] = source.get("draw", merged["draw"])
+        merged["lost"] = source.get("lost", merged["lost"])
+        merged["goals_for"] = source.get("goals_for", merged["goals_for"])
+        merged["goals_against"] = source.get("goals_against", merged["goals_against"])
+        if source.get("form"):
+            merged["form_string"] = source.get("form").replace(",", "")
+
+    return merged
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -396,8 +431,6 @@ def analyze(
     matchday: int = Query(0),
     status: str = Query("SCHEDULED")
 ):
-    season_year = datetime.utcnow().year
-
     match_detail = api_get(
         f"matches/{match_id}",
         cache_key=f"match_detail_{match_id}",
@@ -405,15 +438,17 @@ def analyze(
     )
 
     if match_detail:
+        home_team = safe_get(match_detail, "homeTeam", "name", default=home_team)
+        away_team = safe_get(match_detail, "awayTeam", "name", default=away_team)
+        home_short = safe_get(match_detail, "homeTeam", "shortName", default=home_short)
+        away_short = safe_get(match_detail, "awayTeam", "shortName", default=away_short)
+        home_logo = safe_get(match_detail, "homeTeam", "crest", default=home_logo)
+        away_logo = safe_get(match_detail, "awayTeam", "crest", default=away_logo)
         league = safe_get(match_detail, "competition", "name", default=league)
         country = safe_get(match_detail, "area", "name", default=country) or safe_get(match_detail, "competition", "area", "name", default=country)
         venue = match_detail.get("venue", venue)
         status = match_detail.get("status", status)
         matchday = match_detail.get("matchday", matchday)
-        home_logo = safe_get(match_detail, "homeTeam", "crest", default=home_logo)
-        away_logo = safe_get(match_detail, "awayTeam", "crest", default=away_logo)
-        home_short = safe_get(match_detail, "homeTeam", "shortName", default=home_short)
-        away_short = safe_get(match_detail, "awayTeam", "shortName", default=away_short)
         if not date:
             date = (match_detail.get("utcDate") or "")[:10]
         if time == "--:--":
@@ -423,9 +458,10 @@ def analyze(
         if away_score == "":
             away_score = safe_get(match_detail, "score", "fullTime", "away", default="")
 
+    season_year = extract_season_year(match_detail, competition_id)
+
     home_recent_all = get_team_matches(home_id, competition_id, venue=None, limit=10)
     away_recent_all = get_team_matches(away_id, competition_id, venue=None, limit=10)
-
     home_recent_home = get_team_matches(home_id, competition_id, venue="HOME", limit=10)
     away_recent_away = get_team_matches(away_id, competition_id, venue="AWAY", limit=10)
 
@@ -443,11 +479,11 @@ def analyze(
         away_base = extract_team_view(away_id, away_recent_all)
         away_mode = "ALL"
 
-    home_standings = get_standings(home_id, competition_id, season_year)
-    away_standings = get_standings(away_id, competition_id, season_year)
+    home_bundle = get_standings_bundle(home_id, competition_id, season_year)
+    away_bundle = get_standings_bundle(away_id, competition_id, season_year)
 
-    home_stats = merge_standings_with_stats(home_standings, home_base)
-    away_stats = merge_standings_with_stats(away_standings, away_base)
+    home_stats = merge_stats(home_base, home_bundle["TOTAL"], home_bundle["HOME"] if home_mode == "HOME" else home_bundle["TOTAL"])
+    away_stats = merge_stats(away_base, away_bundle["TOTAL"], away_bundle["AWAY"] if away_mode == "AWAY" else away_bundle["TOTAL"])
 
     home_form = home_base["form"]
     away_form = away_base["form"]
@@ -541,12 +577,17 @@ def analyze(
             "home_id": home_id,
             "away_id": away_id,
             "competition_id": competition_id,
+            "season_year_used": season_year,
             "home_recent_all_count": len(home_recent_all),
             "away_recent_all_count": len(away_recent_all),
             "home_recent_home_count": len(home_recent_home),
             "away_recent_away_count": len(away_recent_away),
             "home_mode_used": home_mode,
-            "away_mode_used": away_mode
+            "away_mode_used": away_mode,
+            "home_total_found": bool(home_bundle["TOTAL"]),
+            "home_home_found": bool(home_bundle["HOME"]),
+            "away_total_found": bool(away_bundle["TOTAL"]),
+            "away_away_found": bool(away_bundle["AWAY"])
         }
     })
 
@@ -558,7 +599,7 @@ def health():
         "time": datetime.now().isoformat(),
         "cache_size": len(CACHE),
         "api_key": "configured" if API_KEY else "missing",
-        "version": "2.0.0"
+        "version": "2.1.0"
     }
 
 
