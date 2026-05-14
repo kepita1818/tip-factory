@@ -98,14 +98,19 @@ function setupEventListeners() {
     }
 }
 
-function loadMatches() {
+function loadMatches(forceRefresh) {
     var dateStr = formatDateISO(currentDate);
     var matchesContainer = getEl('matches-container');
     if (matchesContainer) {
         matchesContainer.innerHTML = '<div class="loading">Cargando partidos...</div>';
     }
 
-    fetch('/api/matches?date=' + encodeURIComponent(dateStr))
+    var url = '/api/matches?date=' + encodeURIComponent(dateStr);
+    if (forceRefresh) {
+        url += '&force=true';
+    }
+
+    fetch(url)
         .then(function(response) {
             if (!response.ok) throw new Error('HTTP ' + response.status);
             return response.json();
@@ -118,27 +123,29 @@ function loadMatches() {
                     requestedDate: data.requested_date,
                     sourceDate: data.source_date,
                     isExact: data.is_exact,
-                    competitionsFound: data.competitions_found || [],
-                    searchStrategy: data.search_strategy || 'unknown'
+                    hasMatches: data.has_matches
                 };
             } else if (Array.isArray(data)) {
                 allMatches = data;
-                allMatches._meta = { isExact: true };
+                allMatches._meta = { isExact: true, hasMatches: data.length > 0 };
             } else {
                 throw new Error('Respuesta invalida del servidor');
             }
 
-            if (allMatches.length === 0) {
+            if (!allMatches._meta.hasMatches) {
+                // Show "no matches" with option to search nearby
                 var noMatchesHtml = '<div class="no-matches">';
                 noMatchesHtml += '<div style="font-size:16px;font-weight:600;margin-bottom:8px;">No hay partidos para ' + formatDate(currentDate) + '</div>';
-                noMatchesHtml += '<div style="font-size:13px;color:var(--text-muted);">No se encontraron partidos en las principales ligas europeas para esta fecha.</div>';
-                noMatchesHtml += '<div style="font-size:12px;color:var(--text-muted);margin-top:8px;">Prueba con otra fecha usando los botones de navegación.</div>';
+                noMatchesHtml += '<div style="font-size:13px;color:var(--text-muted);margin-bottom:12px;">No se encontraron partidos en las principales ligas para esta fecha.</div>';
+                noMatchesHtml += '<button onclick="searchFallback()" style="background:var(--primary);color:#fff;border:none;padding:10px 20px;border-radius:8px;cursor:pointer;font-weight:600;margin-right:8px;">Buscar fechas cercanas</button>';
+                noMatchesHtml += '<button onclick="loadMatches(true)" style="background:var(--bg-card);color:var(--text-main);border:1px solid var(--border);padding:10px 20px;border-radius:8px;cursor:pointer;font-weight:600;">Recargar</button>';
                 noMatchesHtml += '</div>';
                 if (matchesContainer) {
                     matchesContainer.innerHTML = noMatchesHtml;
                 }
                 return;
             }
+
             renderMatches();
         })
         .catch(function(e) {
@@ -149,12 +156,48 @@ function loadMatches() {
         });
 }
 
+function searchFallback() {
+    var dateStr = formatDateISO(currentDate);
+    var matchesContainer = getEl('matches-container');
+    if (matchesContainer) {
+        matchesContainer.innerHTML = '<div class="loading">Buscando fechas cercanas...</div>';
+    }
+
+    fetch('/api/matches/search-fallback?date=' + encodeURIComponent(dateStr), {method: 'POST'})
+        .then(function(response) {
+            if (!response.ok) throw new Error('HTTP ' + response.status);
+            return response.json();
+        })
+        .then(function(data) {
+            if (data && data.matches && Array.isArray(data.matches)) {
+                allMatches = data.matches;
+                allMatches._meta = {
+                    requestedDate: data.requested_date,
+                    sourceDate: data.source_date,
+                    isExact: data.is_exact,
+                    hasMatches: data.has_matches
+                };
+                renderMatches();
+            } else {
+                if (matchesContainer) {
+                    matchesContainer.innerHTML = '<div class="no-matches">No se encontraron partidos en fechas cercanas.<br><small>Prueba con otra fecha</small></div>';
+                }
+            }
+        })
+        .catch(function(e) {
+            console.error('Error fallback:', e);
+            if (matchesContainer) {
+                matchesContainer.innerHTML = '<div class="no-matches">Error buscando fechas cercanas.<br><small>Intenta de nuevo</small></div>';
+            }
+        });
+}
+
 function renderMatches() {
     var matches = allMatches;
     var matchesContainer = getEl('matches-container');
-    var meta = matches._meta || { isExact: true };
+    var meta = matches._meta || { isExact: true, hasMatches: true };
 
-    // Show notice if matches are from a different date
+    // Show notice only for fallback matches
     var dateNotice = '';
     if (!meta.isExact && meta.sourceDate) {
         var sourceDateParts = meta.sourceDate.split('-');
