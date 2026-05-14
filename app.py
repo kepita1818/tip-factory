@@ -620,6 +620,9 @@ def get_team_stats(team_id, league_id, season):
     clean_sheets = clean_sheet.get("total", 0) if isinstance(clean_sheet, dict) else 0
     failed_scores = failed_to_score.get("total", 0) if isinstance(failed_to_score, dict) else 0
 
+    # Calculate corners and cards from fixtures if available
+    cc_data = calculate_team_corners_and_cards(team_id, league_id, season, last=10)
+
     return {
         "played": played,
         "won": wins,
@@ -640,15 +643,153 @@ def get_team_stats(team_id, league_id, season):
         "form": form_list,
         "biggest_win": safe_get(biggest, "wins", default=""),
         "biggest_loss": safe_get(biggest, "loses", default=""),
-        # Nuevos campos para corners y tarjetas
-        "corners_total": corners,
-        "yellow_cards": yellow_cards,
-        "red_cards": red_cards,
-        "avg_corners": round(corners / played, 2) if played else 0,
-        "avg_yellow_cards": round(yellow_cards / played, 2) if played else 0,
-        "avg_red_cards": round(red_cards / played, 2) if played else 0,
+        # Corners and cards from fixture statistics
+        "corners_total": cc_data["corners_total"],
+        "yellow_cards": cc_data["yellow_cards"],
+        "red_cards": cc_data["red_cards"],
+        "avg_corners": cc_data["corners_avg"],
+        "avg_yellow_cards": cc_data["yellow_avg"],
+        "avg_red_cards": cc_data["red_avg"],
+        "avg_total_cards": cc_data["total_cards_avg"],
+        "matches_analyzed": cc_data["matches_analyzed"],
     }
 
+
+
+
+def get_team_fixtures(team_id, league_id, season, last=10):
+    """
+    Obtiene últimos partidos del equipo para calcular corners y tarjetas
+    Endpoint: /fixtures?team={id}&league={id}&season={year}&last={n}
+    """
+    if not team_id or not league_id or not season:
+        return []
+
+    data = api_get(
+        "fixtures",
+        params={"team": team_id, "league": league_id, "season": season, "last": last},
+        cache_key=f"team_fixtures_{team_id}_{league_id}_{season}_{last}",
+        ttl=1800
+    )
+
+    if not data or not isinstance(data, dict):
+        return []
+
+    return data.get("response", [])
+
+
+def get_fixture_stats_for_team(fixture_id, team_id):
+    """
+    Obtiene estadísticas de un partido para un equipo específico
+    """
+    if not fixture_id:
+        return None
+
+    data = api_get(
+        "fixtures/statistics",
+        params={"fixture": fixture_id},
+        cache_key=f"fixture_stats_{fixture_id}",
+        ttl=600
+    )
+
+    if not data or not isinstance(data, dict):
+        return None
+
+    response = data.get("response", [])
+    for team_stats in response:
+        team = team_stats.get("team", {})
+        if team.get("id") == team_id:
+            stats = team_stats.get("statistics", [])
+            parsed = {}
+            for stat in stats:
+                stat_type = stat.get("type", "").lower().replace(" ", "_")
+                value = stat.get("value")
+                parsed[stat_type] = value
+            return parsed
+
+    return None
+
+
+def calculate_team_corners_and_cards(team_id, league_id, season, last=10):
+    """
+    Calcula corners y tarjetas promedio del equipo desde sus últimos partidos
+    """
+    fixtures = get_team_fixtures(team_id, league_id, season, last)
+
+    if not fixtures:
+        return {
+            "corners_total": 0,
+            "corners_avg": 0,
+            "yellow_cards": 0,
+            "red_cards": 0,
+            "yellow_avg": 0,
+            "red_avg": 0,
+            "total_cards_avg": 0,
+            "matches_analyzed": 0
+        }
+
+    total_corners = 0
+    total_yellow = 0
+    total_red = 0
+    matches_with_data = 0
+
+    for fixture in fixtures:
+        fixture_id = fixture.get("fixture", {}).get("id")
+        if not fixture_id:
+            continue
+
+        stats = get_fixture_stats_for_team(fixture_id, team_id)
+        if not stats:
+            continue
+
+        # Corners
+        corners = stats.get("corner_kicks")
+        if corners is not None:
+            try:
+                total_corners += int(corners)
+            except:
+                pass
+
+        # Yellow cards
+        yellow = stats.get("yellow_cards")
+        if yellow is not None:
+            try:
+                total_yellow += int(yellow)
+            except:
+                pass
+
+        # Red cards
+        red = stats.get("red_cards")
+        if red is not None:
+            try:
+                total_red += int(red)
+            except:
+                pass
+
+        matches_with_data += 1
+
+    if matches_with_data == 0:
+        return {
+            "corners_total": 0,
+            "corners_avg": 0,
+            "yellow_cards": 0,
+            "red_cards": 0,
+            "yellow_avg": 0,
+            "red_avg": 0,
+            "total_cards_avg": 0,
+            "matches_analyzed": 0
+        }
+
+    return {
+        "corners_total": total_corners,
+        "corners_avg": round(total_corners / matches_with_data, 2),
+        "yellow_cards": total_yellow,
+        "red_cards": total_red,
+        "yellow_avg": round(total_yellow / matches_with_data, 2),
+        "red_avg": round(total_red / matches_with_data, 2),
+        "total_cards_avg": round((total_yellow + total_red) / matches_with_data, 2),
+        "matches_analyzed": matches_with_data
+    }
 
 def get_standings(league_id, season):
     """
@@ -1098,6 +1239,8 @@ def analyze(
             "avg_corners": 0,
             "avg_yellow_cards": 0,
             "avg_red_cards": 0,
+            "avg_total_cards": 0,
+            "matches_analyzed": 0,
         }
         home_mode = "STANDINGS_FALLBACK"
 
@@ -1122,6 +1265,8 @@ def analyze(
             "avg_corners": 0,
             "avg_yellow_cards": 0,
             "avg_red_cards": 0,
+            "avg_total_cards": 0,
+            "matches_analyzed": 0,
         }
         away_mode = "STANDINGS_FALLBACK"
 
