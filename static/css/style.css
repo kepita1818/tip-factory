@@ -428,3 +428,37 @@ body {
     padding: 12px;
   }
 }
+.league-filters {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-bottom: 16px;
+  justify-content: center;
+}
+
+.filter-btn {
+  border: 1px solid var(--line);
+  background: var(--card);
+  color: var(--text);
+  border-radius: 999px;
+  padding: 6px 10px;
+  cursor: pointer;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.filter-btn.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+@media (max-width: 640px) {
+  .league-filters {
+    gap: 4px;
+  }
+  .filter-btn {
+    padding: 5px 8px;
+    font-size: 11px;
+  }
+}
