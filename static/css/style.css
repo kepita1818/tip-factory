@@ -223,13 +223,23 @@ body {
   gap: 10px;
 }
 
-.match-team-row img {
-  width: 18px;
-  height: 18px;
+/* FIX ESCUDOS: forzar visibilidad */
+.match-team-row img,
+.team-block img {
+  width: 22px;
+  height: 22px;
   object-fit: contain;
   border-radius: 50%;
-  background: #fff;
+  background: #ffffff;
   flex-shrink: 0;
+  display: inline-block !important;
+  padding: 2px;
+}
+
+.team-block img {
+  width: 48px;
+  height: 48px;
+  padding: 3px;
 }
 
 .match-team-row .team-name {
@@ -375,6 +385,51 @@ body {
   color: var(--text);
 }
 
+/* ===== PREDICTION CARD ===== */
+.prediction-card {
+  background: var(--card-light);
+  border-color: rgba(59, 130, 246, 0.3);
+}
+
+.prediction-winner {
+  font-size: 14px;
+  color: var(--green);
+  margin-bottom: 8px;
+  padding: 8px;
+  background: rgba(34, 197, 94, 0.1);
+  border-radius: 8px;
+}
+
+.prediction-advice {
+  font-size: 13px;
+  color: var(--text);
+  margin-bottom: 8px;
+  padding: 8px;
+  background: rgba(59, 130, 246, 0.1);
+  border-radius: 8px;
+}
+
+.prediction-over {
+  font-size: 13px;
+  color: var(--yellow);
+  padding: 8px;
+  background: rgba(234, 179, 8, 0.1);
+  border-radius: 8px;
+}
+
+.prediction-loading,
+.prediction-empty,
+.prediction-error {
+  font-size: 13px;
+  color: var(--muted);
+  text-align: center;
+  padding: 12px;
+}
+
+.prediction-error {
+  color: var(--red);
+}
+
 /* ===== TEAMS CARD ===== */
 .teams-card {
   background: var(--card-light);
@@ -394,15 +449,6 @@ body {
   align-items: center;
   gap: 4px;
   text-align: center;
-}
-
-.team-block img {
-  width: 48px;
-  height: 48px;
-  object-fit: contain;
-  background: #fff;
-  border-radius: 50%;
-  padding: 3px;
 }
 
 .team-label {
@@ -576,25 +622,6 @@ body {
 
 .stats-table tr.prob-low td {
   background: rgba(239, 68, 68, 0.08);
-}
-
-/* ===== ANALYSIS TEXT ===== */
-.analysis-card {
-  background: var(--card-light);
-}
-
-#analysis-text-box {
-  color: var(--text);
-  line-height: 1.6;
-  font-size: 12px;
-}
-
-#analysis-text-box p {
-  margin: 0 0 8px;
-}
-
-#analysis-text-box p:last-child {
-  margin-bottom: 0;
 }
 
 /* ===== SECTION SPACING ===== */
