@@ -12,7 +12,7 @@ from fastapi.templating import Jinja2Templates
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
 
-app = FastAPI(title="TipFactory", version="2.3.0")
+app = FastAPI(title="TipFactory", version="2.4.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -332,30 +332,6 @@ def get_standings_bundle(team_id, competition_id, season_year):
     return result
 
 
-def merge_stats(base_stats, standings_total=None, standings_split=None):
-    merged = dict(base_stats)
-
-    if standings_total:
-        merged["position"] = standings_total.get("position", 0)
-        merged["points"] = standings_total.get("points", 0)
-    else:
-        merged["position"] = 0
-        merged["points"] = merged["won"] * 3 + merged["draw"]
-
-    source = standings_split or standings_total
-    if source:
-        merged["played"] = source.get("played", merged["played"])
-        merged["won"] = source.get("won", merged["won"])
-        merged["draw"] = source.get("draw", merged["draw"])
-        merged["lost"] = source.get("lost", merged["lost"])
-        merged["goals_for"] = source.get("goals_for", merged["goals_for"])
-        merged["goals_against"] = source.get("goals_against", merged["goals_against"])
-        if source.get("form"):
-            merged["form_string"] = source.get("form").replace(",", "")
-
-    return merged
-
-
 @app.get("/", response_class=HTMLResponse)
 def home(request: Request):
     return templates.TemplateResponse("index.html", {"request": request})
@@ -460,24 +436,24 @@ def analyze(
     away_recent_all = get_team_matches(away_id, competition_id, season_year, venue=None, limit=10)
 
     if len(home_recent_home) >= 3:
-        home_base = extract_team_view(home_id, home_recent_home)
+        home_stats = extract_team_view(home_id, home_recent_home)
         home_mode = "HOME"
     else:
-        home_base = extract_team_view(home_id, home_recent_all)
+        home_stats = extract_team_view(home_id, home_recent_all)
         home_mode = "ALL"
 
     if len(away_recent_away) >= 3:
-        away_base = extract_team_view(away_id, away_recent_away)
+        away_stats = extract_team_view(away_id, away_recent_away)
         away_mode = "AWAY"
     else:
-        away_base = extract_team_view(away_id, away_recent_all)
+        away_stats = extract_team_view(away_id, away_recent_all)
         away_mode = "ALL"
 
     home_bundle = get_standings_bundle(home_id, competition_id, season_year)
     away_bundle = get_standings_bundle(away_id, competition_id, season_year)
 
-    home_stats = merge_stats(home_base, home_bundle["TOTAL"], home_bundle["HOME"] if home_mode == "HOME" else home_bundle["TOTAL"])
-    away_stats = merge_stats(away_base, away_bundle["TOTAL"], away_bundle["AWAY"] if away_mode == "AWAY" else away_bundle["TOTAL"])
+    home_table = home_bundle["TOTAL"] or {"position": 0, "points": 0, "won": 0, "draw": 0, "lost": 0, "goals_for": 0, "goals_against": 0}
+    away_table = away_bundle["TOTAL"] or {"position": 0, "points": 0, "won": 0, "draw": 0, "lost": 0, "goals_for": 0, "goals_against": 0}
 
     h2h_data = api_get(
         f"matches/{match_id}/head2head",
@@ -548,10 +524,14 @@ def analyze(
             "halfTimeHome": safe_get(match_detail or {}, "score", "halfTime", "home", default=None),
             "halfTimeAway": safe_get(match_detail or {}, "score", "halfTime", "away", default=None)
         },
-        "home_form": home_base["form"],
-        "away_form": away_base["form"],
+        "home_form": home_stats["form"],
+        "away_form": away_stats["form"],
         "home_stats": home_stats,
         "away_stats": away_stats,
+        "table_stats": {
+            "home": home_table,
+            "away": away_table
+        },
         "h2h": {
             "matches": h2h_matches,
             "stats": h2h_stats
@@ -576,9 +556,7 @@ def analyze(
             "home_mode_used": home_mode,
             "away_mode_used": away_mode,
             "home_total_found": bool(home_bundle["TOTAL"]),
-            "home_home_found": bool(home_bundle["HOME"]),
-            "away_total_found": bool(away_bundle["TOTAL"]),
-            "away_away_found": bool(away_bundle["AWAY"])
+            "away_total_found": bool(away_bundle["TOTAL"])
         }
     })
 
@@ -590,7 +568,7 @@ def health():
         "time": datetime.now().isoformat(),
         "cache_size": len(CACHE),
         "api_key": "configured" if API_KEY else "missing",
-        "version": "2.3.0"
+        "version": "2.4.0"
     }
 
 
