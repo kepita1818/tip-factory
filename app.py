@@ -134,15 +134,21 @@ def home(request: Request):
     return templates.TemplateResponse("index.html", {"request": request})
 
 @app.get("/api/matches")
-def matches(date: str = Query(None)):
+def matches(date: str = Query(None), force: bool = Query(False)):
     if not date:
         date = datetime.now().strftime("%Y-%m-%d")
 
-    logger.info(f"BUSCANDO PARTIDOS PARA: {date}")
+    logger.info(f"BUSCANDO PARTIDOS PARA: {date} (force={force})")
 
-    # Clean call: just date range, no competitions filter
-    # This returns ALL matches the API key has access to for this date
-    data = api_request('matches', {'dateFrom': date, 'dateTo': date}, f"matches_{date}", 300)
+    cache_key = f"matches_{date}"
+
+    # Clear cache if force refresh
+    if force and cache_key in _cache:
+        del _cache[cache_key]
+        logger.info(f"Cache cleared for {cache_key}")
+
+    # Try exact date
+    data = api_request('matches', {'dateFrom': date, 'dateTo': date}, cache_key, 300)
 
     if data and data.get('matches'):
         matches_list = [format_match(m) for m in data['matches']]
@@ -151,11 +157,27 @@ def matches(date: str = Query(None)):
             "matches": matches_list,
             "requested_date": date,
             "source_date": date,
-            "is_exact": True
+            "is_exact": True,
+            "has_matches": True
         }
 
-    # Fallback: search nearby dates
-    logger.info("Buscando en fechas cercanas...")
+    logger.warning(f"NO HAY PARTIDOS para {date}")
+    return {
+        "matches": [],
+        "requested_date": date,
+        "source_date": None,
+        "is_exact": True,
+        "has_matches": False
+    }
+
+@app.post("/api/matches/search-fallback")
+def search_fallback(date: str = Query(None)):
+    """Search nearby dates when exact date has no matches"""
+    if not date:
+        date = datetime.now().strftime("%Y-%m-%d")
+
+    logger.info(f"FALLBACK search for {date}")
+
     for delta in [-1, 1, -2, 2, -3, 3, -4, 4, -5, 5, -6, 6, -7, 7]:
         try:
             check_date = (datetime.strptime(date, "%Y-%m-%d") + timedelta(days=delta)).strftime("%Y-%m-%d")
@@ -164,56 +186,34 @@ def matches(date: str = Query(None)):
 
             if data and data.get('matches'):
                 matches_list = [format_match(m) for m in data['matches']]
-                logger.info(f"ENCONTRADOS {len(matches_list)} partidos en fecha alternativa {check_date}")
+                logger.info(f"FALLBACK: {len(matches_list)} partidos en {check_date}")
                 return {
                     "matches": matches_list,
                     "requested_date": date,
                     "source_date": check_date,
-                    "is_exact": False
+                    "is_exact": False,
+                    "has_matches": True
                 }
 
         except Exception as e:
-            logger.error(f"Error buscando {check_date}: {e}")
+            logger.error(f"Error fallback {check_date}: {e}")
             continue
 
-    logger.warning(f"NO HAY PARTIDOS para {date}")
     return {
         "matches": [],
         "requested_date": date,
         "source_date": None,
-        "is_exact": True
+        "is_exact": True,
+        "has_matches": False
     }
 
 @app.get("/api/analyze/{match_id}")
 def analyze(match_id: int):
     logger.info(f"ANALIZANDO PARTIDO {match_id}")
 
-    # Try general endpoint first
     data = api_request(f'matches/{match_id}', cache_key=f"match_{match_id}", ttl=300)
-
-    # If 404, search in cached match lists
     if not data:
-        logger.warning(f"Match {match_id} not in general endpoint, searching cache...")
-        found_match = None
-
-        for cache_key in list(_cache.keys()):
-            if cache_key.startswith('matches_'):
-                cached_data = get_cache(cache_key)
-                if cached_data and cached_data.get('matches'):
-                    for m in cached_data['matches']:
-                        if m.get('id') == match_id:
-                            found_match = m
-                            logger.info(f"Found match {match_id} in cache: {cache_key}")
-                            break
-                if found_match:
-                    break
-
-        if found_match:
-            data = found_match
-        else:
-            logger.error(f"Match {match_id} not found anywhere")
-            raise HTTPException(404, "Partido no encontrado o no disponible con tu plan API.")
-    
+        raise HTTPException(404, "Partido no encontrado")
 
     match = data
     home_id = match['homeTeam']['id']
