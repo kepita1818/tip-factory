@@ -32,6 +32,11 @@ function formatLocalTime(utcDateString) {
   });
 }
 
+function valueOrNoData(value, suffix) {
+  if (value === null || value === undefined || value === '') return 'Sin datos';
+  return String(value) + (suffix || '');
+}
+
 function updateDateDisplay() {
   var dateDisplay = getEl('current-date');
   var datePicker = getEl('date-picker');
@@ -358,8 +363,10 @@ function renderFormBadges(form, elementId) {
 }
 
 function getLevelClass(value) {
-  if (value >= 60) return 'high';
-  if (value >= 40) return 'medium';
+  var n = parseFloat(value);
+  if (isNaN(n)) return '';
+  if (n >= 60) return 'high';
+  if (n >= 40) return 'medium';
   return 'low';
 }
 
@@ -368,26 +375,22 @@ function renderProbGrid(probs, homeStats, awayStats) {
   if (!container) return;
 
   var items = [
-    { label: 'Más de 1.5', value: probs.over_1_5 || 0, sub: 'Probabilidad' },
-    { label: 'Más de 2.5', value: probs.over_2_5 || 0, sub: 'Probabilidad' },
-    { label: 'Más de 3.5', value: probs.over_3_5 || 0, sub: 'Probabilidad' },
-    { label: 'AMB', value: probs.btts || 0, sub: 'Ambos marcan' },
-    { label: 'Goles esperados', text: String(probs.total_expected_goals || 0), sub: 'Media estimada' },
-    { label: 'Corners esperados', text: String(probs.expected_corners || 0), sub: 'Media estimada' },
-    { label: 'Tarjetas esperadas', text: String(probs.expected_cards || 0), sub: 'Media estimada' },
-    { label: 'Goles local', text: String(homeStats.avg_team_goals || 0), sub: 'Media anotados' },
-    { label: 'Goles visitante', text: String(awayStats.avg_team_goals || 0), sub: 'Media anotados' }
+    { label: 'Más de 1.5', value: valueOrNoData(probs.over_1_5, '%'), sub: 'Temporada completa' },
+    { label: 'Más de 2.5', value: valueOrNoData(probs.over_2_5, '%'), sub: 'Temporada completa' },
+    { label: 'Más de 3.5', value: valueOrNoData(probs.over_3_5, '%'), sub: 'Temporada completa' },
+    { label: 'AMB', value: valueOrNoData(probs.btts, '%'), sub: 'Ambos marcan' },
+    { label: 'Goles esperados', value: valueOrNoData(probs.total_expected_goals, ''), sub: 'Cálculo local+visitante' },
+    { label: 'Corners esperados', value: valueOrNoData(probs.expected_corners, ''), sub: 'Solo si la API lo da' },
+    { label: 'Tarjetas esperadas', value: valueOrNoData(probs.expected_cards, ''), sub: 'Solo si la API lo da' },
+    { label: 'Goles local', value: valueOrNoData(homeStats.avg_team_goals, ''), sub: 'Media temporada' },
+    { label: 'Goles visitante', value: valueOrNoData(awayStats.avg_team_goals, ''), sub: 'Media temporada' }
   ];
 
   var html = '';
   for (var i = 0; i < items.length; i++) {
     var item = items[i];
     html += '<div class="prob-box">';
-    if (item.value !== undefined) {
-      html += '<div class="prob-box-value">' + item.value + '%</div>';
-    } else {
-      html += '<div class="prob-box-value">' + item.text + '</div>';
-    }
+    html += '<div class="prob-box-value">' + item.value + '</div>';
     html += '<div class="prob-box-label">' + item.label + '</div>';
     html += '<div class="prob-box-sub">' + item.sub + '</div>';
     html += '</div>';
@@ -406,22 +409,26 @@ function renderGoalsTable(home, away, info) {
   if (awayHeader) awayHeader.textContent = info.away_short || 'Visitante';
 
   var rows = [
-    { label: 'Goles/Partido', home: home.avg_total_goals || 0, away: away.avg_total_goals || 0, pct: false },
-    { label: 'Más de 1.5', home: home.over_1_5_pct || 0, away: away.over_1_5_pct || 0, pct: true },
-    { label: 'Más de 2.5', home: home.over_2_5_pct || 0, away: away.over_2_5_pct || 0, pct: true },
-    { label: 'Más de 3.5', home: home.over_3_5_pct || 0, away: away.over_3_5_pct || 0, pct: true },
-    { label: 'AMB', home: home.btts_pct || 0, away: away.btts_pct || 0, pct: true }
+    { label: 'Goles/Partido', home: home.avg_total_goals, away: away.avg_total_goals, pct: false },
+    { label: 'Más de 1.5', home: home.over_1_5_pct, away: away.over_1_5_pct, pct: true },
+    { label: 'Más de 2.5', home: home.over_2_5_pct, away: away.over_2_5_pct, pct: true },
+    { label: 'Más de 3.5', home: home.over_3_5_pct, away: away.over_3_5_pct, pct: true },
+    { label: 'AMB', home: home.btts_pct, away: away.btts_pct, pct: true },
+    { label: 'Portería a cero', home: home.clean_sheet_pct, away: away.clean_sheet_pct, pct: true },
+    { label: 'Sin marcar', home: home.failed_to_score_pct, away: away.failed_to_score_pct, pct: true }
   ];
 
   var html = '';
   for (var i = 0; i < rows.length; i++) {
     var r = rows[i];
-    var avg = ((parseFloat(r.home) + parseFloat(r.away)) / 2).toFixed(r.pct ? 0 : 1);
+    var homeVal = r.home ?? 0;
+    var awayVal = r.away ?? 0;
+    var avg = ((parseFloat(homeVal) + parseFloat(awayVal)) / 2).toFixed(r.pct ? 1 : 2);
 
     html += '<tr>';
     html += '<td>' + r.label + '</td>';
-    html += '<td class="' + getLevelClass(r.home) + '">' + r.home + (r.pct ? '%' : '') + '</td>';
-    html += '<td class="' + getLevelClass(r.away) + '">' + r.away + (r.pct ? '%' : '') + '</td>';
+    html += '<td class="' + getLevelClass(homeVal) + '">' + homeVal + (r.pct ? '%' : '') + '</td>';
+    html += '<td class="' + getLevelClass(awayVal) + '">' + awayVal + (r.pct ? '%' : '') + '</td>';
     html += '<td>' + avg + (r.pct ? '%' : '') + '</td>';
     html += '</tr>';
   }
@@ -439,51 +446,13 @@ function renderCornersTables(home, away, info) {
   if (awayHeader) awayHeader.textContent = info.away_short || 'Visitante';
 
   if (body1) {
-    var rows = [
-      { label: 'Corners/Partido', home: home.avg_corners || 5, away: away.avg_corners || 4.5, pct: false },
-      { label: 'Más de 4.5', home: 70, away: 60, pct: true },
-      { label: 'Más de 5.5', home: 55, away: 45, pct: true },
-      { label: 'Más de 6.5', home: 40, away: 35, pct: true },
-      { label: 'Más de 8.5', home: 25, away: 20, pct: true }
-    ];
-
-    var html1 = '';
-    for (var i = 0; i < rows.length; i++) {
-      var r = rows[i];
-      var avg = ((parseFloat(r.home) + parseFloat(r.away)) / 2).toFixed(r.pct ? 0 : 1);
-
-      html1 += '<tr>';
-      html1 += '<td>' + r.label + '</td>';
-      html1 += '<td class="' + getLevelClass(r.home) + '">' + r.home + (r.pct ? '%' : '') + '</td>';
-      html1 += '<td class="' + getLevelClass(r.away) + '">' + r.away + (r.pct ? '%' : '') + '</td>';
-      html1 += '<td>' + avg + (r.pct ? '%' : '') + '</td>';
-      html1 += '</tr>';
-    }
-    body1.innerHTML = html1;
+    body1.innerHTML =
+      '<tr><td>Corners</td><td>Sin datos</td><td>Sin datos</td><td>API no disponible</td></tr>';
   }
 
   if (body2) {
-    var totals = [
-      { label: 'Más de 7.5', home: 75, away: 70 },
-      { label: 'Más de 8.5', home: 65, away: 60 },
-      { label: 'Más de 9.5', home: 55, away: 50 },
-      { label: 'Más de 10.5', home: 45, away: 40 },
-      { label: 'Más de 11.5', home: 35, away: 30 }
-    ];
-
-    var html2 = '';
-    for (var j = 0; j < totals.length; j++) {
-      var t = totals[j];
-      var avg2 = Math.round((t.home + t.away) / 2);
-
-      html2 += '<tr>';
-      html2 += '<td>' + t.label + '</td>';
-      html2 += '<td class="' + getLevelClass(t.home) + '">' + t.home + '%</td>';
-      html2 += '<td class="' + getLevelClass(t.away) + '">' + t.away + '%</td>';
-      html2 += '<td>' + avg2 + '%</td>';
-      html2 += '</tr>';
-    }
-    body2.innerHTML = html2;
+    body2.innerHTML =
+      '<tr><td>Total corners</td><td>Sin datos</td><td>Sin datos</td><td>API no disponible</td></tr>';
   }
 }
 
@@ -496,28 +465,8 @@ function renderCardsTable(home, away, info) {
   if (homeHeader) homeHeader.textContent = info.home_short || 'Local';
   if (awayHeader) awayHeader.textContent = info.away_short || 'Visitante';
 
-  var rows = [
-    { label: 'Tarjetas/Partido', home: home.avg_cards || 2.5, away: away.avg_cards || 2.3, pct: false },
-    { label: 'Más de 2.5', home: 80, away: 75, pct: true },
-    { label: 'Más de 3.5', home: 65, away: 60, pct: true },
-    { label: 'Más de 4.5', home: 50, away: 45, pct: true },
-    { label: 'Más de 5.5', home: 35, away: 30, pct: true }
-  ];
-
-  var html = '';
-  for (var i = 0; i < rows.length; i++) {
-    var r = rows[i];
-    var avg = ((parseFloat(r.home) + parseFloat(r.away)) / 2).toFixed(r.pct ? 0 : 1);
-
-    html += '<tr>';
-    html += '<td>' + r.label + '</td>';
-    html += '<td class="' + getLevelClass(r.home) + '">' + r.home + (r.pct ? '%' : '') + '</td>';
-    html += '<td class="' + getLevelClass(r.away) + '">' + r.away + (r.pct ? '%' : '') + '</td>';
-    html += '<td>' + avg + (r.pct ? '%' : '') + '</td>';
-    html += '</tr>';
-  }
-
-  tbody.innerHTML = html;
+  tbody.innerHTML =
+    '<tr><td>Tarjetas</td><td>Sin datos</td><td>Sin datos</td><td>API no disponible</td></tr>';
 }
 
 function renderAnalysis(data) {
