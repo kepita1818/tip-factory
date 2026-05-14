@@ -48,11 +48,8 @@ function valueOrNoData(value, suffix) {
 }
 
 function updateDateDisplay() {
-  var dateDisplay = getEl('current-date');
-  var datePicker = getEl('date-picker');
-
-  if (dateDisplay) dateDisplay.textContent = formatDate(currentDate);
-  if (datePicker) datePicker.value = formatDateISO(currentDate);
+  getEl('current-date').textContent = formatDate(currentDate);
+  getEl('date-picker').value = formatDateISO(currentDate);
 }
 
 function activateTab(tabName) {
@@ -101,9 +98,9 @@ function setupEventListeners() {
   });
 
   getEl('current-date').addEventListener('click', function () {
-    var datePicker = getEl('date-picker');
-    if (datePicker.showPicker) datePicker.showPicker();
-    else datePicker.focus();
+    var picker = getEl('date-picker');
+    if (picker.showPicker) picker.showPicker();
+    else picker.focus();
   });
 
   getEl('date-picker').addEventListener('change', function (e) {
@@ -141,6 +138,7 @@ function loadMatches() {
   fetch('/api/matches?date=' + encodeURIComponent(dateStr))
     .then(function (response) { return response.json(); })
     .then(function (data) {
+      console.log('MATCHES DATA', data);
       allMatches = Array.isArray(data.matches) ? data.matches : [];
       allMatches.meta = {
         requestedDate: data.requested_date,
@@ -174,7 +172,7 @@ function renderMatches() {
   });
 
   if (!matches.length) {
-    matchesContainer.innerHTML = '<div class="no-matches">No hay partidos para esta fecha</div>';
+    matchesContainer.innerHTML = '<div class="no-matches">No hay partidos para esta fecha<br><small>Revisa /api/test-fdio y la consola</small></div>';
     return;
   }
 
@@ -251,12 +249,12 @@ function renderProbabilities(data) {
   var p = data.probabilities || {};
   var html = '';
 
-  html += '<div class="prob-box"><div class="prob-box-value">' + pct(p.over_1_5) + '</div><div class="prob-box-label">Más de 1.5</div><div class="prob-box-sub">Temporada reciente</div></div>';
-  html += '<div class="prob-box"><div class="prob-box-value">' + pct(p.over_2_5) + '</div><div class="prob-box-label">Más de 2.5</div><div class="prob-box-sub">Temporada reciente</div></div>';
-  html += '<div class="prob-box"><div class="prob-box-value">' + pct(p.over_3_5) + '</div><div class="prob-box-label">Más de 3.5</div><div class="prob-box-sub">Temporada reciente</div></div>';
+  html += '<div class="prob-box"><div class="prob-box-value">' + pct(p.over_1_5) + '</div><div class="prob-box-label">Más de 1.5</div><div class="prob-box-sub">Reciente</div></div>';
+  html += '<div class="prob-box"><div class="prob-box-value">' + pct(p.over_2_5) + '</div><div class="prob-box-label">Más de 2.5</div><div class="prob-box-sub">Reciente</div></div>';
+  html += '<div class="prob-box"><div class="prob-box-value">' + pct(p.over_3_5) + '</div><div class="prob-box-label">Más de 3.5</div><div class="prob-box-sub">Reciente</div></div>';
   html += '<div class="prob-box"><div class="prob-box-value">' + pct(p.btts) + '</div><div class="prob-box-label">AMB</div><div class="prob-box-sub">Ambos marcan</div></div>';
   html += '<div class="prob-box"><div class="prob-box-value">' + valueOrNoData(p.total_expected_goals) + '</div><div class="prob-box-label">Goles esperados</div><div class="prob-box-sub">Media reciente</div></div>';
-  html += '<div class="prob-box"><div class="prob-box-value">' + valueOrNoData((data.home_stats || {}).points) + '</div><div class="prob-box-label">Puntos local</div><div class="prob-box-sub">Clasificación</div></div>';
+  html += '<div class="prob-box"><div class="prob-box-value">' + valueOrNoData((data.home_stats || {}).points) + '</div><div class="prob-box-label">Puntos local</div><div class="prob-box-sub">Muestra</div></div>';
 
   getEl('prob-grid').innerHTML = html;
 }
@@ -344,7 +342,7 @@ function renderAnalysisText(data) {
   var p = data.probabilities || {};
 
   var html = '';
-  html += '<p><strong>' + (mi.home_team || 'Local') + '</strong> llega con ' + valueOrNoData(hs.points) + ' puntos y una media de ' + valueOrNoData(hs.avg_team_goals) + ' goles por partido en su muestra reciente.</p>';
+  html += '<p><strong>' + (mi.home_team || 'Local') + '</strong> llega con ' + valueOrNoData(hs.points) + ' puntos y una media de ' + valueOrNoData(hs.avg_team_goals) + ' goles por partido en la muestra reciente.</p>';
   html += '<p><strong>' + (mi.away_team || 'Visitante') + '</strong> presenta ' + valueOrNoData(as.points) + ' puntos y una media de ' + valueOrNoData(as.avg_team_goals) + ' goles por encuentro.</p>';
   html += '<p>La media combinada sugiere ' + valueOrNoData(p.total_expected_goals) + ' goles esperados, con una probabilidad aproximada de ' + pct(p.over_2_5) + ' para el más de 2.5 y ' + pct(p.btts) + ' para ambos marcan.</p>';
 
@@ -378,26 +376,23 @@ function openAnalysis(card) {
   getEl('analysis-text-box').innerHTML = 'Cargando análisis...';
 
   fetch('/api/analyze/' + matchId + '?' + params.toString())
-  .then(function (response) {
-    return response.json();
-  })
-  .then(function (data) {
-    console.log('ANALYSIS DATA', data);
-
-    fillHeader(data);
-    renderFormBadges(data.home_form || [], 'home-form-badges');
-    renderFormBadges(data.away_form || [], 'away-form-badges');
-    renderProbabilities(data);
-    renderMiniStats(data);
-    renderSeasonTable(data);
-    renderGoalsTable(data);
-    renderSimpleUnavailableTables(data);
-    renderAnalysisText(data);
-  })
-  .catch(function (e) {
-    console.error(e);
-    getEl('analysis-text-box').innerHTML = 'Error cargando análisis.';
-  });
+    .then(function (response) { return response.json(); })
+    .then(function (data) {
+      console.log('ANALYSIS DATA', data);
+      fillHeader(data);
+      renderFormBadges(data.home_form || [], 'home-form-badges');
+      renderFormBadges(data.away_form || [], 'away-form-badges');
+      renderProbabilities(data);
+      renderMiniStats(data);
+      renderSeasonTable(data);
+      renderGoalsTable(data);
+      renderSimpleUnavailableTables(data);
+      renderAnalysisText(data);
+    })
+    .catch(function (e) {
+      console.error(e);
+      getEl('analysis-text-box').innerHTML = 'Error cargando análisis.';
+    });
 }
 
 document.addEventListener('DOMContentLoaded', function () {
