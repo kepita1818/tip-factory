@@ -32,8 +32,7 @@ HEADERS = {"x-apisports-key": API_KEY}
 
 CACHE = {}
 
-# Mapeo de códigos football-data a IDs de API-Football
-# IDs oficiales de API-Football (estables)
+# IDs de ligas en API-Football v3
 LEAGUE_IDS = {
     "PL": 39,      # Premier League
     "PD": 140,     # La Liga
@@ -42,14 +41,14 @@ LEAGUE_IDS = {
     "FL1": 61,     # Ligue 1
     "PPL": 94,     # Primeira Liga
     "DED": 88,     # Eredivisie
-    "BSA": 71,     # Brasileirao
+    "BSA": 71,     # Brasileirao Serie A
     "CL": 2,       # Champions League
     "EL": 3,       # Europa League
 }
 
 COMPETITIONS = {
-    "PD": "La Liga",
     "PL": "Premier League",
+    "PD": "La Liga",
     "SA": "Serie A",
     "BL1": "Bundesliga",
     "FL1": "Ligue 1",
@@ -96,7 +95,6 @@ def api_get(endpoint, params=None, cache_key=None, ttl=1800):
         resp.raise_for_status()
         data = resp.json()
 
-        # API-Football devuelve {"response": [...], "results": N}
         if data.get("errors"):
             logger.error(f"API-Football errors: {data['errors']}")
             return None
@@ -128,66 +126,20 @@ def parse_score_value(v):
         return None
 
 
-def format_match(m):
-    """Formatea partido desde football-data.org (se mantiene para lista de partidos)"""
-    home = m.get("homeTeam", {}) or {}
-    away = m.get("awayTeam", {}) or {}
-    competition = m.get("competition", {}) or {}
-    area = m.get("area", {}) or competition.get("area", {}) or {}
-    score = m.get("score", {}) or {}
-    ft = score.get("fullTime", {}) if isinstance(score, dict) else {}
-    ht = score.get("halfTime", {}) if isinstance(score, dict) else {}
-
-    status = m.get("status", "SCHEDULED")
-    status_map = {
-        "SCHEDULED": "NS",
-        "TIMED": "NS",
-        "LIVE": "LIVE",
-        "IN_PLAY": "1H",
-        "PAUSED": "HT",
-        "FINISHED": "FT",
-        "POSTPONED": "PST",
-        "SUSPENDED": "SUSP",
-        "CANCELLED": "CANC",
-        "AWARDED": "AWD"
-    }
-
-    return {
-        "id": m.get("id"),
-        "utcDate": m.get("utcDate"),
-        "matchDate": (m.get("utcDate") or "")[:10],
-        "status": status_map.get(status, status),
-        "statusText": status,
-        "minute": m.get("minute", 0) if isinstance(m.get("minute", 0), int) else 0,
-        "venue": m.get("venue", ""),
-        "matchday": m.get("matchday", 0),
-        "homeTeam": {
-            "id": home.get("id"),
-            "name": home.get("name", "Local"),
-            "shortName": home.get("shortName", home.get("name", "Local")[:15]),
-            "crest": home.get("crest", "")
-        },
-        "awayTeam": {
-            "id": away.get("id"),
-            "name": away.get("name", "Visitante"),
-            "shortName": away.get("shortName", away.get("name", "Visitante")[:15]),
-            "crest": away.get("crest", "")
-        },
-        "competition": {
-            "id": competition.get("id"),
-            "name": competition.get("name", ""),
-            "code": competition.get("code", "")
-        },
-        "league_name": competition.get("name", ""),
-        "country": area.get("name", ""),
-        "homeScore": ft.get("home") if isinstance(ft, dict) else None,
-        "awayScore": ft.get("away") if isinstance(ft, dict) else None,
-        "halfTimeHome": ht.get("home") if isinstance(ht, dict) else None,
-        "halfTimeAway": ht.get("away") if isinstance(ht, dict) else None
-    }
+def get_league_id(competition_code):
+    return LEAGUE_IDS.get(competition_code)
 
 
-def get_team_stats_api_football(team_id, league_id, season):
+def get_season():
+    """Determina la temporada actual (2024 para 2024-2025)"""
+    now = datetime.utcnow()
+    if now.month >= 7:
+        return now.year
+    else:
+        return now.year - 1
+
+
+def get_team_stats(team_id, league_id, season):
     """
     Obtiene estadísticas de equipo desde API-Football v3
     Endpoint: /teams/statistics?team={id}&league={id}&season={year}
@@ -209,22 +161,26 @@ def get_team_stats_api_football(team_id, league_id, season):
     if not response:
         return None
 
-    # Extraer datos de estadísticas
     fixtures = response.get("fixtures", {})
     goals = response.get("goals", {})
     biggest = response.get("biggest", {})
     clean_sheet = response.get("clean_sheet", {})
     failed_to_score = response.get("failed_to_score", {})
     form = response.get("form", "")
+    lineups = response.get("lineups", [])
 
     played = safe_get(fixtures, "played", "total", default=0)
     wins = safe_get(fixtures, "wins", "total", default=0)
     draws = safe_get(fixtures, "draws", "total", default=0)
     losses = safe_get(fixtures, "loses", "total", default=0)
 
-    # Goles
+    # Goles totales
     goals_for = safe_get(goals, "for", "total", "total", default=0)
     goals_against = safe_get(goals, "against", "total", "total", default=0)
+
+    # Goles por minuto (para estimar tendencias)
+    goals_for_minute = safe_get(goals, "for", "minute", default={})
+    goals_against_minute = safe_get(goals, "against", "minute", default={})
 
     # Calcular medias
     avg_gf = round(goals_for / played, 2) if played else 0
@@ -233,7 +189,7 @@ def get_team_stats_api_football(team_id, league_id, season):
 
     # Forma (últimos 5 partidos)
     form_list = []
-    for char in form[-5:] if form else []:
+    for char in (form or "")[-5:]:
         if char == "W":
             form_list.append({"result": "W", "result_text": "Victoria"})
         elif char == "D":
@@ -241,12 +197,15 @@ def get_team_stats_api_football(team_id, league_id, season):
         elif char == "L":
             form_list.append({"result": "L", "result_text": "Derrota"})
 
-    # Estimar Over/BTTS desde goles (API-Football no da estos directamente en team stats)
-    # Usamos heurística: si avg_total > 2.5, Over 2.5 es probable
+    # Estimar Over/BTTS desde goles
     est_over_15 = min(100, round(avg_total * 35, 1))
     est_over_25 = min(100, round(avg_total * 25, 1))
     est_over_35 = min(100, round(avg_total * 15, 1))
     est_btts = min(100, round((avg_gf / max(avg_gf + 0.5, 0.1)) * (avg_ga / max(avg_ga + 0.5, 0.1)) * 100, 1))
+
+    # Clean sheet y failed to score
+    clean_sheets = clean_sheet.get("total", 0) if isinstance(clean_sheet, dict) else 0
+    failed_scores = failed_to_score.get("total", 0) if isinstance(failed_to_score, dict) else 0
 
     return {
         "played": played,
@@ -262,16 +221,16 @@ def get_team_stats_api_football(team_id, league_id, season):
         "over_1_5_pct": est_over_15,
         "over_2_5_pct": est_over_25,
         "over_3_5_pct": est_over_35,
-        "clean_sheet_pct": round((clean_sheet.get("total", 0) / played) * 100, 1) if played else 0,
-        "failed_to_score_pct": round((failed_to_score.get("total", 0) / played) * 100, 1) if played else 0,
-        "form_string": form,
+        "clean_sheet_pct": round((clean_sheets / played) * 100, 1) if played else 0,
+        "failed_to_score_pct": round((failed_scores / played) * 100, 1) if played else 0,
+        "form_string": form or "",
         "form": form_list,
         "biggest_win": safe_get(biggest, "wins", default=""),
         "biggest_loss": safe_get(biggest, "loses", default="")
     }
 
 
-def get_standings_api_football(league_id, season):
+def get_standings(league_id, season):
     """
     Obtiene clasificación desde API-Football v3
     Endpoint: /standings?league={id}&season={year}
@@ -290,14 +249,12 @@ def get_standings_api_football(league_id, season):
         return None
 
     response = data.get("response", [])
-    if not response or not isinstance(response, list):
+    if not response:
         return None
 
-    # La respuesta tiene league, season, standings[]
-    standings_data = response[0] if response else {}
+    standings_data = response[0] if isinstance(response, list) else response
     standings_list = standings_data.get("league", {}).get("standings", [[]])
-    
-    # standings_list es una lista de grupos (para ligas con grupos)
+
     all_teams = []
     for group in standings_list:
         if isinstance(group, list):
@@ -310,24 +267,26 @@ def find_team_in_standings(standings, team_id):
     """Busca un equipo en la clasificación por ID"""
     if not standings or not team_id:
         return None
-    
+
     for team_data in standings:
         if team_data.get("team", {}).get("id") == team_id:
+            all_stats = team_data.get("all", {})
+            goals = all_stats.get("goals", {})
             return {
                 "position": team_data.get("rank", 0),
-                "playedGames": team_data.get("all", {}).get("played", 0),
-                "won": team_data.get("all", {}).get("win", 0),
-                "draw": team_data.get("all", {}).get("draw", 0),
-                "lost": team_data.get("all", {}).get("lose", 0),
-                "goalsFor": team_data.get("all", {}).get("goals", {}).get("for", 0),
-                "goalsAgainst": team_data.get("all", {}).get("goals", {}).get("against", 0),
+                "playedGames": all_stats.get("played", 0),
+                "won": all_stats.get("win", 0),
+                "draw": all_stats.get("draw", 0),
+                "lost": all_stats.get("lose", 0),
+                "goalsFor": goals.get("for", 0),
+                "goalsAgainst": goals.get("against", 0),
                 "points": team_data.get("points", 0),
                 "form": team_data.get("form", "")
             }
     return None
 
 
-def get_h2h_api_football(team1_id, team2_id, last=5):
+def get_h2h(team1_id, team2_id, last=5):
     """
     Obtiene H2H desde API-Football v3
     Endpoint: /fixtures/headtohead?h2h={id}-{id}
@@ -356,10 +315,10 @@ def get_h2h_api_football(team1_id, team2_id, last=5):
     for f in fixtures:
         teams = f.get("teams", {})
         goals = f.get("goals", {})
-        
+
         home_team = teams.get("home", {})
         away_team = teams.get("away", {})
-        
+
         hg = goals.get("home")
         ag = goals.get("away")
 
@@ -394,7 +353,7 @@ def get_h2h_api_football(team1_id, team2_id, last=5):
     return matches, stats
 
 
-def get_predictions_api_football(fixture_id):
+def get_predictions(fixture_id):
     """
     Obtiene predicciones desde API-Football v3
     Endpoint: /predictions?fixture={id}
@@ -417,7 +376,7 @@ def get_predictions_api_football(fixture_id):
         return None
 
     pred = response[0] if isinstance(response, list) else response
-    
+
     predictions = pred.get("predictions", {})
     comparison = pred.get("comparison", {})
 
@@ -432,6 +391,96 @@ def get_predictions_api_football(fixture_id):
     }
 
 
+def get_fixtures_by_date(date, league_id=None, season=None):
+    """
+    Obtiene partidos por fecha desde API-Football v3
+    Endpoint: /fixtures?date={YYYY-MM-DD}&league={id}&season={year}
+    """
+    params = {"date": date}
+    if league_id:
+        params["league"] = league_id
+    if season:
+        params["season"] = season
+
+    data = api_get(
+        "fixtures",
+        params=params,
+        cache_key=f"fixtures_{date}_{league_id or 'all'}",
+        ttl=600
+    )
+
+    if not data or not isinstance(data, dict):
+        return []
+
+    return data.get("response", [])
+
+
+def format_fixture(f):
+    """Formatea un fixture de API-Football al formato del frontend"""
+    fixture = f.get("fixture", {})
+    teams = f.get("teams", {})
+    goals = f.get("goals", {})
+    league = f.get("league", {})
+
+    home = teams.get("home", {})
+    away = teams.get("away", {})
+
+    status = fixture.get("status", {}).get("short", "NS")
+    status_map = {
+        "NS": "NS",
+        "1H": "1H",
+        "HT": "HT",
+        "2H": "2H",
+        "ET": "ET",
+        "P": "PEN",
+        "FT": "FT",
+        "AET": "AET",
+        "PEN": "PEN",
+        "SUSP": "SUSP",
+        "INT": "INT",
+        "PST": "PST",
+        "CANC": "CANC",
+        "ABD": "ABD",
+        "AWD": "AWD",
+        "WO": "WO"
+    }
+
+    return {
+        "id": fixture.get("id"),
+        "utcDate": fixture.get("date"),
+        "matchDate": (fixture.get("date") or "")[:10],
+        "status": status_map.get(status, status),
+        "statusText": status,
+        "minute": fixture.get("status", {}).get("elapsed", 0),
+        "venue": fixture.get("venue", {}).get("name", ""),
+        "matchday": league.get("round", ""),
+        "homeTeam": {
+            "id": home.get("id"),
+            "name": home.get("name", "Local"),
+            "shortName": home.get("name", "Local")[:15],
+            "crest": home.get("logo", "")
+        },
+        "awayTeam": {
+            "id": away.get("id"),
+            "name": away.get("name", "Visitante"),
+            "shortName": away.get("name", "Visitante")[:15],
+            "crest": away.get("logo", "")
+        },
+        "competition": {
+            "id": league.get("id"),
+            "name": league.get("name", ""),
+            "code": ""
+        },
+        "league_name": league.get("name", ""),
+        "country": league.get("country", ""),
+        "homeScore": goals.get("home"),
+        "awayScore": goals.get("away"),
+        "halfTimeHome": None,
+        "halfTimeAway": None,
+        "api_football_fixture_id": fixture.get("id")
+    }
+
+
 @app.get("/", response_class=HTMLResponse)
 def home(request: Request):
     return templates.TemplateResponse("index.html", {"request": request})
@@ -442,23 +491,19 @@ def api_matches(date: str = Query(None)):
     if not date:
         date = datetime.utcnow().strftime("%Y-%m-%d")
 
+    season = get_season()
     collected = []
     found = []
 
-    # Usar football-data.org para partidos del día (más estable para fixtures)
     for code in DEFAULT_COMPETITIONS:
-        data = api_get(
-            "competitions/{code}/matches".replace("{code}", code),
-            base_url="https://api.football-data.org/v4",
-            headers={"X-Auth-Token": os.getenv("API_FOOTBALL_KEY", "")},
-            params={"dateFrom": date, "dateTo": date},
-            cache_key=f"matches_{code}_{date}",
-            ttl=1800
-        )
+        league_id = get_league_id(code)
+        if not league_id:
+            continue
 
-        if data and isinstance(data, dict) and data.get("matches"):
-            comp_matches = [format_match(m) for m in data["matches"]]
-            comp_matches = [m for m in comp_matches if m["matchDate"] == date]
+        fixtures = get_fixtures_by_date(date, league_id=league_id, season=season)
+
+        if fixtures:
+            comp_matches = [format_fixture(f) for f in fixtures]
             if comp_matches:
                 collected.extend(comp_matches)
                 found.append({"code": code, "name": COMPETITIONS.get(code, code)})
@@ -478,7 +523,7 @@ def api_matches(date: str = Query(None)):
         "source_date": date if unique else None,
         "is_exact": True,
         "competitions_found": found,
-        "source": "football-data.org"
+        "source": "api-football.com"
     }
 
 
@@ -504,40 +549,30 @@ def analyze(
     matchday: int = Query(0),
     status: str = Query("SCHEDULED")
 ):
-    logger.info(f"=== ANALYZE match_id={match_id}, home={home_team}, away={away_team} ===")
-    
-    # === OBTENER LEAGUE ID Y SEASON ===
+    logger.info(f"=== ANALYZE match_id={match_id}, home={home_team}({home_id}), away={away_team}({away_id}) ===")
+
+    # === DETERMINAR LEAGUE ID Y SEASON ===
     comp_code = None
     for code, name in COMPETITIONS.items():
         if name.lower() in (league or "").lower():
             comp_code = code
             break
-    
-    league_id = LEAGUE_IDS.get(comp_code) if comp_code else None
-    season = datetime.utcnow().year
-    
-    logger.info(f"Comp code: {comp_code}, League ID: {league_id}, Season: {season}")
 
-    # === ESTADÍSTICAS DE EQUIPOS (API-Football) ===
-    home_stats = None
-    away_stats = None
-    home_mode = "NO_DATA"
-    away_mode = "NO_DATA"
+    league_id = get_league_id(comp_code) if comp_code else None
+    season = get_season()
 
-    if league_id:
-        logger.info(f"Fetching API-Football stats for league {league_id}, season {season}")
-        
-        home_stats = get_team_stats_api_football(home_id, league_id, season)
-        away_stats = get_team_stats_api_football(away_id, league_id, season)
-        
-        if home_stats and home_stats["played"] > 0:
-            home_mode = "API_FOOTBALL"
-        if away_stats and away_stats["played"] > 0:
-            away_mode = "API_FOOTBALL"
+    logger.info(f"Comp: {comp_code}, League ID: {league_id}, Season: {season}")
+
+    # === ESTADÍSTICAS DE EQUIPOS ===
+    home_stats = get_team_stats(home_id, league_id, season) if league_id else None
+    away_stats = get_team_stats(away_id, league_id, season) if league_id else None
+
+    home_mode = "API_FOOTBALL" if (home_stats and home_stats["played"] > 0) else "NO_DATA"
+    away_mode = "API_FOOTBALL" if (away_stats and away_stats["played"] > 0) else "NO_DATA"
 
     # === STANDINGS ===
-    standings = get_standings_api_football(league_id, season) if league_id else None
-    
+    standings = get_standings(league_id, season) if league_id else None
+
     home_table = find_team_in_standings(standings, home_id) if standings else None
     away_table = find_team_in_standings(standings, away_id) if standings else None
 
@@ -546,13 +581,7 @@ def analyze(
     if not away_table:
         away_table = {"position": 0, "points": 0, "won": 0, "draw": 0, "lost": 0, "goalsFor": 0, "goalsAgainst": 0}
 
-    # === H2H ===
-    h2h_matches, h2h_stats = get_h2h_api_football(home_id, away_id, last=5)
-
-    # === PREDICCIONES ===
-    predictions = get_predictions_api_football(match_id)
-
-    # === SI NO HAY STATS, USAR STANDINGS COMO FALLBACK ===
+    # === FALLBACK A STANDINGS SI NO HAY STATS ===
     if not home_stats or home_stats["played"] == 0:
         home_stats = {
             "played": home_table.get("playedGames", 0),
@@ -589,7 +618,13 @@ def analyze(
         }
         away_mode = "STANDINGS_FALLBACK"
 
-    # Probabilidades
+    # === H2H ===
+    h2h_matches, h2h_stats = get_h2h(home_id, away_id, last=5)
+
+    # === PREDICCIONES ===
+    predictions = get_predictions(match_id)
+
+    # === PROBABILIDADES ===
     probabilities = {
         "over_1_5": round((home_stats["over_1_5_pct"] + away_stats["over_1_5_pct"]) / 2, 1) if home_stats["played"] and away_stats["played"] else 0.0,
         "over_2_5": round((home_stats["over_2_5_pct"] + away_stats["over_2_5_pct"]) / 2, 1) if home_stats["played"] and away_stats["played"] else 0.0,
@@ -600,17 +635,13 @@ def analyze(
         "away_xg": 0
     }
 
-    # Odds desde predicciones si existen
-    odds = {
-        "home": 0,
-        "draw": 0,
-        "away": 0
-    }
+    # Odds desde predicciones
+    odds = {"home": 0, "draw": 0, "away": 0}
     if predictions:
         try:
-            odds["home"] = float(predictions.get("percent_home", "0").replace("%", "")) / 100 if predictions.get("percent_home") else 0
-            odds["draw"] = float(predictions.get("percent_draw", "0").replace("%", "")) / 100 if predictions.get("percent_draw") else 0
-            odds["away"] = float(predictions.get("percent_away", "0").replace("%", "")) / 100 if predictions.get("percent_away") else 0
+            odds["home"] = float(str(predictions.get("percent_home", "0")).replace("%", "")) / 100 if predictions.get("percent_home") else 0
+            odds["draw"] = float(str(predictions.get("percent_draw", "0")).replace("%", "")) / 100 if predictions.get("percent_draw") else 0
+            odds["away"] = float(str(predictions.get("percent_away", "0")).replace("%", "")) / 100 if predictions.get("percent_away") else 0
         except:
             pass
 
