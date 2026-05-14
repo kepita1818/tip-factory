@@ -341,7 +341,6 @@ function probColorClass(val) {
 
 // ============================================
 // POISSON - Solo para TOTALES (mathematically correct)
-// No se usa para stats individuales
 // ============================================
 
 function factorial(n) {
@@ -524,18 +523,22 @@ function renderCornersTable(data) {
   if (body2) body2.innerHTML = html2;
 
   // === TOTAL DE CORNERS - POISSON CON LAMBDA = SUMA DE MEDIAS ===
-  // Esto es matemáticamente correcto: si local hace 4.89 y visitante 5.80,
-  // el total esperado es ~10.69, y Poisson da la probabilidad de superar cada línea
-  var totalCornersLambda = num(hs.avg_corners) + num(as.avg_corners);
+  // FIX: Cada columna usa su propio lambda para dar valores DIFERENTES
+  // Local: lambda = home_avg (prob de que el LOCAL supere la línea total)
+  // Visitante: lambda = away_avg (prob de que el VISITANTE supere la línea total)
+  // Media: lambda = home_avg + away_avg (prob de que el TOTAL supere la línea)
+  var homeLambda = num(hs.avg_corners);
+  var awayLambda = num(as.avg_corners);
+  var totalLambda = homeLambda + awayLambda;
 
   var rows3 = [
-    ['Más de 6,5', pct(poissonOver(totalCornersLambda, 6)), pct(poissonOver(totalCornersLambda, 6)), pct(poissonOver(totalCornersLambda, 6))],
-    ['Más de 7,5', pct(poissonOver(totalCornersLambda, 7)), pct(poissonOver(totalCornersLambda, 7)), pct(poissonOver(totalCornersLambda, 7))],
-    ['Más de 8,5', pct(poissonOver(totalCornersLambda, 8)), pct(poissonOver(totalCornersLambda, 8)), pct(poissonOver(totalCornersLambda, 8))],
-    ['Más de 9,5', pct(poissonOver(totalCornersLambda, 9)), pct(poissonOver(totalCornersLambda, 9)), pct(poissonOver(totalCornersLambda, 9))],
-    ['Más de 10,5', pct(poissonOver(totalCornersLambda, 10)), pct(poissonOver(totalCornersLambda, 10)), pct(poissonOver(totalCornersLambda, 10))],
-    ['Más de 11,5', pct(poissonOver(totalCornersLambda, 11)), pct(poissonOver(totalCornersLambda, 11)), pct(poissonOver(totalCornersLambda, 11))],
-    ['Más de 12,5', pct(poissonOver(totalCornersLambda, 12)), pct(poissonOver(totalCornersLambda, 12)), pct(poissonOver(totalCornersLambda, 12))]
+    ['Más de 6,5', pct(poissonOver(homeLambda, 6)), pct(poissonOver(awayLambda, 6)), pct(poissonOver(totalLambda, 6))],
+    ['Más de 7,5', pct(poissonOver(homeLambda, 7)), pct(poissonOver(awayLambda, 7)), pct(poissonOver(totalLambda, 7))],
+    ['Más de 8,5', pct(poissonOver(homeLambda, 8)), pct(poissonOver(awayLambda, 8)), pct(poissonOver(totalLambda, 8))],
+    ['Más de 9,5', pct(poissonOver(homeLambda, 9)), pct(poissonOver(awayLambda, 9)), pct(poissonOver(totalLambda, 9))],
+    ['Más de 10,5', pct(poissonOver(homeLambda, 10)), pct(poissonOver(awayLambda, 10)), pct(poissonOver(totalLambda, 10))],
+    ['Más de 11,5', pct(poissonOver(homeLambda, 11)), pct(poissonOver(awayLambda, 11)), pct(poissonOver(totalLambda, 11))],
+    ['Más de 12,5', pct(poissonOver(homeLambda, 12)), pct(poissonOver(awayLambda, 12)), pct(poissonOver(totalLambda, 12))]
   ];
 
   var html3 = '';
@@ -596,19 +599,20 @@ function renderCardsTable(data) {
   if (body) body.innerHTML = html;
 
   // === TOTAL DE TARJETAS - POISSON CON LAMBDA = SUMA DE MEDIAS ===
-  // Esto es matemáticamente correcto para el total del partido
-  var totalCardsLambda = homeTotalCards + awayTotalCards;
+  // FIX: Cada columna usa su propio lambda para dar valores DIFERENTES
+  var homeCardsLambda = homeTotalCards;
+  var awayCardsLambda = awayTotalCards;
+  var totalCardsLambda = homeCardsLambda + awayCardsLambda;
 
   var rowsTotal = [
-    ['Más de 2,5', pct(poissonOver(totalCardsLambda, 2)), pct(poissonOver(totalCardsLambda, 2)), pct(poissonOver(totalCardsLambda, 2))],
-    ['Más de 3,5', pct(poissonOver(totalCardsLambda, 3)), pct(poissonOver(totalCardsLambda, 3)), pct(poissonOver(totalCardsLambda, 3))],
-    ['Más de 4,5', pct(poissonOver(totalCardsLambda, 4)), pct(poissonOver(totalCardsLambda, 4)), pct(poissonOver(totalCardsLambda, 4))],
-    ['Más de 5,5', pct(poissonOver(totalCardsLambda, 5)), pct(poissonOver(totalCardsLambda, 5)), pct(poissonOver(totalCardsLambda, 5))],
-    ['Más de 6,5', pct(poissonOver(totalCardsLambda, 6)), pct(poissonOver(totalCardsLambda, 6)), pct(poissonOver(totalCardsLambda, 6))],
-    ['Más de 7,5', pct(poissonOver(totalCardsLambda, 7)), pct(poissonOver(totalCardsLambda, 7)), pct(poissonOver(totalCardsLambda, 7))]
+    ['Más de 2,5', pct(poissonOver(homeCardsLambda, 2)), pct(poissonOver(awayCardsLambda, 2)), pct(poissonOver(totalCardsLambda, 2))],
+    ['Más de 3,5', pct(poissonOver(homeCardsLambda, 3)), pct(poissonOver(awayCardsLambda, 3)), pct(poissonOver(totalCardsLambda, 3))],
+    ['Más de 4,5', pct(poissonOver(homeCardsLambda, 4)), pct(poissonOver(awayCardsLambda, 4)), pct(poissonOver(totalCardsLambda, 4))],
+    ['Más de 5,5', pct(poissonOver(homeCardsLambda, 5)), pct(poissonOver(awayCardsLambda, 5)), pct(poissonOver(totalCardsLambda, 5))],
+    ['Más de 6,5', pct(poissonOver(homeCardsLambda, 6)), pct(poissonOver(awayCardsLambda, 6)), pct(poissonOver(totalCardsLambda, 6))],
+    ['Más de 7,5', pct(poissonOver(homeCardsLambda, 7)), pct(poissonOver(awayCardsLambda, 7)), pct(poissonOver(totalCardsLambda, 7))]
   ];
 
-  // Check if we have a total cards table body, if not create one
   var totalCardsBody = getEl('total-cards-body');
   if (totalCardsBody) {
     var htmlTotal = '';
