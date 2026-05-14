@@ -25,12 +25,11 @@ app.add_middleware(
 app.mount("/static", StaticFiles(directory="static"), name="static")
 templates = Jinja2Templates(directory="templates")
 
-# Footballdata.io configuration
+# Footballdata.io configuration - EXACT URL from dashboard
 API_KEY = os.environ.get('API_FOOTBALL_KEY', 'fd_7581f4cd968725edbafbc7b0f922c7a71fa6d3ce34fd4f63')
 BASE_URL = "https://footballdata.io/api/v1"
 HEADERS = {
     'Authorization': f'Bearer {API_KEY}',
-    'Content-Type': 'application/json'
 }
 
 _cache = {}
@@ -64,7 +63,7 @@ def api_request(endpoint, params=None, cache_key=None, ttl=300):
             logger.error("RATE LIMIT alcanzado")
             return None
         if resp.status_code in [403, 401]:
-            logger.error(f"AUTH ERROR {resp.status_code} - Verifica tu API key")
+            logger.error(f"AUTH ERROR {resp.status_code}")
             return None
         if resp.status_code == 404:
             logger.error(f"NOT FOUND {endpoint}")
@@ -72,12 +71,7 @@ def api_request(endpoint, params=None, cache_key=None, ttl=300):
 
         resp.raise_for_status()
         data = resp.json()
-
-        if not data.get('success'):
-            logger.error(f"API error: {data.get('error', {}).get('message', 'Unknown')}")
-            return None
-
-        logger.info(f"API RESPONSE: OK")
+        logger.info(f"API RESPONSE: {data.get('status', 'unknown')}")
 
         if cache_key:
             set_cache(cache_key, data)
@@ -86,33 +80,34 @@ def api_request(endpoint, params=None, cache_key=None, ttl=300):
         logger.error(f"API error en {endpoint}: {e}")
         return None
 
-def format_match(m):
-    """Convert footballdata.io match to our format"""
-    home = m.get('home_team', {})
-    away = m.get('away_team', {})
-    league = m.get('league', {})
+def format_fixture(f):
+    """Convert footballdata.io fixture to our format"""
+    home = f.get('home_team', {})
+    away = f.get('away_team', {})
+    league = f.get('league', {})
 
-    # Status mapping
-    status = m.get('status', 'scheduled')
+    status = f.get('status', 'scheduled')
     status_map = {
         'scheduled': 'NS', 'live': 'LIVE', 'in_play': '1H', 'halftime': 'HT',
         'finished': 'FT', 'postponed': 'PST', 'suspended': 'SUSP', 
         'cancelled': 'CANC', 'awarded': 'AWD'
     }
 
-    # Extract date
-    match_date = m.get('date', '')[:10] if m.get('date') else ''
-    match_time = m.get('time', '')[:5] if m.get('time') else '--:--'
+    match_date = ''
+    if f.get('match_date'):
+        match_date = f['match_date'][:10]
+    elif f.get('date'):
+        match_date = f['date'][:10]
 
     return {
-        "id": m.get('id'),
-        "utcDate": m.get('date'),
+        "id": f.get('match_id') or f.get('id'),
+        "utcDate": f.get('match_date') or f.get('date'),
         "matchDate": match_date,
         "status": status_map.get(status, status.upper()),
         "statusText": status,
-        "minute": m.get('minute', 0),
-        "venue": m.get('venue', ''),
-        "matchday": m.get('matchday', 0),
+        "minute": f.get('minute', 0),
+        "venue": f.get('venue', ''),
+        "matchday": f.get('matchday', 0),
         "homeTeam": {
             "id": home.get('id'),
             "name": home.get('name', 'Local'),
@@ -126,16 +121,16 @@ def format_match(m):
             "crest": away.get('logo', ''),
         },
         "competition": {
-            "id": league.get('id'),
+            "id": league.get('id') or league.get('league_id'),
             "name": league.get('name', ''),
             "code": league.get('code', ''),
         },
         "league_name": league.get('name', ''),
         "country": league.get('country', ''),
-        "homeScore": m.get('home_score'),
-        "awayScore": m.get('away_score'),
-        "halfTimeHome": m.get('half_time_home_score'),
-        "halfTimeAway": m.get('half_time_away_score'),
+        "homeScore": f.get('home_score'),
+        "awayScore": f.get('away_score'),
+        "halfTimeHome": f.get('half_time_home_score'),
+        "halfTimeAway": f.get('half_time_away_score'),
     }
 
 @app.get("/", response_class=HTMLResponse)
@@ -149,15 +144,15 @@ def matches(date: str = Query(None)):
 
     logger.info(f"BUSCANDO PARTIDOS PARA: {date}")
 
-    # Try exact date using /matches/date/{date}
-    data = api_request(f'matches/date/{date}', cache_key=f"matches_{date}", ttl=300)
+    # Use /fixtures?date=YYYY-MM-DD
+    data = api_request('fixtures', {'date': date}, cache_key=f"fixtures_{date}", ttl=300)
 
     if data and data.get('data'):
-        matches_list = [format_match(m) for m in data['data']]
-        logger.info(f"ENCONTRADOS {len(matches_list)} partidos en {date}")
-        if matches_list:
+        fixtures = [format_fixture(f) for f in data['data']]
+        logger.info(f"ENCONTRADOS {len(fixtures)} partidos en {date}")
+        if fixtures:
             return {
-                "matches": matches_list,
+                "matches": fixtures,
                 "requested_date": date,
                 "source_date": date,
                 "is_exact": True
@@ -169,14 +164,14 @@ def matches(date: str = Query(None)):
         try:
             check_date = (datetime.strptime(date, "%Y-%m-%d") + timedelta(days=delta)).strftime("%Y-%m-%d")
 
-            data = api_request(f'matches/date/{check_date}', cache_key=f"matches_{check_date}", ttl=300)
+            data = api_request('fixtures', {'date': check_date}, cache_key=f"fixtures_{check_date}", ttl=300)
 
             if data and data.get('data'):
-                matches_list = [format_match(m) for m in data['data']]
-                if matches_list:
-                    logger.info(f"ENCONTRADOS {len(matches_list)} partidos en fecha alternativa {check_date}")
+                fixtures = [format_fixture(f) for f in data['data']]
+                if fixtures:
+                    logger.info(f"ENCONTRADOS {len(fixtures)} partidos en fecha alternativa {check_date}")
                     return {
-                        "matches": matches_list,
+                        "matches": fixtures,
                         "requested_date": date,
                         "source_date": check_date,
                         "is_exact": False
@@ -199,13 +194,13 @@ def analyze(match_id: int):
     logger.info(f"ANALIZANDO PARTIDO {match_id}")
 
     # Get match details
-    match_data = api_request(f'matches/{match_id}', cache_key=f"match_{match_id}", ttl=300)
+    match_data = api_request(f'match/{match_id}', cache_key=f"match_{match_id}", ttl=300)
 
     if not match_data or not match_data.get('data'):
         raise HTTPException(404, "Partido no encontrado")
 
     match_raw = match_data['data']
-    match = format_match(match_raw)
+    match = format_fixture(match_raw)
 
     home_team = match_raw.get('home_team', {})
     away_team = match_raw.get('away_team', {})
@@ -213,23 +208,18 @@ def analyze(match_id: int):
 
     home_id = home_team.get('id')
     away_id = away_team.get('id')
-    league_id = league.get('id')
-    season_id = match_raw.get('season_id')
 
     if not home_id or not away_id:
         raise HTTPException(500, "Datos del partido incompletos")
 
     # Get match stats
-    stats_data = api_request(f'matches/{match_id}/stats', cache_key=f"match_stats_{match_id}", ttl=600)
+    stats_data = api_request(f'match/{match_id}/stats', cache_key=f"match_stats_{match_id}", ttl=600)
 
     # Get match odds
-    odds_data = api_request(f'matches/{match_id}/odds', cache_key=f"match_odds_{match_id}", ttl=600)
+    odds_data = api_request(f'match/{match_id}/odds', cache_key=f"match_odds_{match_id}", ttl=600)
 
-    # Get match probabilities
-    prob_data = api_request(f'matches/{match_id}/probabilities', cache_key=f"match_prob_{match_id}", ttl=600)
-
-    # H2H using teams endpoint
-    h2h_data = api_request(f'teams/{home_id}/h2h/{away_id}', cache_key=f"h2h_{home_id}_{away_id}", ttl=3600)
+    # Get H2H
+    h2h_data = api_request('h2h', {'team_a': home_id, 'team_b': away_id}, cache_key=f"h2h_{home_id}_{away_id}", ttl=3600)
 
     h2h_matches = []
     h2h_stats = {'home_wins': 0, 'away_wins': 0, 'draws': 0, 'total_matches': 0}
@@ -240,7 +230,7 @@ def analyze(match_id: int):
 
         for m in h2h_list[:5]:
             h2h_matches.append({
-                'date': m.get('date', '')[:10],
+                'date': m.get('match_date', '')[:10] if m.get('match_date') else '',
                 'home': m.get('home_team', {}).get('name', ''),
                 'away': m.get('away_team', {}).get('name', ''),
                 'homeScore': m.get('home_score'),
@@ -256,13 +246,13 @@ def analyze(match_id: int):
             else:
                 h2h_stats['draws'] += 1
 
-    # Team form (last 5 matches)
+    # Team form
     def get_form(team_id):
         if not team_id:
             return []
 
         try:
-            team_matches = api_request(f'teams/{team_id}/matches', {'limit': 5, 'status': 'finished'}, f"form_{team_id}", 1800)
+            team_matches = api_request('fixtures', {'team_id': team_id, 'status': 'finished', 'limit': 5}, f"form_{team_id}", 1800)
         except Exception as e:
             logger.warning(f"Form fetch failed: {e}")
             return []
@@ -271,15 +261,15 @@ def analyze(match_id: int):
         if not team_matches or not team_matches.get('data'):
             return form
 
-        for m in team_matches['data'][:5]:
-            is_home = m.get('home_team', {}).get('id') == team_id
+        for f in team_matches['data'][:5]:
+            is_home = f.get('home_team', {}).get('id') == team_id
 
-            home_score = m.get('home_score', 0) or 0
-            away_score = m.get('away_score', 0) or 0
+            home_score = f.get('home_score', 0) or 0
+            away_score = f.get('away_score', 0) or 0
 
             if is_home:
                 tg, og = home_score, away_score
-                winner = m.get('winner')
+                winner = f.get('winner')
                 if winner == 'home':
                     result = 'W'
                 elif winner == 'away':
@@ -288,7 +278,7 @@ def analyze(match_id: int):
                     result = 'D'
             else:
                 tg, og = away_score, home_score
-                winner = m.get('winner')
+                winner = f.get('winner')
                 if winner == 'away':
                     result = 'W'
                 elif winner == 'home':
@@ -301,57 +291,17 @@ def analyze(match_id: int):
                 'result_text': 'Victoria' if result == 'W' else 'Derrota' if result == 'L' else 'Empate',
                 'team_goals': tg,
                 'opp_goals': og,
-                'opponent': m.get('away_team', {}).get('name') if is_home else m.get('home_team', {}).get('name'),
+                'opponent': f.get('away_team', {}).get('name') if is_home else f.get('home_team', {}).get('name'),
                 'venue': 'home' if is_home else 'away',
-                'date': m.get('date', '')[:10],
-                'competition': m.get('league', {}).get('name', '')
+                'date': f.get('match_date', '')[:10] if f.get('match_date') else '',
+                'competition': f.get('league', {}).get('name', '')
             })
         return form
 
     home_form = get_form(home_id)
     away_form = get_form(away_id)
 
-    # Team stats
-    def get_team_stats(team_id):
-        if not team_id:
-            return None
-        try:
-            stats = api_request(f'teams/{team_id}/stats', cache_key=f"team_stats_{team_id}", ttl=3600)
-        except Exception as e:
-            logger.warning(f"Team stats failed: {e}")
-            return None
-
-        if not stats or not stats.get('data'):
-            return None
-        return stats['data']
-
-    home_stats_raw = get_team_stats(home_id)
-    away_stats_raw = get_team_stats(away_id)
-
-    # Extract stats safely
-    def extract_stats(stats_raw):
-        if not stats_raw:
-            return {}
-        return {
-            'position': stats_raw.get('league_position', 0),
-            'played': stats_raw.get('matches_played', 0),
-            'won': stats_raw.get('wins', 0),
-            'draw': stats_raw.get('draws', 0),
-            'lost': stats_raw.get('losses', 0),
-            'goals_for': stats_raw.get('goals_scored', 0),
-            'goals_against': stats_raw.get('goals_conceded', 0),
-            'points': stats_raw.get('points', 0),
-            'form': stats_raw.get('form', '-----'),
-            'avg_goals_scored': stats_raw.get('avg_goals_scored', 0),
-            'avg_goals_conceded': stats_raw.get('avg_goals_conceded', 0),
-            'avg_corners': stats_raw.get('avg_corners', 5.0),
-            'avg_cards': stats_raw.get('avg_cards', 2.5),
-        }
-
-    home_standings = extract_stats(home_stats_raw)
-    away_standings = extract_stats(away_stats_raw)
-
-    # Calculate derived stats
+    # Calculate stats
     def calc_from_form(form_list):
         if not form_list:
             return {'avg_scored': 1.5, 'avg_conceded': 1.2, 'matches': 0, 'total_scored': 0, 'total_conceded': 0}
@@ -378,15 +328,15 @@ def analyze(match_id: int):
     away_calc = calc_from_form(away_form)
 
     hstats = {
-        'position': home_standings.get('position', 0),
-        'played': home_standings.get('played', home_calc['matches']),
-        'won': home_standings.get('won', 0),
-        'draw': home_standings.get('draw', 0),
-        'lost': home_standings.get('lost', 0),
-        'goals_for': home_standings.get('goals_for', home_calc['total_scored']),
-        'goals_against': home_standings.get('goals_against', home_calc['total_conceded']),
-        'points': home_standings.get('points', 0),
-        'form_string': home_standings.get('form', ''),
+        'position': 0,
+        'played': home_calc['matches'],
+        'won': sum(1 for f in home_form if f['result'] == 'W'),
+        'draw': sum(1 for f in home_form if f['result'] == 'D'),
+        'lost': sum(1 for f in home_form if f['result'] == 'L'),
+        'goals_for': home_calc['total_scored'],
+        'goals_against': home_calc['total_conceded'],
+        'points': 0,
+        'form_string': ''.join(f['result'] for f in home_form),
         'avg_total_goals': round(home_calc['avg_scored'] + home_calc['avg_conceded'], 2),
         'avg_team_goals': home_calc['avg_scored'],
         'avg_conceded': home_calc['avg_conceded'],
@@ -394,20 +344,20 @@ def analyze(match_id: int):
         'over_1_5_pct': calc_over(home_form, 1),
         'over_2_5_pct': calc_over(home_form, 2),
         'over_3_5_pct': calc_over(home_form, 3),
-        'avg_corners': home_standings.get('avg_corners', 5.0),
-        'avg_cards': home_standings.get('avg_cards', 2.5),
+        'avg_corners': 5.0,
+        'avg_cards': 2.5,
     }
 
     astats = {
-        'position': away_standings.get('position', 0),
-        'played': away_standings.get('played', away_calc['matches']),
-        'won': away_standings.get('won', 0),
-        'draw': away_standings.get('draw', 0),
-        'lost': away_standings.get('lost', 0),
-        'goals_for': away_standings.get('goals_for', away_calc['total_scored']),
-        'goals_against': away_standings.get('goals_against', away_calc['total_conceded']),
-        'points': away_standings.get('points', 0),
-        'form_string': away_standings.get('form', ''),
+        'position': 0,
+        'played': away_calc['matches'],
+        'won': sum(1 for f in away_form if f['result'] == 'W'),
+        'draw': sum(1 for f in away_form if f['result'] == 'D'),
+        'lost': sum(1 for f in away_form if f['result'] == 'L'),
+        'goals_for': away_calc['total_scored'],
+        'goals_against': away_calc['total_conceded'],
+        'points': 0,
+        'form_string': ''.join(f['result'] for f in away_form),
         'avg_total_goals': round(away_calc['avg_scored'] + away_calc['avg_conceded'], 2),
         'avg_team_goals': away_calc['avg_scored'],
         'avg_conceded': away_calc['avg_conceded'],
@@ -415,8 +365,8 @@ def analyze(match_id: int):
         'over_1_5_pct': calc_over(away_form, 1),
         'over_2_5_pct': calc_over(away_form, 2),
         'over_3_5_pct': calc_over(away_form, 3),
-        'avg_corners': away_standings.get('avg_corners', 4.5),
-        'avg_cards': away_standings.get('avg_cards', 2.3),
+        'avg_corners': 4.5,
+        'avg_cards': 2.3,
     }
 
     over_1_5 = round((hstats['over_1_5_pct'] + astats['over_1_5_pct']) / 2, 1)
@@ -427,16 +377,15 @@ def analyze(match_id: int):
     corners = round((hstats['avg_corners'] + astats['avg_corners']) * 0.9, 1)
     cards = round(hstats['avg_cards'] + astats['avg_cards'], 1)
 
-    # Extract odds if available
+    # Extract odds
     odds = {"home": 0, "draw": 0, "away": 0}
     if odds_data and odds_data.get('data'):
         odds_raw = odds_data['data']
-        if isinstance(odds_raw, list) and len(odds_raw) > 0:
-            first_odds = odds_raw[0]
+        if isinstance(odds_raw, dict):
             odds = {
-                "home": first_odds.get('home_odds', 0),
-                "draw": first_odds.get('draw_odds', 0),
-                "away": first_odds.get('away_odds', 0)
+                "home": odds_raw.get('home_odds', 0),
+                "draw": odds_raw.get('draw_odds', 0),
+                "away": odds_raw.get('away_odds', 0)
             }
 
     return {
