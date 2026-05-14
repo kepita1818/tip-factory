@@ -12,7 +12,7 @@ from fastapi.templating import Jinja2Templates
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
 
-app = FastAPI(title="TipFactory", version="9.0.0")
+app = FastAPI(title="TipFactory", version="9.1.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -1213,7 +1213,7 @@ def health():
         "time": datetime.now().isoformat(),
         "cache_size": len(CACHE),
         "api_football": "configured",
-        "version": "9.0.0"
+        "version": "9.1.0"
     }
 
 
