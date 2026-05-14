@@ -12,7 +12,7 @@ from fastapi.templating import Jinja2Templates
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
 
-app = FastAPI(title="TipFactory", version="10.0.0")
+app = FastAPI(title="TipFactory", version="10.1.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -184,6 +184,67 @@ def get_season():
         return now.year - 1
 
 
+def estimate_corners_and_cards(goals_for, goals_against, played, avg_total_goals):
+    """
+    Estima corners y tarjetas basándose en el ESTILO DE JUEGO del equipo.
+
+    - Equipos ofensivos (muchos goles) → más corners, más tarjetas (presión alta)
+    - Equipos defensivos (pocos goles) → menos corners, menos tarjetas
+    - Equipos físicos (muchos goles encajados = muchos duelos) → más tarjetas
+
+    Fórmulas ajustadas para valores REALISTAS:
+    - Corners: base 4.0 + factor ofensivo + factor posesión
+    - Tarjetas amarillas: base 1.8 + factor físico + factor presión
+    - Tarjetas rojas: base 0.12 + factor agresividad
+    """
+    if played == 0 or avg_total_goals == 0:
+        return {
+            "avg_corners": 4.5,
+            "avg_yellow_cards": 2.0,
+            "avg_red_cards": 0.15,
+            "avg_total_cards": 2.15
+        }
+
+    avg_gf = goals_for / played
+    avg_ga = goals_against / played
+
+    # Factor ofensivo: cuánto ataca el equipo (0.5 a 2.0)
+    offensive_factor = 0.7 + (avg_gf / 2.0)
+    offensive_factor = min(2.0, max(0.5, offensive_factor))
+
+    # Factor defensivo: cuánto le atacan (0.5 a 2.0)
+    defensive_factor = 0.7 + (avg_ga / 2.0)
+    defensive_factor = min(2.0, max(0.5, defensive_factor))
+
+    # Factor físico/agresividad: combinación de goles totales (partidos intensos)
+    intensity_factor = avg_total_goals / 2.5  # normalizado
+    intensity_factor = min(1.5, max(0.7, intensity_factor))
+
+    # CORNERS: equipos que atacan mucho hacen más corners
+    # Base 4.0, escalado por factor ofensivo y defensivo
+    est_corners = 4.0 + (avg_gf * 1.2) + (avg_ga * 0.4)
+    est_corners = est_corners * (0.9 + (offensive_factor * 0.1))
+    est_corners = round(min(14.0, max(3.0, est_corners)), 2)
+
+    # TARJETAS AMARILLAS: equipos físicos/intensos reciben más
+    # Base 1.8, escalado por intensidad del juego
+    est_yellow = 1.8 + (avg_total_goals * 0.35) + (avg_ga * 0.25)
+    est_yellow = est_yellow * intensity_factor
+    est_yellow = round(min(5.0, max(1.0, est_yellow)), 2)
+
+    # TARJETAS ROJAS: equipos agresivos o desesperados
+    # Base 0.12, ligero incremento con intensidad
+    est_red = 0.12 + (avg_ga * 0.02) + (intensity_factor * 0.05)
+    est_red = round(min(0.8, max(0.05, est_red)), 2)
+
+    return {
+        "avg_corners": est_corners,
+        "avg_yellow_cards": est_yellow,
+        "avg_red_cards": est_red,
+        "avg_total_cards": round(est_yellow + est_red, 2)
+    }
+
+
 def get_team_stats(team_id, league_id, season):
     """Obtiene estadísticas de equipo - SOLO 1 llamada API"""
     if not team_id or not league_id or not season:
@@ -209,8 +270,6 @@ def get_team_stats(team_id, league_id, season):
     clean_sheet = response.get("clean_sheet", {})
     failed_to_score = response.get("failed_to_score", {})
     form = response.get("form", "")
-    lineups = response.get("lineups", [])
-    cards = response.get("cards", {})
 
     played = safe_get(fixtures, "played", "total", default=0)
     wins = safe_get(fixtures, "wins", "total", default=0)
@@ -242,11 +301,8 @@ def get_team_stats(team_id, league_id, season):
     clean_sheets = clean_sheet.get("total", 0) if isinstance(clean_sheet, dict) else 0
     failed_scores = failed_to_score.get("total", 0) if isinstance(failed_to_score, dict) else 0
 
-    # Estimaciones REALISTAS de corners y tarjetas basadas en goles/partido
-    # Fórmulas ajustadas para valores realistas
-    est_corners = round(4.5 + (avg_total * 1.8), 2)  # Base 4.5 + factor goles
-    est_yellow = round(2.0 + (avg_total * 0.6), 2)   # Base 2.0 + factor goles
-    est_red = round(0.15 + (avg_total * 0.05), 2)    # Base 0.15 + factor goles
+    # CORNERS Y TARJETAS REALISTAS basados en el estilo de juego
+    cc = estimate_corners_and_cards(goals_for, goals_against, played, avg_total)
 
     return {
         "played": played,
@@ -268,130 +324,15 @@ def get_team_stats(team_id, league_id, season):
         "form": form_list,
         "biggest_win": safe_get(biggest, "wins", default=""),
         "biggest_loss": safe_get(biggest, "loses", default=""),
-        # CORNERS REALISTAS (estimados desde goles, no 0)
-        "corners_total": round(est_corners * played) if played else 0,
-        "yellow_cards": round(est_yellow * played) if played else 0,
-        "red_cards": round(est_red * played) if played else 0,
-        "avg_corners": est_corners,
-        "avg_yellow_cards": est_yellow,
-        "avg_red_cards": est_red,
-        "avg_total_cards": round(est_yellow + est_red, 2),
+        "corners_total": round(cc["avg_corners"] * played) if played else 0,
+        "yellow_cards": round(cc["avg_yellow_cards"] * played) if played else 0,
+        "red_cards": round(cc["avg_red_cards"] * played) if played else 0,
+        "avg_corners": cc["avg_corners"],
+        "avg_yellow_cards": cc["avg_yellow_cards"],
+        "avg_red_cards": cc["avg_red_cards"],
+        "avg_total_cards": cc["avg_total_cards"],
         "matches_analyzed": played,
     }
-
-
-def get_standings(league_id, season):
-    if not league_id or not season:
-        return None
-
-    data = api_get(
-        "standings",
-        params={"league": league_id, "season": season},
-        cache_key=f"standings_{league_id}_{season}",
-        ttl=7200
-    )
-
-    if not data or not isinstance(data, dict):
-        return None
-
-    response = data.get("response", [])
-    if not response:
-        return None
-
-    standings_data = response[0] if isinstance(response, list) else response
-    standings_list = standings_data.get("league", {}).get("standings", [[]])
-
-    all_teams = []
-    for group in standings_list:
-        if isinstance(group, list):
-            all_teams.extend(group)
-
-    return all_teams
-
-
-def find_team_in_standings(standings, team_id):
-    if not standings or not team_id:
-        return None
-
-    for team_data in standings:
-        if team_data.get("team", {}).get("id") == team_id:
-            all_stats = team_data.get("all", {})
-            goals = all_stats.get("goals", {})
-            return {
-                "position": team_data.get("rank", 0),
-                "playedGames": all_stats.get("played", 0),
-                "won": all_stats.get("win", 0),
-                "draw": all_stats.get("draw", 0),
-                "lost": all_stats.get("lose", 0),
-                "goalsFor": goals.get("for", 0),
-                "goalsAgainst": goals.get("against", 0),
-                "points": team_data.get("points", 0),
-                "form": team_data.get("form", "")
-            }
-    return None
-
-
-def get_h2h(team1_id, team2_id, last=5):
-    if not team1_id or not team2_id:
-        return [], {}
-
-    data = api_get(
-        "fixtures/headtohead",
-        params={"h2h": f"{team1_id}-{team2_id}", "last": last},
-        cache_key=f"h2h_{team1_id}_{team2_id}",
-        ttl=7200
-    )
-
-    if not data or not isinstance(data, dict):
-        return [], {}
-
-    fixtures = data.get("response", [])
-    if not fixtures:
-        return [], {}
-
-    matches = []
-    home_wins = away_wins = draws = 0
-    home_goals = away_goals = 0
-
-    for f in fixtures:
-        teams = f.get("teams", {})
-        goals = f.get("goals", {})
-
-        home_team = teams.get("home", {})
-        away_team = teams.get("away", {})
-
-        hg = goals.get("home")
-        ag = goals.get("away")
-
-        matches.append({
-            "date": f.get("fixture", {}).get("date", "")[:10],
-            "home": home_team.get("name", ""),
-            "away": away_team.get("name", ""),
-            "homeScore": hg,
-            "awayScore": ag,
-            "competition": f.get("league", {}).get("name", "")
-        })
-
-        if hg is not None and ag is not None:
-            home_goals += hg
-            away_goals += ag
-            if hg > ag:
-                home_wins += 1
-            elif hg == ag:
-                draws += 1
-            else:
-                away_wins += 1
-
-    stats = {
-        "home_wins": home_wins,
-        "away_wins": away_wins,
-        "draws": draws,
-        "home_goals": home_goals,
-        "away_goals": away_goals,
-        "total_matches": len(fixtures)
-    }
-
-    return matches, stats
 
 
 def get_predictions(fixture_id):
@@ -585,7 +526,6 @@ def analyze(
 ):
     logger.info(f"=== ANALYZE match_id={match_id}, home={home_team}({home_id}), away={away_team}({away_id}) ===")
 
-    # DETERMINAR LEAGUE ID Y SEASON
     comp_code = None
     for code, name in COMPETITIONS.items():
         if name.lower() in (league or "").lower():
@@ -603,17 +543,14 @@ def analyze(
 
     logger.info(f"Comp: {comp_code}, League ID: {league_id}, Season: {season}")
 
-    # SOLO 3 LLAMADAS API POR ANÁLISIS:
-    # 1. stats local, 2. stats visitante, 3. predicciones
-    # H2H y standings se omiten para ahorrar requests
-
+    # SOLO 3 LLAMADAS API: stats local, stats visitante, predicciones
     home_stats = get_team_stats(home_id, league_id, season) if league_id else None
     away_stats = get_team_stats(away_id, league_id, season) if league_id else None
 
     home_mode = "API_FOOTBALL" if (home_stats and home_stats["played"] > 0) else "NO_DATA"
     away_mode = "API_FOOTBALL" if (away_stats and away_stats["played"] > 0) else "NO_DATA"
 
-    # FALLBACK básico si no hay stats
+    # FALLBACK
     if not home_stats or home_stats["played"] == 0:
         home_stats = {
             "played": 0, "won": 0, "draw": 0, "lost": 0,
@@ -644,10 +581,8 @@ def analyze(
         }
         away_mode = "DEFAULT"
 
-    # PREDICCIONES (1 llamada API)
     predictions = get_predictions(match_id)
 
-    # PROBABILIDADES
     probabilities = {
         "over_1_5": round((home_stats["over_1_5_pct"] + away_stats["over_1_5_pct"]) / 2, 1),
         "over_2_5": round((home_stats["over_2_5_pct"] + away_stats["over_2_5_pct"]) / 2, 1),
@@ -658,7 +593,6 @@ def analyze(
         "away_xg": 0
     }
 
-    # Odds desde predicciones
     odds = {"home": 0, "draw": 0, "away": 0}
     if predictions:
         try:
@@ -717,7 +651,7 @@ def health():
         "time": datetime.now().isoformat(),
         "cache_size": len(CACHE),
         "api_football": "configured",
-        "version": "10.0.0"
+        "version": "10.1.0"
     }
 
 
