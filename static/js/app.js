@@ -1,4 +1,4 @@
-console.log('TipFactory v10.0 - Optimizado');
+console.log('TipFactory v10.1 - Probabilidades reales');
 
 var currentDate = new Date();
 var allMatches = [];
@@ -234,7 +234,6 @@ function renderMatches() {
       var isFinished = m.status === 'FT' || m.status === 'AET' || m.status === 'PEN';
       var statusText = isLive ? 'LIVE' : (isFinished ? 'FT' : m.status);
 
-      // FIX ESCUDOS: usar data attributes sin encodeURIComponent para evitar problemas
       var homeName = home.name || 'Local';
       var awayName = away.name || 'Visitante';
       var homeShort = home.shortName || homeName;
@@ -269,7 +268,6 @@ function renderMatches() {
         + ' data-matchday="' + matchdayVal + '"'
         + ' data-status="' + statusVal + '">';
 
-      // Left: time/status
       html += '<div class="match-left">';
       html += '<div class="match-time">' + timeStr + '</div>';
       if (isFinished) {
@@ -281,10 +279,8 @@ function renderMatches() {
       }
       html += '</div>';
 
-      // Center: teams
       html += '<div class="match-center">';
       html += '<div class="match-team-row">';
-      // FIX: escudos con fondo blanco y sin onerror que los oculte
       html += '<img class="team-crest" src="' + homeCrest + '" alt="">';
       html += '<span class="team-name">' + valueOrDash(homeName) + '</span>';
       html += '</div>';
@@ -294,7 +290,6 @@ function renderMatches() {
       html += '</div>';
       html += '</div>';
 
-      // Right: score
       html += '<div class="match-right">';
       if (m.homeScore !== null && m.homeScore !== undefined) {
         html += '<div class="match-score">' + m.homeScore + '</div>';
@@ -344,40 +339,80 @@ function probColorClass(val) {
   return 'prob-low';
 }
 
+// ============================================
+// FUNCIONES DE PROBABILIDAD REAL (Poisson)
+// ============================================
+
+// Factorial para Poisson
+function factorial(n) {
+  if (n <= 1) return 1;
+  var result = 1;
+  for (var i = 2; i <= n; i++) result *= i;
+  return result;
+}
+
+// Probabilidad de Poisson: P(X=k) = (lambda^k * e^-lambda) / k!
+function poisson(lambda, k) {
+  return (Math.pow(lambda, k) * Math.exp(-lambda)) / factorial(k);
+}
+
+// Probabilidad acumulada P(X > threshold) = 1 - P(X <= threshold)
+function poissonOver(lambda, threshold) {
+  var cumul = 0;
+  for (var k = 0; k <= threshold; k++) {
+    cumul += poisson(lambda, k);
+  }
+  return Math.min(100, Math.max(0, (1 - cumul) * 100));
+}
+
+// Probabilidad acumulada P(X <= threshold)
+function poissonUnder(lambda, threshold) {
+  var cumul = 0;
+  for (var k = 0; k <= threshold; k++) {
+    cumul += poisson(lambda, k);
+  }
+  return Math.min(100, Math.max(0, cumul * 100));
+}
+
+// Probabilidad de que la suma de dos Poisson independientes supere un umbral
+// Si X~Poisson(a) e Y~Poisson(b), entonces X+Y~Poisson(a+b)
+function poissonSumOver(lambda1, lambda2, threshold) {
+  return poissonOver(lambda1 + lambda2, threshold);
+}
+
+// ============================================
+// RENDER PROBABILIDADES GENERAL
+// ============================================
+
 function renderProbabilities(data) {
   var p = data.probabilities || {};
   var pred = data.predictions || {};
   var html = '';
 
-  // Over 2.5
   var over25 = num(p.over_2_5);
   html += '<div class="prob-box ' + probColorClass(over25) + '">';
   html += '<div class="prob-box-value">' + pct(p.over_2_5) + ' Más de 2,5</div>';
   html += '<div class="prob-box-sub">Media estimada</div>';
   html += '</div>';
 
-  // Over 1.5
   var over15 = num(p.over_1_5);
   html += '<div class="prob-box ' + probColorClass(over15) + '">';
   html += '<div class="prob-box-value">' + pct(p.over_1_5) + ' Más de 1,5</div>';
   html += '<div class="prob-box-sub">Media estimada</div>';
   html += '</div>';
 
-  // BTTS
   var btts = num(p.btts);
   html += '<div class="prob-box ' + probColorClass(btts) + '">';
   html += '<div class="prob-box-value">' + pct(p.btts) + ' AEM</div>';
   html += '<div class="prob-box-sub">Ambos equipos marcan</div>';
   html += '</div>';
 
-  // Goals per match
   var xg = num(p.total_expected_goals);
   html += '<div class="prob-box ' + probColorClass(xg * 20) + '">';
   html += '<div class="prob-box-value">' + dec(xg, 2) + ' Goles / Partido</div>';
   html += '<div class="prob-box-sub">Goles esperados</div>';
   html += '</div>';
 
-  // Cards
   var hs = data.home_stats || {};
   var as = data.away_stats || {};
   var avgCards = (num(hs.avg_yellow_cards) + num(as.avg_yellow_cards)) / 2;
@@ -386,7 +421,6 @@ function renderProbabilities(data) {
   html += '<div class="prob-box-sub">Amarillas esperadas</div>';
   html += '</div>';
 
-  // Corners
   var avgCorners = (num(hs.avg_corners) + num(as.avg_corners)) / 2;
   html += '<div class="prob-box ' + probColorClass(avgCorners * 7) + '">';
   html += '<div class="prob-box-value">' + dec(avgCorners, 2) + ' Córners</div>';
@@ -400,7 +434,6 @@ function renderProbabilities(data) {
 function renderMiniStats(data) {
   var hs = data.home_stats || {};
   var as = data.away_stats || {};
-  var d = data.debug || {};
   var html = '';
 
   html += '<div class="mini-stat-box"><div class="mini-stat-value">' + valueOrDash(hs.played) + '</div><div class="mini-stat-label">PJ local</div></div>';
@@ -414,6 +447,10 @@ function renderMiniStats(data) {
   if (grid) grid.innerHTML = html;
 }
 
+// ============================================
+// GOLES - Probabilidades reales con Poisson
+// ============================================
+
 function renderGoalsTable(data) {
   var hs = data.home_stats || {};
   var as = data.away_stats || {};
@@ -424,11 +461,15 @@ function renderGoalsTable(data) {
   if (homeHeader) homeHeader.textContent = mi.home_short || 'Local';
   if (awayHeader) awayHeader.textContent = mi.away_short || 'Visitante';
 
+  var homeLambda = num(hs.avg_team_goals);
+  var awayLambda = num(as.avg_team_goals);
+  var totalLambda = homeLambda + awayLambda;
+
   var rows = [
-    ['Goles/Partido', dec(hs.avg_team_goals), dec(as.avg_team_goals), dec((num(hs.avg_team_goals) + num(as.avg_team_goals)) / 2)],
-    ['Más de 1,5', pct(hs.over_1_5_pct), pct(as.over_1_5_pct), pct((num(hs.over_1_5_pct) + num(as.over_1_5_pct)) / 2)],
-    ['Más de 2,5', pct(hs.over_2_5_pct), pct(as.over_2_5_pct), pct((num(hs.over_2_5_pct) + num(as.over_2_5_pct)) / 2)],
-    ['Más de 3,5', pct(hs.over_3_5_pct), pct(as.over_3_5_pct), pct((num(hs.over_3_5_pct) + num(as.over_3_5_pct)) / 2)],
+    ['Goles/Partido', dec(homeLambda), dec(awayLambda), dec(totalLambda)],
+    ['Más de 1,5', pct(poissonOver(homeLambda, 1)), pct(poissonOver(awayLambda, 1)), pct(poissonOver(totalLambda, 1))],
+    ['Más de 2,5', pct(poissonOver(homeLambda, 2)), pct(poissonOver(awayLambda, 2)), pct(poissonOver(totalLambda, 2))],
+    ['Más de 3,5', pct(poissonOver(homeLambda, 3)), pct(poissonOver(awayLambda, 3)), pct(poissonOver(totalLambda, 3))],
     ['AMB', pct(hs.btts_pct), pct(as.btts_pct), pct((num(hs.btts_pct) + num(as.btts_pct)) / 2)]
   ];
 
@@ -443,6 +484,11 @@ function renderGoalsTable(data) {
   if (body) body.innerHTML = html;
 }
 
+// ============================================
+// CORNERS - Probabilidades reales con Poisson
+// Cada equipo tiene su lambda propio
+// ============================================
+
 function renderCornersTable(data) {
   var hs = data.home_stats || {};
   var as = data.away_stats || {};
@@ -453,15 +499,20 @@ function renderCornersTable(data) {
   if (cornersHome) cornersHome.textContent = mi.home_short || 'Local';
   if (cornersAway) cornersAway.textContent = mi.away_short || 'Visitante';
 
+  var homeCorners = num(hs.avg_corners);
+  var awayCorners = num(as.avg_corners);
+  var totalCorners = homeCorners + awayCorners;
+
+  // Corners ganados por equipo (lambda individual)
   var rows1 = [
-    ['Obtenidos/Partido', dec(hs.avg_corners), dec(as.avg_corners), dec((num(hs.avg_corners) + num(as.avg_corners)) / 2)],
-    ['Más de 6,5', pct(num(hs.avg_corners) > 6.5 ? 70 : 35), pct(num(as.avg_corners) > 6.5 ? 70 : 35), pct((num(hs.avg_corners) + num(as.avg_corners)) / 2 > 6.5 ? 70 : 35)],
-    ['Más de 7,5', pct(num(hs.avg_corners) > 7.5 ? 60 : 30), pct(num(as.avg_corners) > 7.5 ? 60 : 30), pct((num(hs.avg_corners) + num(as.avg_corners)) / 2 > 7.5 ? 60 : 30)],
-    ['Más de 8,5', pct(num(hs.avg_corners) > 8.5 ? 50 : 25), pct(num(as.avg_corners) > 8.5 ? 50 : 25), pct((num(hs.avg_corners) + num(as.avg_corners)) / 2 > 8.5 ? 50 : 25)],
-    ['Más de 9,5', pct(num(hs.avg_corners) > 9.5 ? 40 : 20), pct(num(as.avg_corners) > 9.5 ? 40 : 20), pct((num(hs.avg_corners) + num(as.avg_corners)) / 2 > 9.5 ? 40 : 20)],
-    ['Más de 10,5', pct(num(hs.avg_corners) > 10.5 ? 30 : 15), pct(num(as.avg_corners) > 10.5 ? 30 : 15), pct((num(hs.avg_corners) + num(as.avg_corners)) / 2 > 10.5 ? 30 : 15)],
-    ['Más de 11,5', pct(num(hs.avg_corners) > 11.5 ? 20 : 10), pct(num(as.avg_corners) > 11.5 ? 20 : 10), pct((num(hs.avg_corners) + num(as.avg_corners)) / 2 > 11.5 ? 20 : 10)],
-    ['Más de 12,5', pct(num(hs.avg_corners) > 12.5 ? 15 : 7), pct(num(as.avg_corners) > 12.5 ? 15 : 7), pct((num(hs.avg_corners) + num(as.avg_corners)) / 2 > 12.5 ? 15 : 7)]
+    ['Obtenidos/Partido', dec(homeCorners), dec(awayCorners), dec((homeCorners + awayCorners) / 2)],
+    ['Más de 6,5', pct(poissonOver(homeCorners, 6)), pct(poissonOver(awayCorners, 6)), pct(poissonOver((homeCorners + awayCorners) / 2, 6))],
+    ['Más de 7,5', pct(poissonOver(homeCorners, 7)), pct(poissonOver(awayCorners, 7)), pct(poissonOver((homeCorners + awayCorners) / 2, 7))],
+    ['Más de 8,5', pct(poissonOver(homeCorners, 8)), pct(poissonOver(awayCorners, 8)), pct(poissonOver((homeCorners + awayCorners) / 2, 8))],
+    ['Más de 9,5', pct(poissonOver(homeCorners, 9)), pct(poissonOver(awayCorners, 9)), pct(poissonOver((homeCorners + awayCorners) / 2, 9))],
+    ['Más de 10,5', pct(poissonOver(homeCorners, 10)), pct(poissonOver(awayCorners, 10)), pct(poissonOver((homeCorners + awayCorners) / 2, 10))],
+    ['Más de 11,5', pct(poissonOver(homeCorners, 11)), pct(poissonOver(awayCorners, 11)), pct(poissonOver((homeCorners + awayCorners) / 2, 11))],
+    ['Más de 12,5', pct(poissonOver(homeCorners, 12)), pct(poissonOver(awayCorners, 12)), pct(poissonOver((homeCorners + awayCorners) / 2, 12))]
   ];
 
   var html1 = '';
@@ -473,9 +524,12 @@ function renderCornersTable(data) {
   var body1 = getEl('corners-table-body');
   if (body1) body1.innerHTML = html1;
 
-  // Corners conceded
+  // Corners en contra (estimados desde goles encajados)
+  var homeConcededCorners = num(hs.avg_conceded) * 1.5;
+  var awayConcededCorners = num(as.avg_conceded) * 1.5;
+
   var rows2 = [
-    ['Contra/Partido', dec(hs.avg_conceded * 0.8), dec(as.avg_conceded * 0.8), dec((num(hs.avg_conceded) + num(as.avg_conceded)) * 0.4)]
+    ['Contra/Partido', dec(homeConcededCorners), dec(awayConcededCorners), dec((homeConcededCorners + awayConcededCorners) / 2)]
   ];
   var html2 = '';
   for (var j = 0; j < rows2.length; j++) {
@@ -484,16 +538,15 @@ function renderCornersTable(data) {
   var body2 = getEl('corners-conceded-body');
   if (body2) body2.innerHTML = html2;
 
-  // Total corners lines
-  var avgCorners = (num(hs.avg_corners) + num(as.avg_corners)) / 2;
+  // Total de corners (suma de ambos lambdas = Poisson(totalLambda))
   var rows3 = [
-    ['Más de 6,5', pct(avgCorners > 6.5 ? 75 : 40), pct(avgCorners > 6.5 ? 75 : 40), pct(avgCorners > 6.5 ? 75 : 40)],
-    ['Más de 7,5', pct(avgCorners > 7.5 ? 65 : 35), pct(avgCorners > 7.5 ? 65 : 35), pct(avgCorners > 7.5 ? 65 : 35)],
-    ['Más de 8,5', pct(avgCorners > 8.5 ? 55 : 28), pct(avgCorners > 8.5 ? 55 : 28), pct(avgCorners > 8.5 ? 55 : 28)],
-    ['Más de 9,5', pct(avgCorners > 9.5 ? 45 : 22), pct(avgCorners > 9.5 ? 45 : 22), pct(avgCorners > 9.5 ? 45 : 22)],
-    ['Más de 10,5', pct(avgCorners > 10.5 ? 35 : 16), pct(avgCorners > 10.5 ? 35 : 16), pct(avgCorners > 10.5 ? 35 : 16)],
-    ['Más de 11,5', pct(avgCorners > 11.5 ? 25 : 10), pct(avgCorners > 11.5 ? 25 : 10), pct(avgCorners > 11.5 ? 25 : 10)],
-    ['Más de 12,5', pct(avgCorners > 12.5 ? 18 : 7), pct(avgCorners > 12.5 ? 18 : 7), pct(avgCorners > 12.5 ? 18 : 7)]
+    ['Más de 6,5', pct(poissonOver(totalCorners, 6)), pct(poissonOver(totalCorners, 6)), pct(poissonOver(totalCorners, 6))],
+    ['Más de 7,5', pct(poissonOver(totalCorners, 7)), pct(poissonOver(totalCorners, 7)), pct(poissonOver(totalCorners, 7))],
+    ['Más de 8,5', pct(poissonOver(totalCorners, 8)), pct(poissonOver(totalCorners, 8)), pct(poissonOver(totalCorners, 8))],
+    ['Más de 9,5', pct(poissonOver(totalCorners, 9)), pct(poissonOver(totalCorners, 9)), pct(poissonOver(totalCorners, 9))],
+    ['Más de 10,5', pct(poissonOver(totalCorners, 10)), pct(poissonOver(totalCorners, 10)), pct(poissonOver(totalCorners, 10))],
+    ['Más de 11,5', pct(poissonOver(totalCorners, 11)), pct(poissonOver(totalCorners, 11)), pct(poissonOver(totalCorners, 11))],
+    ['Más de 12,5', pct(poissonOver(totalCorners, 12)), pct(poissonOver(totalCorners, 12)), pct(poissonOver(totalCorners, 12))]
   ];
 
   var html3 = '';
@@ -505,6 +558,10 @@ function renderCornersTable(data) {
   if (body3) body3.innerHTML = html3;
 }
 
+// ============================================
+// TARJETAS - Probabilidades reales con Poisson
+// ============================================
+
 function renderCardsTable(data) {
   var hs = data.home_stats || {};
   var as = data.away_stats || {};
@@ -515,19 +572,23 @@ function renderCardsTable(data) {
   if (cardsHome) cardsHome.textContent = mi.home_short || 'Local';
   if (cardsAway) cardsAway.textContent = mi.away_short || 'Visitante';
 
-  var avgYellowH = num(hs.avg_yellow_cards);
-  var avgYellowA = num(as.avg_yellow_cards);
-  var avgRedH = num(hs.avg_red_cards);
-  var avgRedA = num(as.avg_red_cards);
-  var avgTotalCards = (avgYellowH + avgYellowA + avgRedH + avgRedA) / 2;
+  var homeYellow = num(hs.avg_yellow_cards);
+  var awayYellow = num(as.avg_yellow_cards);
+  var homeRed = num(hs.avg_red_cards);
+  var awayRed = num(as.avg_red_cards);
+
+  // Total tarjetas por equipo (amarillas + rojas)
+  var homeTotalCards = homeYellow + homeRed;
+  var awayTotalCards = awayYellow + awayRed;
+  var avgTotalCards = (homeTotalCards + awayTotalCards) / 2;
 
   var rows = [
-    ['Tarjetas/Partido', dec(avgYellowH + avgRedH, 2), dec(avgYellowA + avgRedA, 2), dec(avgTotalCards, 2)],
-    ['Más de 1,5', pct(avgTotalCards > 1.5 ? 85 : 50), pct(avgTotalCards > 1.5 ? 85 : 50), pct(avgTotalCards > 1.5 ? 85 : 50)],
-    ['Más de 2,5', pct(avgTotalCards > 2.5 ? 75 : 40), pct(avgTotalCards > 2.5 ? 75 : 40), pct(avgTotalCards > 2.5 ? 75 : 40)],
-    ['Más de 3,5', pct(avgTotalCards > 3.5 ? 60 : 30), pct(avgTotalCards > 3.5 ? 60 : 30), pct(avgTotalCards > 3.5 ? 60 : 30)],
-    ['Más de 4,5', pct(avgTotalCards > 4.5 ? 45 : 22), pct(avgTotalCards > 4.5 ? 45 : 22), pct(avgTotalCards > 4.5 ? 45 : 22)],
-    ['Más de 5,5', pct(avgTotalCards > 5.5 ? 30 : 15), pct(avgTotalCards > 5.5 ? 30 : 15), pct(avgTotalCards > 5.5 ? 30 : 15)]
+    ['Tarjetas/Partido', dec(homeTotalCards, 2), dec(awayTotalCards, 2), dec(avgTotalCards, 2)],
+    ['Más de 1,5', pct(poissonOver(homeTotalCards, 1)), pct(poissonOver(awayTotalCards, 1)), pct(poissonOver(avgTotalCards, 1))],
+    ['Más de 2,5', pct(poissonOver(homeTotalCards, 2)), pct(poissonOver(awayTotalCards, 2)), pct(poissonOver(avgTotalCards, 2))],
+    ['Más de 3,5', pct(poissonOver(homeTotalCards, 3)), pct(poissonOver(awayTotalCards, 3)), pct(poissonOver(avgTotalCards, 3))],
+    ['Más de 4,5', pct(poissonOver(homeTotalCards, 4)), pct(poissonOver(awayTotalCards, 4)), pct(poissonOver(avgTotalCards, 4))],
+    ['Más de 5,5', pct(poissonOver(homeTotalCards, 5)), pct(poissonOver(awayTotalCards, 5)), pct(poissonOver(avgTotalCards, 5))]
   ];
 
   var html = '';
@@ -561,7 +622,6 @@ function fillHeader(data) {
   }
   if (homeName) homeName.textContent = mi.home_team || 'Local';
   if (awayName) awayName.textContent = mi.away_team || 'Visitante';
-  // FIX: forzar visibilidad de escudos
   if (homeLogo) {
     homeLogo.src = mi.home_logo || '';
     homeLogo.style.display = 'block';
@@ -596,7 +656,6 @@ function renderPrediction(data) {
 function openAnalysis(card) {
   var matchId = card.dataset.matchId;
 
-  // FIX: leer data attributes directamente sin decodeURIComponent
   var params = new URLSearchParams({
     home_id: card.dataset.homeId,
     away_id: card.dataset.awayId,
