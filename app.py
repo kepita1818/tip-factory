@@ -1,7 +1,7 @@
 import os
 import logging
 from datetime import datetime, timedelta
-from collections import defaultdict
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import requests
 from fastapi import FastAPI, Query, Request
@@ -13,7 +13,7 @@ from fastapi.templating import Jinja2Templates
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
 
-app = FastAPI(title="TipFactory", version="11.0.0")
+app = FastAPI(title="TipFactory", version="11.1.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -186,28 +186,70 @@ def get_season():
 
 
 # ============================================================
-# DATOS REALES DE LA API: FIXTURES + STATISTICS
+# OBTENER ESTADÍSTICAS DE UN PARTIDO ESPECÍFICO
+# /fixtures/statistics?fixture={id}
+# Devuelve array con 2 elementos: [home_stats, away_stats]
 # ============================================================
 
-def get_team_fixtures_real(team_id, league_id, season, last=15):
+def get_fixture_statistics(fixture_id):
     """
-    Obtiene últimos partidos JUGADOS del equipo (FT, AET, PEN).
-    Endpoint: /fixtures?team={id}&league={id}&season={year}&last={n}&status=ft
+    Obtiene estadísticas de un partido específico.
+    Formato API:
+    {
+      "response": [
+        {"team": {"id": 541, ...}, "statistics": [{"type": "Corner Kicks", "value": 7}, ...]},
+        {"team": {"id": 529, ...}, "statistics": [{"type": "Corner Kicks", "value": 3}, ...]}
+      ]
+    }
     """
-    if not team_id or not league_id or not season:
+    if not fixture_id:
+        return {}
+
+    data = api_get(
+        "fixtures/statistics",
+        params={"fixture": fixture_id},
+        cache_key=f"fixture_stats_{fixture_id}",
+        ttl=86400  # 24h cache
+    )
+
+    if not data or not isinstance(data, dict):
+        return {}
+
+    result = {}
+    for item in data.get("response", []):
+        team_id = safe_get(item, "team", "id")
+        stats_list = item.get("statistics", [])
+
+        parsed = {}
+        for stat in stats_list:
+            stat_type = stat.get("type", "").strip()
+            value = stat.get("value")
+            parsed[stat_type] = value
+
+        if team_id:
+            result[team_id] = parsed
+
+    return result
+
+
+# ============================================================
+# OBTENER EVENTOS DE UN PARTIDO (tarjetas, corners, goles)
+# /fixtures/events?fixture={id}
+# ============================================================
+
+def get_fixture_events(fixture_id):
+    """
+    Obtiene eventos del partido: goles, tarjetas, corners, sustituciones.
+    Útil para contar corners y tarjetas reales cuando statistics no está disponible.
+    """
+    if not fixture_id:
         return []
 
     data = api_get(
-        "fixtures",
-        params={
-            "team": team_id,
-            "league": league_id,
-            "season": season,
-            "last": last,
-            "status": "ft"
-        },
-        cache_key=f"team_fixtures_ft_{team_id}_{league_id}_{season}_{last}",
-        ttl=3600
+        "fixtures/events",
+        params={"fixture": fixture_id},
+        cache_key=f"fixture_events_{fixture_id}",
+        ttl=86400
     )
 
     if not data or not isinstance(data, dict):
@@ -216,59 +258,59 @@ def get_team_fixtures_real(team_id, league_id, season, last=15):
     return data.get("response", [])
 
 
-def get_fixtures_statistics_batch(fixture_ids):
-    """
-    Obtiene estadísticas de múltiples partidos de golpe.
-    La API permite hasta 20 fixtures por llamada.
-    Endpoint: /fixtures/statistics?fixture={id1}-{id2}-...-{idN}
-    """
-    if not fixture_ids:
-        return {}
+def count_events_for_team(events, team_id, event_types):
+    """Cuenta eventos de ciertos tipos para un equipo."""
+    count = 0
+    for event in events:
+        if event.get("team", {}).get("id") == team_id:
+            if event.get("type") in event_types:
+                count += 1
+    return count
 
-    # La API acepta múltiples IDs separados por guión
-    ids_str = "-".join(str(fid) for fid in fixture_ids[:20])
 
-    data = api_get(
-        "fixtures/statistics",
-        params={"fixture": ids_str},
-        cache_key=f"fixtures_stats_batch_{ids_str}",
+# ============================================================
+# CALCULAR ESTADÍSTICAS REALES DESDE PARTIDOS JUGADOS
+# ============================================================
+
+def get_team_real_stats(team_id, league_id, season, max_fixtures=10):
+    """
+    Obtiene estadísticas REALES del equipo desde partidos jugados.
+
+    Estrategia:
+    1. Obtener últimos N partidos FT del equipo
+    2. Para cada partido, obtener statistics (corners, tarjetas, tiros, posesión)
+    3. Si statistics no tiene datos, fallback a events (tarjetas/corners)
+    4. Calcular medias y porcentajes de frecuencia
+
+    Limitado a max_fixtures para no saturar la API.
+    """
+    if not team_id or not league_id or not season:
+        return None
+
+    # 1. Obtener partidos jugados
+    fixtures_data = api_get(
+        "fixtures",
+        params={
+            "team": team_id,
+            "league": league_id,
+            "season": season,
+            "last": max_fixtures,
+            "status": "ft"
+        },
+        cache_key=f"team_fixtures_ft_{team_id}_{league_id}_{season}_{max_fixtures}",
         ttl=3600
     )
 
-    if not data or not isinstance(data, dict):
-        return {}
+    if not fixtures_data or not isinstance(fixtures_data, dict):
+        return None
 
-    # Organizar por fixture_id y team_id
-    result = {}
-    for item in data.get("response", []):
-        fixture_id = item.get("fixture", {}).get("id")
-        team_id = item.get("team", {}).get("id")
-        stats = item.get("statistics", [])
-
-        if fixture_id not in result:
-            result[fixture_id] = {}
-
-        parsed = {}
-        for stat in stats:
-            stat_type = stat.get("type", "").lower().replace(" ", "_")
-            value = stat.get("value")
-            parsed[stat_type] = value
-
-        result[fixture_id][team_id] = parsed
-
-    return result
-
-
-def calculate_real_stats_from_fixtures(fixtures, team_id, stats_by_fixture):
-    """
-    Calcula estadísticas REALES desde los partidos jugados.
-    Devuelve goles, corners, tarjetas, tiros, posesión, etc.
-    """
+    fixtures = fixtures_data.get("response", [])
     if not fixtures:
         return None
 
-    total_goals_for = 0
-    total_goals_against = 0
+    # Acumuladores
+    total_gf = 0
+    total_ga = 0
     total_corners = 0
     total_yellow = 0
     total_red = 0
@@ -276,10 +318,10 @@ def calculate_real_stats_from_fixtures(fixtures, team_id, stats_by_fixture):
     total_shots_on = 0
     total_possession = 0
     total_fouls = 0
+
     matches_with_stats = 0
     matches_with_goals = 0
 
-    # Para calcular porcentajes de over/under/btts
     over_15_count = 0
     over_25_count = 0
     over_35_count = 0
@@ -287,8 +329,9 @@ def calculate_real_stats_from_fixtures(fixtures, team_id, stats_by_fixture):
     clean_sheet_count = 0
     failed_score_count = 0
 
+    # Procesar cada partido
     for fixture in fixtures:
-        fixture_id = fixture.get("fixture", {}).get("id")
+        fixture_id = safe_get(fixture, "fixture", "id")
         teams = fixture.get("teams", {})
         goals = fixture.get("goals", {})
 
@@ -308,9 +351,9 @@ def calculate_real_stats_from_fixtures(fixtures, team_id, stats_by_fixture):
 
         total_goals = gf + ga
 
-        # Contar goles
-        total_goals_for += gf
-        total_goals_against += ga
+        # Goles
+        total_gf += gf
+        total_ga += ga
         matches_with_goals += 1
 
         # Over/Under/BTTS reales
@@ -328,79 +371,108 @@ def calculate_real_stats_from_fixtures(fixtures, team_id, stats_by_fixture):
             failed_score_count += 1
 
         # Estadísticas detalladas del partido
-        fixture_stats = stats_by_fixture.get(fixture_id, {})
+        fixture_stats = get_fixture_statistics(fixture_id)
         team_stats = fixture_stats.get(team_id, {})
 
-        if team_stats:
-            matches_with_stats += 1
+        has_stats = False
 
-            # Corners
-            corners = team_stats.get("corner_kicks")
+        if team_stats:
+            # Corner Kicks (puede venir como "Corner Kicks" o null)
+            corners = team_stats.get("Corner Kicks")
             if corners is not None:
                 try:
                     total_corners += int(corners)
+                    has_stats = True
                 except:
                     pass
 
-            # Tarjetas amarillas
-            yellow = team_stats.get("yellow_cards")
+            # Yellow Cards
+            yellow = team_stats.get("Yellow Cards")
             if yellow is not None:
                 try:
                     total_yellow += int(yellow)
+                    has_stats = True
                 except:
                     pass
 
-            # Tarjetas rojas
-            red = team_stats.get("red_cards")
+            # Red Cards
+            red = team_stats.get("Red Cards")
             if red is not None:
                 try:
                     total_red += int(red)
+                    has_stats = True
                 except:
                     pass
 
-            # Tiros
-            shots = team_stats.get("total_shots")
+            # Total Shots
+            shots = team_stats.get("Total Shots")
             if shots is not None:
                 try:
                     total_shots += int(shots)
+                    has_stats = True
                 except:
                     pass
 
-            # Tiros a puerta
-            shots_on = team_stats.get("shots_on_goal")
+            # Shots on Goal
+            shots_on = team_stats.get("Shots on Goal")
             if shots_on is not None:
                 try:
                     total_shots_on += int(shots_on)
+                    has_stats = True
                 except:
                     pass
 
-            # Posesión
-            possession = team_stats.get("ball_possession")
+            # Ball Possession (viene como "58%")
+            possession = team_stats.get("Ball Possession")
             if possession is not None:
                 try:
-                    # Puede venir como "45%" o 45
                     if isinstance(possession, str):
-                        possession = int(possession.replace("%", ""))
+                        possession = int(possession.replace("%", "").strip())
                     total_possession += int(possession)
+                    has_stats = True
                 except:
                     pass
 
-            # Faltas
-            fouls = team_stats.get("fouls")
+            # Fouls
+            fouls = team_stats.get("Fouls")
             if fouls is not None:
                 try:
                     total_fouls += int(fouls)
+                    has_stats = True
                 except:
                     pass
+
+        # Fallback a events si no hay statistics
+        if not has_stats:
+            events = get_fixture_events(fixture_id)
+            if events:
+                # Contar tarjetas amarillas del equipo
+                yellow_events = count_events_for_team(events, team_id, ["Card"])
+                # Filtrar solo amarillas
+                yellow_count = sum(1 for e in events
+                    if e.get("team", {}).get("id") == team_id
+                    and e.get("type") == "Card"
+                    and e.get("detail") == "Yellow Card")
+                red_count = sum(1 for e in events
+                    if e.get("team", {}).get("id") == team_id
+                    and e.get("type") == "Card"
+                    and e.get("detail") == "Red Card")
+
+                total_yellow += yellow_count
+                total_red += red_count
+                has_stats = True
+
+        if has_stats:
+            matches_with_stats += 1
 
     played = matches_with_goals
     if played == 0:
         return None
 
     # Calcular medias
-    avg_gf = round(total_goals_for / played, 2)
-    avg_ga = round(total_goals_against / played, 2)
-    avg_total = round((total_goals_for + total_goals_against) / played, 2)
+    avg_gf = round(total_gf / played, 2)
+    avg_ga = round(total_ga / played, 2)
+    avg_total = round((total_gf + total_ga) / played, 2)
 
     avg_corners = round(total_corners / matches_with_stats, 2) if matches_with_stats else 0
     avg_yellow = round(total_yellow / matches_with_stats, 2) if matches_with_stats else 0
@@ -418,10 +490,13 @@ def calculate_real_stats_from_fixtures(fixtures, team_id, stats_by_fixture):
     clean_sheet_pct = round((clean_sheet_count / played) * 100, 1)
     failed_score_pct = round((failed_score_count / played) * 100, 1)
 
+    logger.info(f"Team {team_id}: played={played}, stats_matches={matches_with_stats}, "
+                f"corners={avg_corners}, yellow={avg_yellow}, red={avg_red}")
+
     return {
         "played": played,
-        "goals_for": total_goals_for,
-        "goals_against": total_goals_against,
+        "goals_for": total_gf,
+        "goals_against": total_ga,
         "avg_team_goals": avg_gf,
         "avg_conceded": avg_ga,
         "avg_total_goals": avg_total,
@@ -441,31 +516,6 @@ def calculate_real_stats_from_fixtures(fixtures, team_id, stats_by_fixture):
         "failed_to_score_pct": failed_score_pct,
         "matches_with_stats": matches_with_stats,
     }
-
-
-def get_team_stats_real(team_id, league_id, season):
-    """
-    Obtiene estadísticas REALES del equipo desde partidos jugados.
-    1. Obtiene últimos 15 partidos FT
-    2. Obtiene estadísticas de esos partidos (batch)
-    3. Calcula medias y porcentajes reales
-    """
-    if not team_id or not league_id or not season:
-        return None
-
-    # 1. Partidos jugados
-    fixtures = get_team_fixtures_real(team_id, league_id, season, last=15)
-    if not fixtures:
-        return None
-
-    # 2. IDs de fixtures para batch
-    fixture_ids = [f.get("fixture", {}).get("id") for f in fixtures if f.get("fixture", {}).get("id")]
-
-    # 3. Estadísticas en batch
-    stats_by_fixture = get_fixtures_statistics_batch(fixture_ids)
-
-    # 4. Calcular estadísticas reales
-    return calculate_real_stats_from_fixtures(fixtures, team_id, stats_by_fixture)
 
 
 # ============================================================
@@ -685,16 +735,16 @@ def analyze(
     logger.info(f"Comp: {comp_code}, League ID: {league_id}, Season: {season}")
 
     # === ESTADÍSTICAS REALES DESDE PARTIDOS JUGADOS ===
-    # Cada equipo: 1 llamada a fixtures + 1 batch de statistics
-    # Total por análisis: 2 llamadas para stats + 1 para predicciones = 3 llamadas
+    # Cada equipo: 1 fixtures + N statistics (N = min(10, partidos disponibles))
+    # Limitado a 10 partidos para no saturar la API
 
-    home_stats = get_team_stats_real(home_id, league_id, season) if league_id else None
-    away_stats = get_team_stats_real(away_id, league_id, season) if league_id else None
+    home_stats = get_team_real_stats(home_id, league_id, season, max_fixtures=10) if league_id else None
+    away_stats = get_team_real_stats(away_id, league_id, season, max_fixtures=10) if league_id else None
 
     home_mode = "REAL" if (home_stats and home_stats["played"] > 0) else "NO_DATA"
     away_mode = "REAL" if (away_stats and away_stats["played"] > 0) else "NO_DATA"
 
-    # Forma (últimos 5 resultados) desde /teams/statistics (1 llamada extra, cacheada)
+    # Forma desde /teams/statistics (1 llamada extra, cacheada)
     home_form_data = api_get(
         "teams/statistics",
         params={"team": home_id, "league": league_id, "season": season},
@@ -710,7 +760,7 @@ def analyze(
 
     def parse_form(form_data):
         if not form_data or not isinstance(form_data, dict):
-            return []
+            return [], ""
         response = form_data.get("response", {})
         form_str = response.get("form", "") if isinstance(response, dict) else ""
         form_list = []
@@ -756,7 +806,7 @@ def analyze(
     # PREDICCIONES
     predictions = get_predictions(match_id)
 
-    # PROBABILIDADES (promedio de los dos equipos)
+    # PROBABILIDADES
     probabilities = {
         "over_1_5": round((home_stats["over_1_5_pct"] + away_stats["over_1_5_pct"]) / 2, 1),
         "over_2_5": round((home_stats["over_2_5_pct"] + away_stats["over_2_5_pct"]) / 2, 1),
@@ -825,7 +875,7 @@ def health():
         "time": datetime.now().isoformat(),
         "cache_size": len(CACHE),
         "api_football": "configured",
-        "version": "11.0.0"
+        "version": "11.1.0"
     }
 
 
