@@ -12,7 +12,7 @@ from fastapi.templating import Jinja2Templates
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
 
-app = FastAPI(title="TipFactory", version="8.0.0")
+app = FastAPI(title="TipFactory", version="8.1.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -32,18 +32,97 @@ HEADERS = {"x-apisports-key": API_KEY}
 
 CACHE = {}
 
-# IDs de ligas en API-Football v3
+# === LIGAS SOPORTADAS (plan Pro = todas las disponibles) ===
+# IDs oficiales de API-Football v3
 LEAGUE_IDS = {
+    # TOP 5 EUROPEAS
     "PL": 39,      # Premier League
     "PD": 140,     # La Liga
     "SA": 135,     # Serie A
     "BL1": 78,     # Bundesliga
     "FL1": 61,     # Ligue 1
+    
+    # OTRAS EUROPEAS
     "PPL": 94,     # Primeira Liga
     "DED": 88,     # Eredivisie
-    "BSA": 71,     # Brasileirao Serie A
+    "ELC": 40,     # Championship (ENG)
+    "SB": 203,     # Superettan (SWE)
+    "SP": 197,     # La Liga 2 (ESP)
+    "SI": 131,     # Serie B (ITA)
+    "SD": 81,      # 2. Bundesliga (GER)
+    "FL2": 62,     # Ligue 2 (FRA)
+    "PLN": 106,    # Ekstraklasa (POL)
+    "RU": 235,     # Premier League (RUS)
+    "BE": 144,     # Jupiler Pro League (BEL)
+    "CH": 207,     # Super League (SUI)
+    "AU": 218,     # Bundesliga (AUT)
+    "DK": 119,     # Superliga (DEN)
+    "NO": 103,     # Eliteserien (NOR)
+    "FI": 244,     # Veikkausliiga (FIN)
+    "CZ": 346,     # First League (CZE)
+    "GR": 197,     # Super League (GRE)
+    "TR": 203,     # Süper Lig (TUR)
+    "UA": 333,     # Premier League (UKR)
+    "HR": 210,     # HNL (CRO)
+    "RO": 283,     # Liga I (ROU)
+    "SC": 180,     # Premiership (SCO)
+    
+    # SUDAMÉRICA
+    "BSA": 71,     # Brasileirao
+    "CLI": 13,     # Copa Libertadores
+    "CSA": 11,     # Copa Sudamericana
+    "ARG": 128,    # Liga Profesional (ARG)
+    "COL": 239,    # Primera A (COL)
+    "CHI": 265,    # Primera División (CHI)
+    "URU": 268,    # Primera División (URU)
+    "PAR": 252,    # Primera División (PAR)
+    "ECU": 242,    # Serie A (ECU)
+    "PER": 281,    # Liga 1 (PER)
+    "VEN": 277,    # Primera División (VEN)
+    "BOL": 344,    # División Profesional (BOL)
+    
+    # CONCACAF
+    "MLS": 253,    # Major League Soccer
+    "MX": 262,     # Liga MX
+    "CRC": 163,    # Primera División (CRC)
+    "GT": 370,     # Liga Nacional (GUA)
+    "HN": 300,     # Liga Nacional (HON)
+    "SV": 279,     # Primera División (SLV)
+    "PA": 287,     # LPF (PAN)
+    "JM": 357,     # Premier League (JAM)
+    
+    # ASIA
+    "JP": 98,      # J1 League (JPN)
+    "KR": 292,     # K League 1 (KOR)
+    "CN": 169,     # Super League (CHN)
+    "AU_A": 113,   # A-League (AUS)
+    "IN": 323,     # ISL (IND)
+    "TH": 295,     # Thai League 1
+    "SA_A": 307,   # Pro League (KSA)
+    "AE": 301,     # UAE Pro League
+    "QA": 340,     # Stars League (QAT)
+    "IR": 291,     # Persian Gulf Pro League
+    
+    # ÁFRICA
+    "EG": 233,     # Premier League (EGY)
+    "ZA": 289,     # Premier Division (RSA)
+    "MA": 200,     # Botola Pro (MAR)
+    "TN": 194,     # Ligue 1 (TUN)
+    "DZ": 186,     # Ligue 1 (ALG)
+    "NG": 371,     # NPFL (NGA)
+    "GH": 376,     # Premier League (GHA)
+    
+    # INTERNACIONAL
     "CL": 2,       # Champions League
     "EL": 3,       # Europa League
+    "ECL": 848,    # Conference League
+    "WC": 1,       # World Cup
+    "EURO": 4,     # European Championship
+    "COPA": 9,     # Copa América
+    "AFCON": 6,    # Africa Cup of Nations
+    "GOLD": 22,    # Gold Cup
+    "ASIA": 7,     # Asian Cup
+    "NATIONS": 5,  # UEFA Nations League
 }
 
 COMPETITIONS = {
@@ -54,11 +133,30 @@ COMPETITIONS = {
     "FL1": "Ligue 1",
     "PPL": "Primeira Liga",
     "DED": "Eredivisie",
+    "ELC": "Championship",
+    "SP": "La Liga 2",
+    "SI": "Serie B",
+    "SD": "2. Bundesliga",
+    "FL2": "Ligue 2",
     "BSA": "Brasileirao",
     "CL": "Champions League",
-    "EL": "Europa League"
+    "EL": "Europa League",
+    "ECL": "Conference League",
+    "CLI": "Copa Libertadores",
+    "CSA": "Copa Sudamericana",
+    "ARG": "Liga Argentina",
+    "COL": "Liga Colombia",
+    "MX": "Liga MX",
+    "MLS": "MLS",
+    "JP": "J1 League",
+    "KR": "K League",
+    "SA_A": "Pro League Saudi",
+    "EG": "Premier League Egypt",
+    "WC": "World Cup",
+    "EURO": "Euro",
 }
 
+# Ligas que aparecen por defecto en los filtros
 DEFAULT_COMPETITIONS = ["PD", "PL", "SA", "BL1", "FL1", "PPL", "DED", "BSA", "CL", "EL"]
 
 
@@ -167,27 +265,19 @@ def get_team_stats(team_id, league_id, season):
     clean_sheet = response.get("clean_sheet", {})
     failed_to_score = response.get("failed_to_score", {})
     form = response.get("form", "")
-    lineups = response.get("lineups", [])
 
     played = safe_get(fixtures, "played", "total", default=0)
     wins = safe_get(fixtures, "wins", "total", default=0)
     draws = safe_get(fixtures, "draws", "total", default=0)
     losses = safe_get(fixtures, "loses", "total", default=0)
 
-    # Goles totales
     goals_for = safe_get(goals, "for", "total", "total", default=0)
     goals_against = safe_get(goals, "against", "total", "total", default=0)
 
-    # Goles por minuto (para estimar tendencias)
-    goals_for_minute = safe_get(goals, "for", "minute", default={})
-    goals_against_minute = safe_get(goals, "against", "minute", default={})
-
-    # Calcular medias
     avg_gf = round(goals_for / played, 2) if played else 0
     avg_ga = round(goals_against / played, 2) if played else 0
     avg_total = round((goals_for + goals_against) / played, 2) if played else 0
 
-    # Forma (últimos 5 partidos)
     form_list = []
     for char in (form or "")[-5:]:
         if char == "W":
@@ -197,13 +287,11 @@ def get_team_stats(team_id, league_id, season):
         elif char == "L":
             form_list.append({"result": "L", "result_text": "Derrota"})
 
-    # Estimar Over/BTTS desde goles
     est_over_15 = min(100, round(avg_total * 35, 1))
     est_over_25 = min(100, round(avg_total * 25, 1))
     est_over_35 = min(100, round(avg_total * 15, 1))
     est_btts = min(100, round((avg_gf / max(avg_gf + 0.5, 0.1)) * (avg_ga / max(avg_ga + 0.5, 0.1)) * 100, 1))
 
-    # Clean sheet y failed to score
     clean_sheets = clean_sheet.get("total", 0) if isinstance(clean_sheet, dict) else 0
     failed_scores = failed_to_score.get("total", 0) if isinstance(failed_to_score, dict) else 0
 
@@ -445,6 +533,21 @@ def format_fixture(f):
         "WO": "WO"
     }
 
+    # matchday puede ser string (ej: "Regular Season - 36") o número
+    raw_matchday = league.get("round", "")
+    matchday = 0
+    if isinstance(raw_matchday, int):
+        matchday = raw_matchday
+    elif isinstance(raw_matchday, str):
+        # Extraer número de string como "Regular Season - 36"
+        parts = raw_matchday.split("-")
+        if parts:
+            last_part = parts[-1].strip()
+            try:
+                matchday = int(last_part)
+            except:
+                matchday = 0
+
     return {
         "id": fixture.get("id"),
         "utcDate": fixture.get("date"),
@@ -453,7 +556,7 @@ def format_fixture(f):
         "statusText": status,
         "minute": fixture.get("status", {}).get("elapsed", 0),
         "venue": fixture.get("venue", {}).get("name", ""),
-        "matchday": league.get("round", ""),
+        "matchday": matchday,
         "homeTeam": {
             "id": home.get("id"),
             "name": home.get("name", "Local"),
@@ -546,7 +649,7 @@ def analyze(
     venue: str = Query(""),
     home_score: str = Query(""),
     away_score: str = Query(""),
-    matchday: int = Query(0),
+    matchday: str = Query("0"),  # CAMBIADO A STR para aceptar "Regular Season - 36"
     status: str = Query("SCHEDULED")
 ):
     logger.info(f"=== ANALYZE match_id={match_id}, home={home_team}({home_id}), away={away_team}({away_id}) ===")
@@ -558,7 +661,14 @@ def analyze(
             comp_code = code
             break
 
-    league_id = get_league_id(comp_code) if comp_code else None
+    # Si no encontramos por nombre, buscar por ID de competición
+    if not comp_code:
+        for code, lid in LEAGUE_IDS.items():
+            if lid == competition_id:
+                comp_code = code
+                break
+
+    league_id = get_league_id(comp_code) if comp_code else competition_id
     season = get_season()
 
     logger.info(f"Comp: {comp_code}, League ID: {league_id}, Season: {season}")
@@ -702,7 +812,7 @@ def health():
         "time": datetime.now().isoformat(),
         "cache_size": len(CACHE),
         "api_football": "configured",
-        "version": "8.0.0"
+        "version": "8.1.0"
     }
 
 
