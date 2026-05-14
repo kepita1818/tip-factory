@@ -12,7 +12,7 @@ from fastapi.templating import Jinja2Templates
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
 
-app = FastAPI(title="TipFactory", version="2.4.0")
+app = FastAPI(title="TipFactory", version="2.5.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -63,6 +63,7 @@ def api_get(endpoint, params=None, cache_key=None, ttl=300):
     if cache_key:
         cached = cache_get(cache_key, ttl)
         if cached is not None:
+            logger.info(f"CACHE HIT: {cache_key}")
             return cached
 
     if not API_KEY:
@@ -71,13 +72,14 @@ def api_get(endpoint, params=None, cache_key=None, ttl=300):
 
     try:
         url = f"{BASE_URL}/{endpoint.lstrip('/')}"
+        logger.info(f"API CALL: {url} | params={params}")
         resp = requests.get(url, headers=HEADERS, params=params, timeout=30)
 
         if resp.status_code == 404:
             logger.warning(f"NOT FOUND {endpoint} {params}")
             return None
-        if resp.status_code in (401, 403):
-            logger.error(f"AUTH ERROR {resp.status_code} on {endpoint}")
+        if resp.status_code in (401, 403, 402):
+            logger.error(f"AUTH/PAYMENT ERROR {resp.status_code} on {endpoint} - {resp.text[:200]}")
             return None
         if resp.status_code == 429:
             logger.error(f"RATE LIMIT on {endpoint}")
@@ -85,6 +87,7 @@ def api_get(endpoint, params=None, cache_key=None, ttl=300):
 
         resp.raise_for_status()
         data = resp.json()
+        logger.info(f"API SUCCESS: {endpoint} -> {len(str(data))} chars")
 
         if cache_key:
             cache_set(cache_key, data)
@@ -189,24 +192,72 @@ def extract_season_year(match_detail, competition_id):
     return datetime.utcnow().year
 
 
-def get_team_matches(team_id, competition_id, season_year, venue=None, limit=10):
-    params = {
+def get_team_matches(team_id, competition_id, season_year, venue=None, limit=50):
+    """
+    Obtiene partidos FINISHED de un equipo. 
+    Estrategia: primero intenta con filtro de competición, si falla o está vacío,
+    intenta sin filtro de competición (todos los partidos del equipo esa temporada).
+    """
+    all_matches = []
+    
+    # Intento 1: Con filtro de competición (como string, la API acepta IDs numéricos)
+    params_comp = {
         "season": season_year,
         "competitions": str(competition_id),
         "status": "FINISHED",
         "limit": limit
     }
     if venue:
-        params["venue"] = venue
+        params_comp["venue"] = venue
 
-    data = api_get(
+    data_comp = api_get(
         f"teams/{team_id}/matches",
-        params=params,
-        cache_key=f"team_matches_{team_id}_{competition_id}_{season_year}_{venue}_{limit}",
+        params=params_comp,
+        cache_key=f"team_matches_comp_{team_id}_{competition_id}_{season_year}_{venue}_{limit}",
         ttl=1800
     )
+    
+    matches_comp = data_comp.get("matches", []) if isinstance(data_comp, dict) else []
+    logger.info(f"Team {team_id} matches WITH comp filter: {len(matches_comp)} found")
+    
+    if len(matches_comp) >= 3:
+        return matches_comp
+    
+    # Intento 2: Sin filtro de competición (puede que el plan gratuito no permita filtrar por comp)
+    params_all = {
+        "season": season_year,
+        "status": "FINISHED",
+        "limit": limit
+    }
+    if venue:
+        params_all["venue"] = venue
 
-    return data.get("matches", []) if isinstance(data, dict) else []
+    data_all = api_get(
+        f"teams/{team_id}/matches",
+        params=params_all,
+        cache_key=f"team_matches_all_{team_id}_{season_year}_{venue}_{limit}",
+        ttl=1800
+    )
+    
+    matches_all = data_all.get("matches", []) if isinstance(data_all, dict) else []
+    logger.info(f"Team {team_id} matches WITHOUT comp filter: {len(matches_all)} found")
+    
+    # Filtrar manualmente por competición si es necesario
+    if matches_all and competition_id:
+        filtered = [m for m in matches_all if safe_get(m, "competition", "id") == competition_id]
+        if len(filtered) >= 3:
+            logger.info(f"After manual filter: {len(filtered)} matches")
+            return filtered
+        # Si no hay suficientes filtrados, devolver todos (mejor tener datos de otra comp que nada)
+        if matches_all:
+            return matches_all
+    
+    # Fallback final: devolver lo que sea que tengamos
+    if matches_comp:
+        return matches_comp
+    if matches_all:
+        return matches_all
+    return []
 
 
 def extract_team_view(team_id, matches):
@@ -220,10 +271,12 @@ def extract_team_view(team_id, matches):
         away = m.get("awayTeam", {}) or {}
         full = safe_get(m, "score", "fullTime", default={}) or {}
 
+        # La API v4 usa 'home' y 'away' directamente en fullTime
         hg = full.get("home")
         ag = full.get("away")
 
         if hg is None or ag is None:
+            logger.warning(f"Skipping match {m.get('id')} - no score data: home={hg}, away={ag}")
             continue
 
         is_home = home.get("id") == team_id
@@ -274,7 +327,7 @@ def extract_team_view(team_id, matches):
                 "competition": safe_get(m, "competition", "name", default="")
             })
 
-    return {
+    result = {
         "played": played,
         "won": won,
         "draw": draw,
@@ -293,6 +346,9 @@ def extract_team_view(team_id, matches):
         "form_string": "".join([x["result"] for x in form]),
         "form": form
     }
+    
+    logger.info(f"Team {team_id} stats: played={played}, GF={gf}, GA={ga}, form={result['form_string']}")
+    return result
 
 
 def find_team_row(table_rows, team_id):
@@ -401,6 +457,8 @@ def analyze(
     matchday: int = Query(0),
     status: str = Query("SCHEDULED")
 ):
+    logger.info(f"ANALYZE match_id={match_id}, home_id={home_id}, away_id={away_id}, comp_id={competition_id}")
+    
     match_detail = api_get(
         f"matches/{match_id}",
         cache_key=f"match_detail_{match_id}",
@@ -429,12 +487,15 @@ def analyze(
             away_score = safe_get(match_detail, "score", "fullTime", "away", default="")
 
     season_year = extract_season_year(match_detail, competition_id)
+    logger.info(f"Using season year: {season_year}")
 
-    home_recent_home = get_team_matches(home_id, competition_id, season_year, venue="HOME", limit=10)
-    away_recent_away = get_team_matches(away_id, competition_id, season_year, venue="AWAY", limit=10)
-    home_recent_all = get_team_matches(home_id, competition_id, season_year, venue=None, limit=10)
-    away_recent_all = get_team_matches(away_id, competition_id, season_year, venue=None, limit=10)
+    # Obtener partidos recientes
+    home_recent_home = get_team_matches(home_id, competition_id, season_year, venue="HOME", limit=50)
+    away_recent_away = get_team_matches(away_id, competition_id, season_year, venue="AWAY", limit=50)
+    home_recent_all = get_team_matches(home_id, competition_id, season_year, venue=None, limit=50)
+    away_recent_all = get_team_matches(away_id, competition_id, season_year, venue=None, limit=50)
 
+    # Decidir qué datos usar para stats
     if len(home_recent_home) >= 3:
         home_stats = extract_team_view(home_id, home_recent_home)
         home_mode = "HOME"
@@ -568,7 +629,7 @@ def health():
         "time": datetime.now().isoformat(),
         "cache_size": len(CACHE),
         "api_key": "configured" if API_KEY else "missing",
-        "version": "2.4.0"
+        "version": "2.5.0"
     }
 
 
