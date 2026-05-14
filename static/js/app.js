@@ -472,72 +472,73 @@ function poissonOver(lambda, threshold) {
 }
 
 function renderCornersTable(data) {
-  var home = data.home_stats;
-  var away = data.away_stats;
-  var tbody = getEl('total-corners-body');
-  if (!tbody) return;
+  var hs = data.home_stats || {};
+  var as = data.away_stats || {};
+  var mi = data.match_info || {};
 
-  // Sacamos los porcentajes de los últimos 10 partidos de cada uno
-  var lines = [
-    { label: 'Over 8.5', h: home.over_85_corners_pct, a: away.over_85_corners_pct },
-    { label: 'Over 9.5', h: home.over_95_corners_pct, a: away.over_95_corners_pct },
-    { label: 'Over 10.5', h: home.over_105_corners_pct, a: away.over_105_corners_pct }
+  var cornersHome = getEl('corners-home-header');
+  var cornersAway = getEl('corners-away-header');
+  if (cornersHome) cornersHome.textContent = mi.home_short || 'Local';
+  if (cornersAway) cornersAway.textContent = mi.away_short || 'Visitante';
+
+  var homeCorners = num(hs.avg_corners);
+  var awayCorners = num(as.avg_corners);
+  var avgCorners = (homeCorners + awayCorners) / 2;
+  var totalCorners = homeCorners + awayCorners;
+
+  // Corners ganados por equipo (datos reales)
+  var rows1 = [
+    ['Obtenidos/Partido', dec(homeCorners), dec(awayCorners), dec(avgCorners)],
+    ['Más de 4,5', pct(poissonOver(homeCorners, 4)), pct(poissonOver(awayCorners, 4)), pct(poissonOver(avgCorners, 4))],
+    ['Más de 5,5', pct(poissonOver(homeCorners, 5)), pct(poissonOver(awayCorners, 5)), pct(poissonOver(avgCorners, 5))],
+    ['Más de 6,5', pct(poissonOver(homeCorners, 6)), pct(poissonOver(awayCorners, 6)), pct(poissonOver(avgCorners, 6))],
+    ['Más de 7,5', pct(poissonOver(homeCorners, 7)), pct(poissonOver(awayCorners, 7)), pct(poissonOver(avgCorners, 7))],
+    ['Más de 8,5', pct(poissonOver(homeCorners, 8)), pct(poissonOver(awayCorners, 8)), pct(poissonOver(avgCorners, 8))],
+    ['Más de 9,5', pct(poissonOver(homeCorners, 9)), pct(poissonOver(awayCorners, 9)), pct(poissonOver(avgCorners, 9))],
+    ['Más de 10,5', pct(poissonOver(homeCorners, 10)), pct(poissonOver(awayCorners, 10)), pct(poissonOver(avgCorners, 10))]
   ];
 
-  tbody.innerHTML = lines.map(function(l) {
-    var media = ((l.h + l.a) / 2).toFixed(0);
-    return '<tr>' +
-      '<td>' + l.label + '</td>' +
-      '<td class="' + getProbClass(l.h) + '">' + l.h + '%</td>' +
-      '<td class="' + getProbClass(l.a) + '">' + l.a + '%</td>' +
-      '<td>' + media + '%</td>' +
-    '</tr>';
-  }).join('');
-}
+  var html1 = '';
+  for (var i = 0; i < rows1.length; i++) {
+    var avgVal = i === 0 ? num(rows1[i][3]) * 10 : num(rows1[i][3].replace('%', ''));
+    var rowClass = i === 0 ? '' : probColorClass(avgVal);
+    html1 += '<tr class="' + rowClass + '"><td>' + rows1[i][0] + '</td><td>' + rows1[i][1] + '</td><td>' + rows1[i][2] + '</td><td>' + rows1[i][3] + '</td></tr>';
+  }
+  var body1 = getEl('corners-table-body');
+  if (body1) body1.innerHTML = html1;
 
-function renderCardsTable(data) {
-  var home = data.home_stats;
-  var away = data.away_stats;
-  var tbody = getEl('cards-table-body');
-  if (!tbody) return;
+  // Corners en contra (estimados desde goles encajados, no hay datos reales de corners recibidos)
+  var homeConcededCorners = num(hs.avg_conceded) * 1.5;
+  var awayConcededCorners = num(as.avg_conceded) * 1.5;
 
-  var lines = [
-    { label: 'Over 3.5 Tarjetas', h: home.over_35_cards_pct, a: away.over_35_cards_pct },
-    { label: 'Over 4.5 Tarjetas', h: home.over_45_cards_pct, a: away.over_45_cards_pct },
-    { label: 'Over 5.5 Tarjetas', h: home.over_55_cards_pct, a: away.over_55_cards_pct }
+  var rows2 = [
+    ['Contra/Partido', dec(homeConcededCorners), dec(awayConcededCorners), dec((homeConcededCorners + awayConcededCorners) / 2)]
+  ];
+  var html2 = '';
+  for (var j = 0; j < rows2.length; j++) {
+    html2 += '<tr><td>' + rows2[j][0] + '</td><td>' + rows2[j][1] + '</td><td>' + rows2[j][2] + '</td><td>' + rows2[j][3] + '</td></tr>';
+  }
+  var body2 = getEl('corners-conceded-body');
+  if (body2) body2.innerHTML = html2;
+
+  // Total de corners (suma de ambos = Poisson(totalLambda))
+  var rows3 = [
+    ['Más de 6,5', pct(poissonOver(totalCorners, 6)), pct(poissonOver(totalCorners, 6)), pct(poissonOver(totalCorners, 6))],
+    ['Más de 7,5', pct(poissonOver(totalCorners, 7)), pct(poissonOver(totalCorners, 7)), pct(poissonOver(totalCorners, 7))],
+    ['Más de 8,5', pct(poissonOver(totalCorners, 8)), pct(poissonOver(totalCorners, 8)), pct(poissonOver(totalCorners, 8))],
+    ['Más de 9,5', pct(poissonOver(totalCorners, 9)), pct(poissonOver(totalCorners, 9)), pct(poissonOver(totalCorners, 9))],
+    ['Más de 10,5', pct(poissonOver(totalCorners, 10)), pct(poissonOver(totalCorners, 10)), pct(poissonOver(totalCorners, 10))],
+    ['Más de 11,5', pct(poissonOver(totalCorners, 11)), pct(poissonOver(totalCorners, 11)), pct(poissonOver(totalCorners, 11))],
+    ['Más de 12,5', pct(poissonOver(totalCorners, 12)), pct(poissonOver(totalCorners, 12)), pct(poissonOver(totalCorners, 12))]
   ];
 
-  tbody.innerHTML = lines.map(function(l) {
-    var media = ((l.h + l.a) / 2).toFixed(0);
-    return '<tr>' +
-      '<td>' + l.label + '</td>' +
-      '<td class="' + getProbClass(l.h) + '">' + l.h + '%</td>' +
-      '<td class="' + getProbClass(l.a) + '">' + l.a + '%</td>' +
-      '<td>' + media + '%</td>' +
-    '</tr>';
-  }).join('');
-}
-
-function renderCardsTable(data) {
-  const home = data.home_stats;
-  const away = data.away_stats;
-  const tbody = document.getElementById('cards-table-body');
-  if (!tbody) return;
-
-  tbody.innerHTML = `
-    <tr>
-      <td>Over 3.5 Tarjetas</td>
-      <td class="${getProbClass(home.over_35_cards_pct)}">${home.over_35_cards_pct}%</td>
-      <td class="${getProbClass(away.over_35_cards_pct)}">${away.over_35_cards_pct}%</td>
-      <td>${((home.over_35_cards_pct + away.over_35_cards_pct)/2).toFixed(0)}%</td>
-    </tr>
-    <tr>
-      <td>Over 4.5 Tarjetas</td>
-      <td class="${getProbClass(home.over_45_cards_pct)}">${home.over_45_cards_pct}%</td>
-      <td class="${getProbClass(away.over_45_cards_pct)}">${away.over_45_cards_pct}%</td>
-      <td>${((home.over_45_cards_pct + away.over_45_cards_pct)/2).toFixed(0)}%</td>
-    </tr>
-  `;
+  var html3 = '';
+  for (var k = 0; k < rows3.length; k++) {
+    var val = num(rows3[k][3].replace('%', ''));
+    html3 += '<tr class="' + probColorClass(val) + '"><td>' + rows3[k][0] + '</td><td>' + rows3[k][1] + '</td><td>' + rows3[k][2] + '</td><td>' + rows3[k][3] + '</td></tr>';
+  }
+  var body3 = getEl('total-corners-body');
+  if (body3) body3.innerHTML = html3;
 }
 
 // ============================================
