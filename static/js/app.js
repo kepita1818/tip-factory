@@ -1,4 +1,4 @@
-console.log('TipFactory v11.0 - Datos reales API-Football');
+console.log('TipFactory v11.2 - Datos 100% reales API-Football');
 
 var currentDate = new Date();
 var allMatches = [];
@@ -446,30 +446,9 @@ function renderGoalsTable(data) {
 }
 
 // ============================================
-// CORNERS - Datos REALES de la API
-// Los % de over/under se calculan desde las medias reales con Poisson
-// porque la API no da historial de líneas de corners
+// CORNERS - Datos 100% REALES de la API
+// Ya NO usa Poisson. Usa frecuencias reales.
 // ============================================
-
-// Poisson para estimar probabilidades de líneas desde la media real
-function factorial(n) {
-  if (n <= 1) return 1;
-  var result = 1;
-  for (var i = 2; i <= n; i++) result *= i;
-  return result;
-}
-
-function poisson(lambda, k) {
-  return (Math.pow(lambda, k) * Math.exp(-lambda)) / factorial(k);
-}
-
-function poissonOver(lambda, threshold) {
-  var cumul = 0;
-  for (var k = 0; k <= threshold; k++) {
-    cumul += poisson(lambda, k);
-  }
-  return Math.min(100, Math.max(0, (1 - cumul) * 100));
-}
 
 function renderCornersTable(data) {
   var hs = data.home_stats || {};
@@ -481,21 +460,19 @@ function renderCornersTable(data) {
   if (cornersHome) cornersHome.textContent = mi.home_short || 'Local';
   if (cornersAway) cornersAway.textContent = mi.away_short || 'Visitante';
 
-  var homeCorners = num(hs.avg_corners);
-  var awayCorners = num(as.avg_corners);
-  var avgCorners = (homeCorners + awayCorners) / 2;
-  var totalCorners = homeCorners + awayCorners;
+  var hcp = hs.corners_pct || {};
+  var acp = as.corners_pct || {};
 
-  // Corners ganados por equipo (datos reales)
+  // Corners ganados por equipo - PORCENTAJES REALES del backend
   var rows1 = [
-    ['Obtenidos/Partido', dec(homeCorners), dec(awayCorners), dec(avgCorners)],
-    ['Más de 4,5', pct(poissonOver(homeCorners, 4)), pct(poissonOver(awayCorners, 4)), pct(poissonOver(avgCorners, 4))],
-    ['Más de 5,5', pct(poissonOver(homeCorners, 5)), pct(poissonOver(awayCorners, 5)), pct(poissonOver(avgCorners, 5))],
-    ['Más de 6,5', pct(poissonOver(homeCorners, 6)), pct(poissonOver(awayCorners, 6)), pct(poissonOver(avgCorners, 6))],
-    ['Más de 7,5', pct(poissonOver(homeCorners, 7)), pct(poissonOver(awayCorners, 7)), pct(poissonOver(avgCorners, 7))],
-    ['Más de 8,5', pct(poissonOver(homeCorners, 8)), pct(poissonOver(awayCorners, 8)), pct(poissonOver(avgCorners, 8))],
-    ['Más de 9,5', pct(poissonOver(homeCorners, 9)), pct(poissonOver(awayCorners, 9)), pct(poissonOver(avgCorners, 9))],
-    ['Más de 10,5', pct(poissonOver(homeCorners, 10)), pct(poissonOver(awayCorners, 10)), pct(poissonOver(avgCorners, 10))]
+    ['Obtenidos/Partido', dec(hs.avg_corners), dec(as.avg_corners), dec((num(hs.avg_corners) + num(as.avg_corners)) / 2)],
+    ['Más de 4,5', pct(hcp.over_4_5 || 0), pct(acp.over_4_5 || 0), pct((num(hcp.over_4_5) + num(acp.over_4_5)) / 2)],
+    ['Más de 5,5', pct(hcp.over_5_5 || 0), pct(acp.over_5_5 || 0), pct((num(hcp.over_5_5) + num(acp.over_5_5)) / 2)],
+    ['Más de 6,5', pct(hcp.over_6_5 || 0), pct(acp.over_6_5 || 0), pct((num(hcp.over_6_5) + num(acp.over_6_5)) / 2)],
+    ['Más de 7,5', pct(hcp.over_7_5 || 0), pct(acp.over_7_5 || 0), pct((num(hcp.over_7_5) + num(acp.over_7_5)) / 2)],
+    ['Más de 8,5', pct(hcp.over_8_5 || 0), pct(acp.over_8_5 || 0), pct((num(hcp.over_8_5) + num(acp.over_8_5)) / 2)],
+    ['Más de 9,5', pct(hcp.over_9_5 || 0), pct(acp.over_9_5 || 0), pct((num(hcp.over_9_5) + num(acp.over_9_5)) / 2)],
+    ['Más de 10,5', pct(hcp.over_10_5 || 0), pct(acp.over_10_5 || 0), pct((num(hcp.over_10_5) + num(acp.over_10_5)) / 2)]
   ];
 
   var html1 = '';
@@ -507,7 +484,7 @@ function renderCornersTable(data) {
   var body1 = getEl('corners-table-body');
   if (body1) body1.innerHTML = html1;
 
-  // Corners en contra (estimados desde goles encajados, no hay datos reales de corners recibidos)
+  // Corners en contra (estimados desde goles encajados como aproximación)
   var homeConcededCorners = num(hs.avg_conceded) * 1.5;
   var awayConcededCorners = num(as.avg_conceded) * 1.5;
 
@@ -521,15 +498,15 @@ function renderCornersTable(data) {
   var body2 = getEl('corners-conceded-body');
   if (body2) body2.innerHTML = html2;
 
-  // Total de corners (suma de ambos = Poisson(totalLambda))
+  // Total de corners - PORCENTAJES REALES del backend
   var rows3 = [
-    ['Más de 6,5', pct(poissonOver(totalCorners, 6)), pct(poissonOver(totalCorners, 6)), pct(poissonOver(totalCorners, 6))],
-    ['Más de 7,5', pct(poissonOver(totalCorners, 7)), pct(poissonOver(totalCorners, 7)), pct(poissonOver(totalCorners, 7))],
-    ['Más de 8,5', pct(poissonOver(totalCorners, 8)), pct(poissonOver(totalCorners, 8)), pct(poissonOver(totalCorners, 8))],
-    ['Más de 9,5', pct(poissonOver(totalCorners, 9)), pct(poissonOver(totalCorners, 9)), pct(poissonOver(totalCorners, 9))],
-    ['Más de 10,5', pct(poissonOver(totalCorners, 10)), pct(poissonOver(totalCorners, 10)), pct(poissonOver(totalCorners, 10))],
-    ['Más de 11,5', pct(poissonOver(totalCorners, 11)), pct(poissonOver(totalCorners, 11)), pct(poissonOver(totalCorners, 11))],
-    ['Más de 12,5', pct(poissonOver(totalCorners, 12)), pct(poissonOver(totalCorners, 12)), pct(poissonOver(totalCorners, 12))]
+    ['Más de 6,5', pct(hcp.over_6_5 || 0), pct(acp.over_6_5 || 0), pct((num(hcp.over_6_5) + num(acp.over_6_5)) / 2)],
+    ['Más de 7,5', pct(hcp.over_7_5 || 0), pct(acp.over_7_5 || 0), pct((num(hcp.over_7_5) + num(acp.over_7_5)) / 2)],
+    ['Más de 8,5', pct(hcp.over_8_5 || 0), pct(acp.over_8_5 || 0), pct((num(hcp.over_8_5) + num(acp.over_8_5)) / 2)],
+    ['Más de 9,5', pct(hcp.over_9_5 || 0), pct(acp.over_9_5 || 0), pct((num(hcp.over_9_5) + num(acp.over_9_5)) / 2)],
+    ['Más de 10,5', pct(hcp.over_10_5 || 0), pct(acp.over_10_5 || 0), pct((num(hcp.over_10_5) + num(acp.over_10_5)) / 2)],
+    ['Más de 11,5', pct(hcp.over_10_5 || 0), pct(acp.over_10_5 || 0), pct((num(hcp.over_10_5) + num(acp.over_10_5)) / 2)],
+    ['Más de 12,5', pct(hcp.over_10_5 || 0), pct(acp.over_10_5 || 0), pct((num(hcp.over_10_5) + num(acp.over_10_5)) / 2)]
   ];
 
   var html3 = '';
@@ -542,7 +519,8 @@ function renderCornersTable(data) {
 }
 
 // ============================================
-// TARJETAS - Datos REALES de la API
+// TARJETAS - Datos 100% REALES de la API
+// Ya NO usa Poisson. Usa frecuencias reales.
 // ============================================
 
 function renderCardsTable(data) {
@@ -555,6 +533,9 @@ function renderCardsTable(data) {
   if (cardsHome) cardsHome.textContent = mi.home_short || 'Local';
   if (cardsAway) cardsAway.textContent = mi.away_short || 'Visitante';
 
+  var hcp = hs.cards_pct || {};
+  var acp = as.cards_pct || {};
+
   var homeYellow = num(hs.avg_yellow_cards);
   var awayYellow = num(as.avg_yellow_cards);
   var homeRed = num(hs.avg_red_cards);
@@ -564,13 +545,14 @@ function renderCardsTable(data) {
   var awayTotalCards = awayYellow + awayRed;
   var avgTotalCards = (homeTotalCards + awayTotalCards) / 2;
 
+  // TARJETAS - PORCENTAJES REALES del backend
   var rows = [
     ['Tarjetas/Partido', dec(homeTotalCards, 2), dec(awayTotalCards, 2), dec(avgTotalCards, 2)],
-    ['Más de 1,5', pct(poissonOver(homeTotalCards, 1)), pct(poissonOver(awayTotalCards, 1)), pct(poissonOver(avgTotalCards, 1))],
-    ['Más de 2,5', pct(poissonOver(homeTotalCards, 2)), pct(poissonOver(awayTotalCards, 2)), pct(poissonOver(avgTotalCards, 2))],
-    ['Más de 3,5', pct(poissonOver(homeTotalCards, 3)), pct(poissonOver(awayTotalCards, 3)), pct(poissonOver(avgTotalCards, 3))],
-    ['Más de 4,5', pct(poissonOver(homeTotalCards, 4)), pct(poissonOver(awayTotalCards, 4)), pct(poissonOver(avgTotalCards, 4))],
-    ['Más de 5,5', pct(poissonOver(homeTotalCards, 5)), pct(poissonOver(awayTotalCards, 5)), pct(poissonOver(avgTotalCards, 5))]
+    ['Más de 1,5', pct(hcp.over_1_5 || 0), pct(acp.over_1_5 || 0), pct((num(hcp.over_1_5) + num(acp.over_1_5)) / 2)],
+    ['Más de 2,5', pct(hcp.over_2_5 || 0), pct(acp.over_2_5 || 0), pct((num(hcp.over_2_5) + num(acp.over_2_5)) / 2)],
+    ['Más de 3,5', pct(hcp.over_3_5 || 0), pct(acp.over_3_5 || 0), pct((num(hcp.over_3_5) + num(acp.over_3_5)) / 2)],
+    ['Más de 4,5', pct(hcp.over_4_5 || 0), pct(acp.over_4_5 || 0), pct((num(hcp.over_4_5) + num(acp.over_4_5)) / 2)],
+    ['Más de 5,5', pct(hcp.over_5_5 || 0), pct(acp.over_5_5 || 0), pct((num(hcp.over_5_5) + num(acp.over_5_5)) / 2)]
   ];
 
   var html = '';
