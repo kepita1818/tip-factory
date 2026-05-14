@@ -1,6 +1,6 @@
 import os
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime
 
 import requests
 from fastapi import FastAPI, Query, Request
@@ -15,7 +15,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-app = FastAPI(title="TipFactory", version="5.1.0")
+app = FastAPI(title="TipFactory", version="6.0.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -28,13 +28,16 @@ app.add_middleware(
 app.mount("/static", StaticFiles(directory="static"), name="static")
 templates = Jinja2Templates(directory="templates")
 
+FOOTBALLDATA_IO_KEY = os.environ.get("FOOTBALLDATA_IO_KEY", "").strip()
 FOOTBALL_DATA_ORG_KEY = os.environ.get("API_FOOTBALL_KEY", "").strip()
-BASE_URL = "https://api.football-data.org/v4"
-HEADERS = {"X-Auth-Token": FOOTBALL_DATA_ORG_KEY} if FOOTBALL_DATA_ORG_KEY else {}
+
+FDIO_BASE = "https://footballdata.io/api/v1"
+FDORG_BASE = "https://api.football-data.org/v4"
+
+FDIO_HEADERS = {"Authorization": f"Bearer {FOOTBALLDATA_IO_KEY}"} if FOOTBALLDATA_IO_KEY else {}
+FDORG_HEADERS = {"X-Auth-Token": FOOTBALL_DATA_ORG_KEY} if FOOTBALL_DATA_ORG_KEY else {}
 
 CACHE = {}
-
-TOP_COMPETITIONS = ["PL", "PD", "SA", "BL1", "FL1", "PPL", "DED", "ELC", "BSA", "CL", "EL"]
 
 
 def cache_get(key, ttl=300):
@@ -49,19 +52,15 @@ def cache_set(key, data):
     CACHE[key] = (data, datetime.now())
 
 
-def api_request(endpoint, params=None, cache_key=None, ttl=300):
+def api_get(base_url, endpoint, headers=None, params=None, cache_key=None, ttl=300):
     if cache_key:
         cached = cache_get(cache_key, ttl)
         if cached is not None:
             return cached
 
-    if not FOOTBALL_DATA_ORG_KEY:
-        logger.error("API_FOOTBALL_KEY missing")
-        return None
-
     try:
-        url = f"{BASE_URL}/{endpoint.lstrip('/')}"
-        resp = requests.get(url, headers=HEADERS, params=params, timeout=20)
+        url = f"{base_url}/{endpoint.lstrip('/')}"
+        resp = requests.get(url, headers=headers or {}, params=params, timeout=20)
 
         if resp.status_code in (401, 403):
             logger.error(f"AUTH ERROR {resp.status_code} {url}")
@@ -81,8 +80,22 @@ def api_request(endpoint, params=None, cache_key=None, ttl=300):
 
         return data
     except Exception as e:
-        logger.error(f"API error {endpoint}: {e}")
+        logger.error(f"API error {base_url}/{endpoint}: {e}")
         return None
+
+
+def fdio_request(endpoint, params=None, cache_key=None, ttl=300):
+    if not FOOTBALLDATA_IO_KEY:
+        logger.error("FOOTBALLDATA_IO_KEY missing")
+        return None
+    return api_get(FDIO_BASE, endpoint, FDIO_HEADERS, params, cache_key, ttl)
+
+
+def fdorg_request(endpoint, params=None, cache_key=None, ttl=300):
+    if not FOOTBALL_DATA_ORG_KEY:
+        logger.error("API_FOOTBALL_KEY missing")
+        return None
+    return api_get(FDORG_BASE, endpoint, FDORG_HEADERS, params, cache_key, ttl)
 
 
 def safe_get(d, *keys, default=None):
@@ -94,88 +107,110 @@ def safe_get(d, *keys, default=None):
     return cur if cur is not None else default
 
 
-def format_match(m):
-    home = m.get("homeTeam", {}) or {}
-    away = m.get("awayTeam", {}) or {}
-    comp = m.get("competition", {}) or {}
-    area = m.get("area", {}) or comp.get("area", {}) or {}
-    score = m.get("score", {}) or {}
-    ft = score.get("fullTime", {}) or {}
-    ht = score.get("halfTime", {}) or {}
+def extract_list_payload(data):
+    if isinstance(data, list):
+        return data
 
-    utc = m.get("utcDate", "")
+    if isinstance(data, dict):
+        for key in ["data", "fixtures", "matches", "response"]:
+            value = data.get(key)
+            if isinstance(value, list):
+                return value
+
+        if isinstance(data.get("data"), dict):
+            for key in ["fixtures", "matches", "response"]:
+                value = data["data"].get(key)
+                if isinstance(value, list):
+                    return value
+
+    return []
+
+
+def normalize_match(raw):
+    home_block = raw.get("homeTeam") or raw.get("home_team") or raw.get("home") or {}
+    away_block = raw.get("awayTeam") or raw.get("away_team") or raw.get("away") or {}
+    league_block = raw.get("competition") or raw.get("league") or {}
+    country_block = raw.get("country") or raw.get("area") or {}
+
+    home_name = home_block.get("name") or raw.get("home_name") or raw.get("homeTeamName") or "Local"
+    away_name = away_block.get("name") or raw.get("away_name") or raw.get("awayTeamName") or "Visitante"
+
+    home_logo = home_block.get("logo") or home_block.get("crest") or raw.get("home_logo") or ""
+    away_logo = away_block.get("logo") or away_block.get("crest") or raw.get("away_logo") or ""
+
+    league_name = league_block.get("name") or raw.get("competition_name") or raw.get("league_name") or ""
+    country_name = country_block.get("name") or raw.get("country_name") or ""
+
+    utc_date = (
+        raw.get("utcDate")
+        or raw.get("date")
+        or raw.get("starting_at")
+        or raw.get("kickoff")
+        or raw.get("start_time")
+        or ""
+    )
+
+    score_block = raw.get("score") or raw.get("scores") or {}
+    home_score = score_block.get("home")
+    away_score = score_block.get("away")
+
+    if home_score is None:
+        home_score = raw.get("home_score")
+    if away_score is None:
+        away_score = raw.get("away_score")
+
     return {
-        "id": m.get("id"),
-        "utcDate": utc,
-        "matchDate": utc[:10] if utc else "",
-        "status": m.get("status", "SCHEDULED"),
-        "statusText": m.get("status", "SCHEDULED"),
-        "minute": 0,
-        "venue": m.get("venue", "") or "",
-        "matchday": m.get("matchday", 0) or 0,
+        "id": raw.get("id") or raw.get("fixture_id") or raw.get("match_id") or 0,
+        "utcDate": utc_date,
+        "matchDate": utc_date[:10] if utc_date else "",
+        "status": raw.get("status") or raw.get("state") or "NS",
+        "statusText": raw.get("status") or raw.get("state") or "SCHEDULED",
+        "minute": raw.get("minute") or 0,
+        "venue": raw.get("venue") or raw.get("stadium") or "",
+        "matchday": raw.get("matchday") or 0,
         "homeTeam": {
-            "id": home.get("id"),
-            "name": home.get("name", "Local"),
-            "shortName": home.get("shortName") or home.get("tla") or home.get("name", "Local")[:15],
-            "crest": home.get("crest", "") or ""
+            "id": home_block.get("id"),
+            "name": home_name,
+            "shortName": home_name[:15],
+            "crest": home_logo
         },
         "awayTeam": {
-            "id": away.get("id"),
-            "name": away.get("name", "Visitante"),
-            "shortName": away.get("shortName") or away.get("tla") or away.get("name", "Visitante")[:15],
-            "crest": away.get("crest", "") or ""
+            "id": away_block.get("id"),
+            "name": away_name,
+            "shortName": away_name[:15],
+            "crest": away_logo
         },
         "competition": {
-            "id": comp.get("id"),
-            "name": comp.get("name", ""),
-            "code": comp.get("code", "")
+            "id": league_block.get("id"),
+            "name": league_name,
+            "code": league_block.get("code") or ""
         },
-        "league_name": comp.get("name", ""),
-        "country": area.get("name", ""),
-        "homeScore": ft.get("home"),
-        "awayScore": ft.get("away"),
-        "halfTimeHome": ht.get("home"),
-        "halfTimeAway": ht.get("away")
+        "league_name": league_name,
+        "country": country_name,
+        "homeScore": home_score,
+        "awayScore": away_score,
+        "halfTimeHome": None,
+        "halfTimeAway": None
     }
 
 
-def dedupe_matches(matches):
-    seen = set()
-    out = []
-    for m in matches:
-        mid = m.get("id")
-        if mid and mid not in seen:
-            seen.add(mid)
-            out.append(m)
-    return out
+def fetch_fdio_matches(date_str):
+    raw = fdio_request("fixtures/today", cache_key=f"fdio_today_{date_str}", ttl=180)
 
+    logger.info(f"FDIO RAW TYPE: {type(raw).__name__}")
+    items = extract_list_payload(raw)
+    logger.info(f"FDIO ITEMS COUNT BEFORE NORMALIZE: {len(items)}")
 
-def fetch_matches_for_date(date_str):
-    matches = []
+    matches = [normalize_match(x) for x in items]
 
-    general = api_request(
-        "matches",
-        params={"dateFrom": date_str, "dateTo": date_str},
-        cache_key=f"matches_{date_str}",
-        ttl=300
-    )
+    if date_str:
+        filtered = []
+        for m in matches:
+            if m["matchDate"] == date_str or m["matchDate"] == "":
+                filtered.append(m)
+        matches = filtered
 
-    if general and general.get("matches"):
-        matches.extend([format_match(m) for m in general["matches"]])
-
-    if not matches:
-        for code in TOP_COMPETITIONS:
-            data = api_request(
-                f"competitions/{code}/matches",
-                params={"dateFrom": date_str, "dateTo": date_str},
-                cache_key=f"comp_{code}_{date_str}",
-                ttl=600
-            )
-            if data and data.get("matches"):
-                matches.extend([format_match(m) for m in data["matches"]])
-
-    matches = [m for m in dedupe_matches(matches) if m["matchDate"] == date_str]
-    logger.info(f"MATCHES {date_str}: {len(matches)}")
+    logger.info(f"FDIO MATCHES COUNT AFTER FILTER: {len(matches)}")
     return matches
 
 
@@ -183,13 +218,14 @@ def find_team_id(team_name):
     if not team_name:
         return None
 
-    data = api_request("teams", cache_key="all_teams", ttl=86400)
-    if not data or not data.get("teams"):
+    data = fdorg_request("teams", cache_key="fdorg_all_teams", ttl=86400)
+    if not data or not isinstance(data, dict):
         return None
 
+    items = data.get("teams", [])
     target = team_name.strip().lower()
 
-    for team in data["teams"]:
+    for team in items:
         names = [
             (team.get("name") or "").lower(),
             (team.get("shortName") or "").lower(),
@@ -198,7 +234,7 @@ def find_team_id(team_name):
         if target in names:
             return team.get("id")
 
-    for team in data["teams"]:
+    for team in items:
         names = [
             (team.get("name") or "").lower(),
             (team.get("shortName") or "").lower()
@@ -212,15 +248,18 @@ def find_team_id(team_name):
 def get_team_recent_matches(team_id, limit=10):
     if not team_id:
         return []
-    data = api_request(
+
+    data = fdorg_request(
         f"teams/{team_id}/matches",
         params={"status": "FINISHED", "limit": limit},
-        cache_key=f"team_recent_{team_id}_{limit}",
+        cache_key=f"fdorg_recent_{team_id}_{limit}",
         ttl=1800
     )
-    if not data or not data.get("matches"):
+
+    if not data or not isinstance(data, dict):
         return []
-    return data["matches"]
+
+    return data.get("matches", [])
 
 
 def build_form_and_stats(team_id, matches):
@@ -233,9 +272,9 @@ def build_form_and_stats(team_id, matches):
         home = m.get("homeTeam", {}) or {}
         away = m.get("awayTeam", {}) or {}
         score = safe_get(m, "score", "fullTime", default={}) or {}
+
         hg = score.get("home")
         ag = score.get("away")
-
         if hg is None or ag is None:
             continue
 
@@ -341,54 +380,28 @@ def matches(date: str = Query(None)):
     if not date:
         date = datetime.utcnow().strftime("%Y-%m-%d")
 
-    exact = fetch_matches_for_date(date)
-    if exact:
-        return {
-            "matches": exact,
-            "requested_date": date,
-            "source_date": date,
-            "is_exact": True,
-            "source": "football-data.org"
-        }
-
-    for delta in [-1, 1, -2, 2, -3, 3]:
-        alt_date = (datetime.strptime(date, "%Y-%m-%d") + timedelta(days=delta)).strftime("%Y-%m-%d")
-        alt = fetch_matches_for_date(alt_date)
-        if alt:
-            return {
-                "matches": alt,
-                "requested_date": date,
-                "source_date": alt_date,
-                "is_exact": False,
-                "source": "football-data.org"
-            }
+    matches = fetch_fdio_matches(date)
 
     return {
-        "matches": [],
+        "matches": matches,
         "requested_date": date,
-        "source_date": None,
+        "source_date": date if matches else None,
         "is_exact": True,
-        "source": "football-data.org"
+        "source": "footballdata.io"
     }
 
 
-@app.get("/api/test-matches")
-def test_matches(date: str = Query(None)):
-    if not date:
-        date = datetime.utcnow().strftime("%Y-%m-%d")
-
-    raw = api_request(
-        "matches",
-        params={"dateFrom": date, "dateTo": date},
-        cache_key=None,
-        ttl=0
-    )
+@app.get("/api/test-fdio")
+def test_fdio():
+    raw = fdio_request("fixtures/today", cache_key=None, ttl=0)
+    items = extract_list_payload(raw)
 
     return {
-        "date": date,
-        "has_data": bool(raw),
-        "match_count": len(raw.get("matches", [])) if isinstance(raw, dict) else 0,
-        "sample": raw.get("matches", [])[:2] if isinstance(raw, dict) else []
+        "has_raw": bool(raw),
+        "raw_type": type(raw).__name__ if raw is not None else None,
+        "top_keys": list(raw.keys())[:20] if isinstance(raw, dict) else [],
+        "items_count": len(items),
+        "sample": items[:2]
     }
 
 
@@ -468,6 +481,13 @@ def health():
         "status": "ok",
         "time": datetime.now().isoformat(),
         "cache_size": len(CACHE),
+        "footballdata_io": "configured" if FOOTBALLDATA_IO_KEY else "missing",
         "football_data_org": "configured" if FOOTBALL_DATA_ORG_KEY else "missing",
-        "version": "5.1.0"
+        "version": "6.0.0"
     }
+
+
+if __name__ == "__main__":
+    import uvicorn
+    port = int(os.environ.get("PORT", 8000))
+    uvicorn.run("app:app", host="0.0.0.0", port=port)
