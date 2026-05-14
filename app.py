@@ -286,53 +286,55 @@ def get_team_real_stats(team_id, league_id, season, max_fixtures=10):
     fixtures = fixtures_data.get("response", []) if fixtures_data else []
     if not fixtures: return None
 
-    # Contadores de frecuencia REAL (Match Total)
+    # Contadores de partidos que superan la línea (TOTAL DEL PARTIDO)
     stats = {
-        "over_85_cor": 0, "over_95_cor": 0,
-        "over_35_card": 0, "over_45_card": 0,
-        "total_corners": 0, "total_cards": 0,
-        "matches_with_stats": 0
+        "over_85_cor": 0, "over_95_cor": 0, "over_105_cor": 0,
+        "over_35_card": 0, "over_45_card": 0, "over_55_card": 0,
+        "sum_corners": 0, "sum_cards": 0, "matches_with_stats": 0
     }
 
-    # Procesamos los últimos 10 partidos uno a uno
     for f in fixtures:
         f_id = f["fixture"]["id"]
-        f_stats = get_fixture_statistics(f_id) # Esto obtiene stats de AMBOS equipos
+        f_stats = get_fixture_statistics(f_id) # Trae stats de los DOS equipos
         
         if f_stats and len(f_stats) >= 2:
             m_corners = 0
             m_cards = 0
             for t_id in f_stats:
-                # Sumamos córners de los dos equipos
+                # Sumamos los córners de ambos equipos
                 c = f_stats[t_id].get("Corner Kicks", 0)
                 m_corners += int(c) if c else 0
-                # Sumamos tarjetas de los dos equipos
+                # Sumamos amarillas + rojas de ambos equipos
                 y = f_stats[t_id].get("Yellow Cards", 0)
                 r = f_stats[t_id].get("Red Cards", 0)
                 m_cards += (int(y) if y else 0) + (int(r) if r else 0)
 
-            # ¿Se cumplió la línea en este partido?
+            # ¿El TOTAL del partido superó la línea?
             if m_corners > 8.5: stats["over_85_cor"] += 1
             if m_corners > 9.5: stats["over_95_cor"] += 1
+            if m_corners > 10.5: stats["over_105_cor"] += 1
+            
             if m_cards > 3.5: stats["over_35_card"] += 1
             if m_cards > 4.5: stats["over_45_card"] += 1
+            if m_cards > 5.5: stats["over_55_card"] += 1
             
-            stats["total_corners"] += m_corners
-            stats["total_cards"] += m_cards
+            stats["sum_corners"] += m_corners
+            stats["sum_cards"] += m_cards
             stats["matches_with_stats"] += 1
 
-    m_count = stats["matches_with_stats"] or 1
+    count = stats["matches_with_stats"] or 1
     
-    # Retornamos los porcentajes de éxito REAL
     return {
         "played": len(fixtures),
-        "avg_corners": round(stats["total_corners"] / m_count, 2),
-        "over_85_corners_pct": round((stats["over_85_cor"] / m_count) * 100),
-        "over_95_corners_pct": round((stats["over_95_cor"] / m_count) * 100),
-        "avg_total_cards": round(stats["total_cards"] / m_count, 2),
-        "over_35_cards_pct": round((stats["over_35_card"] / m_count) * 100),
-        "over_45_cards_pct": round((stats["over_45_card"] / m_count) * 100),
-        "matches_with_stats": m_count
+        "avg_corners": round(stats["sum_corners"] / count, 2),
+        "over_85_corners_pct": round((stats["over_85_cor"] / count) * 100),
+        "over_95_corners_pct": round((stats["over_95_cor"] / count) * 100),
+        "over_105_corners_pct": round((stats["over_105_cor"] / count) * 100),
+        "avg_total_cards": round(stats["sum_cards"] / count, 2),
+        "over_35_cards_pct": round((stats["over_35_card"] / count) * 100),
+        "over_45_cards_pct": round((stats["over_45_card"] / count) * 100),
+        "over_55_cards_pct": round((stats["over_55_card"] / count) * 100),
+        "matches_with_stats": stats["matches_with_stats"]
     }
 
 # ============================================================
