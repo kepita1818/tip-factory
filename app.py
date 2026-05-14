@@ -1,6 +1,6 @@
 import os
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import requests
@@ -178,7 +178,7 @@ def get_league_id(competition_code):
 
 
 def get_season():
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     if now.month >= 7:
         return now.year
     else:
@@ -731,7 +731,7 @@ def home(request: Request):
 @app.get("/api/matches")
 def api_matches(date: str = Query(None)):
     if not date:
-        date = datetime.utcnow().strftime("%Y-%m-%d")
+        date = datetime.now(timezone.utc).strftime("%Y-%m-%d")
 
     season = get_season()
     collected = []
