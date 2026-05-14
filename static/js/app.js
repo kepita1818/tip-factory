@@ -99,139 +99,80 @@ function setupEventListeners() {
 }
 
 function loadMatches() {
-    var dateStr = formatDateISO(currentDate);
-    var matchesContainer = getEl('matches-container');
-    if (matchesContainer) {
-        matchesContainer.innerHTML = '<div class="loading">Cargando partidos...</div>';
-    }
+  var dateStr = formatDateISO(currentDate);
+  var matchesContainer = getEl('matches-container');
 
-    fetch('/api/matches?date=' + encodeURIComponent(dateStr))
-        .then(function(response) {
-            if (!response.ok) throw new Error('HTTP ' + response.status);
-            return response.json();
-        })
-        .then(function(data) {
-            // Handle structured response {matches, requested_date, source_date, is_exact}
-            if (data && data.matches && Array.isArray(data.matches)) {
-                allMatches = data.matches;
-                allMatches._meta = {
-                    requestedDate: data.requested_date,
-                    sourceDate: data.source_date,
-                    isExact: data.is_exact
-                };
-            } else if (Array.isArray(data)) {
-                allMatches = data;
-                allMatches._meta = { isExact: true };
-            } else {
-                throw new Error('Respuesta invalida');
-            }
+  if (matchesContainer) {
+    matchesContainer.innerHTML = '<div class="loading">Cargando partidos...</div>';
+  }
 
-            if (allMatches.length === 0) {
-                if (matchesContainer) {
-                    matchesContainer.innerHTML = '<div class="no-matches">No hay partidos para ' + formatDate(currentDate) + '<br><small>Prueba con otra fecha</small></div>';
-                }
-                return;
-            }
-            renderMatches();
-        })
-        .catch(function(e) {
-            console.error('Error:', e);
-            if (matchesContainer) {
-                matchesContainer.innerHTML = '<div class="no-matches">Error: ' + e.message + '<br><small>Intenta recargar</small></div>';
-            }
-        });
+  fetch('/api/matches?date=' + encodeURIComponent(dateStr))
+    .then(function(response) {
+      if (!response.ok) throw new Error('HTTP ' + response.status);
+      return response.json();
+    })
+    .then(function(data) {
+      if (data && data.matches && Array.isArray(data.matches)) {
+        allMatches = data.matches;
+        allMatches.meta = {
+          requestedDate: data.requested_date,
+          sourceDate: data.source_date,
+          isExact: data.is_exact
+        };
+      } else if (Array.isArray(data)) {
+        allMatches = data;
+        allMatches.meta = { isExact: true };
+      } else {
+        throw new Error('Respuesta inválida');
+      }
+
+      if (!allMatches.length) {
+        matchesContainer.innerHTML =
+          '<div class="no-matches">No hay partidos para ' + formatDate(currentDate) +
+          '<br><small>Prueba con otra fecha</small></div>';
+        return;
+      }
+
+      renderMatches();
+    })
+    .catch(function(e) {
+      console.error('Error cargando partidos:', e);
+      if (matchesContainer) {
+        matchesContainer.innerHTML =
+          '<div class="no-matches">Error: ' + e.message +
+          '<br><small>Intenta recargar</small></div>';
+      }
+    });
 }
 
-function renderMatches() {
-    var matches = allMatches;
-    var matchesContainer = getEl('matches-container');
-    var meta = matches._meta || { isExact: true };
+function renderAnalysis(data) {
+  var info = data.match_info;
+  var probs = data.probabilities;
+  var homeStats = data.home_stats;
+  var awayStats = data.away_stats;
 
-    // Show notice if showing matches from different date
-    var dateNotice = '';
-    if (!meta.isExact && meta.sourceDate) {
-        var sourceDateParts = meta.sourceDate.split('-');
-        var sourceDateFormatted = sourceDateParts[2] + '/' + sourceDateParts[1] + '/' + sourceDateParts[0];
-        dateNotice = '<div class="date-notice">📅 Mostrando partidos del ' + sourceDateFormatted + ' (no hay partidos para la fecha seleccionada)</div>';
-    }
+  var subtitle = info.league + ' - ' + info.date + ' - ' + info.time;
+  if (info.venue) subtitle += ' - ' + info.venue;
 
-    if (currentFilter !== 'all') {
-        matches = matches.filter(function(m) {
-            var country = (m.country || '').toLowerCase();
-            var league = (m.league_name || '').toLowerCase();
-            var filter = currentFilter.toLowerCase();
-            return country.indexOf(filter) !== -1 || league.indexOf(filter) !== -1;
-        });
-    }
+  var analysisSubtitle = getEl('analysis-subtitle');
+  if (analysisSubtitle) analysisSubtitle.textContent = subtitle;
 
-    if (!matches.length) {
-        if (matchesContainer) matchesContainer.innerHTML = '<div class="no-matches">No hay partidos para este filtro</div>';
-        return;
-    }
+  var homeNameEl = getEl('home-name');
+  var awayNameEl = getEl('away-name');
+  var homeLogoEl = getEl('home-logo');
+  var awayLogoEl = getEl('away-logo');
 
-    matches.sort(function(a, b) {
-        var statusOrder = { '1H': 0, 'HT': 0, 'LIVE': 0, '2H': 0, 'NS': 1, 'FT': 2, 'PST': 3, 'CANC': 4 };
-        var orderA = statusOrder[a.status] !== undefined ? statusOrder[a.status] : 1;
-        var orderB = statusOrder[b.status] !== undefined ? statusOrder[b.status] : 1;
-        if (orderA !== orderB) return orderA - orderB;
-        return (a.utcDate || '').localeCompare(b.utcDate || '');
-    });
+  if (homeNameEl) homeNameEl.textContent = info.home_team || 'Local';
+  if (awayNameEl) awayNameEl.textContent = info.away_team || 'Visitante';
+  if (homeLogoEl) homeLogoEl.src = info.home_logo || '';
+  if (awayLogoEl) awayLogoEl.src = info.away_logo || '';
 
-    var html = dateNotice;
-    for (var i = 0; i < matches.length; i++) {
-        var match = matches[i];
-        var home = match.homeTeam || {};
-        var away = match.awayTeam || {};
-        var time = formatLocalTime(match.utcDate);
-        var isLive = match.status === '1H' || match.status === '2H' || match.status === 'HT' || match.status === 'LIVE';
-        var isFinished = match.status === 'FT';
-
-        var statusBadge = '';
-        if (isLive) statusBadge = '<span class="status-badge live">LIVE ' + (match.minute || '') + '</span>';
-        else if (isFinished) statusBadge = '<span class="status-badge finished">FT</span>';
-
-        var scoreText = '';
-        if (match.homeScore !== null && match.awayScore !== null) {
-            scoreText = match.homeScore + ' - ' + match.awayScore;
-        }
-
-        var homeLogo = home.crest || 'https://crests.football-data.org/' + (home.id || 0) + '.svg';
-        var awayLogo = away.crest || 'https://crests.football-data.org/' + (away.id || 0) + '.svg';
-
-        html += '<div class="match-card ' + (isLive ? 'live ' : '') + (isFinished ? 'finished' : '') + '" data-match-id="' + match.id + '">';
-        html += '<div class="match-time-row">';
-        var matchDateStr = match.matchDate || '';
-        var currentDateStr = formatDateISO(currentDate);
-        if (matchDateStr && matchDateStr !== currentDateStr) {
-            var mdParts = matchDateStr.split('-');
-            html += '<span class="match-time">' + mdParts[2] + '/' + mdParts[1] + '</span>';
-        } else {
-            html += '<span class="match-time">' + time + '</span>';
-        }
-        html += statusBadge;
-        if (scoreText) html += '<span class="match-score">' + scoreText + '</span>';
-        html += '</div>';
-        html += '<div class="match-teams">';
-        html += '<div class="match-team">';
-        html += '<img src="' + homeLogo + '" alt="" onerror="this.style.visibility=\'hidden\'">';
-        html += '<span>' + (home.shortName || home.name || 'Local') + '</span>';
-        html += '</div>';
-        html += '<div class="match-team">';
-        html += '<img src="' + awayLogo + '" alt="" onerror="this.style.visibility=\'hidden\'">';
-        html += '<span>' + (away.shortName || away.name || 'Visitante') + '</span>';
-        html += '</div>';
-        html += '</div>';
-        html += '</div>';
-    }
-
-    if (matchesContainer) matchesContainer.innerHTML = html;
-
-    var cards = document.querySelectorAll('.match-card');
-    for (var j = 0; j < cards.length; j++) {
-        cards[j].addEventListener('click', function() {
-            analyzeMatch(this.dataset.matchId);
-        });
-    }
+  renderFormBadges(data.home_form, 'home-form-badges');
+  renderFormBadges(data.away_form, 'away-form-badges');
+  renderProbGrid(probs, homeStats, awayStats);
+  renderGoalsTable(homeStats, awayStats, info);
+  renderCornersTables(homeStats, awayStats, info);
+  renderCardsTable(homeStats, awayStats, info);
 }
 
 function showMatches() {
@@ -267,36 +208,32 @@ function showAnalysis() {
 }
 
 function analyzeMatch(matchId) {
-    showAnalysis();
+  showAnalysis();
 
-    var allTabs = document.querySelectorAll('.tab-btn');
-    var allContents = document.querySelectorAll('.tab-content');
-    for (var t = 0; t < allTabs.length; t++) allTabs[t].classList.remove('active');
-    for (var c = 0; c < allContents.length; c++) allContents[c].classList.remove('active');
+  var allTabs = document.querySelectorAll('.tab-btn');
+  var allContents = document.querySelectorAll('.tab-content');
 
-    var summaryTab = document.querySelector('[data-tab="resumen"]');
-    var summaryContent = getEl('tab-resumen');
-    if (summaryTab) summaryTab.classList.add('active');
-    if (summaryContent) summaryContent.classList.add('active');
+  for (var t = 0; t < allTabs.length; t++) allTabs[t].classList.remove('active');
+  for (var c = 0; c < allContents.length; c++) allContents[c].classList.remove('active');
 
-    fetch('/api/analyze/' + matchId)
-        .then(function(response) {
-            if (!response.ok) {
-                if (response.status === 404) {
-                    throw new Error('Partido no disponible. Los datos detallados pueden no estar incluidos en tu plan API.');
-                }
-                throw new Error('HTTP ' + response.status);
-            }
-            return response.json();
-        })
-        .then(function(data) {
-            renderAnalysis(data);
-        })
-        .catch(function(e) {
-            console.error('Error:', e);
-            alert('Error analizando partido: ' + e.message);
-            showMatches();
-        });
+  var summaryTab = document.querySelector('[data-tab="resumen"]');
+  var summaryContent = getEl('tab-resumen');
+  if (summaryTab) summaryTab.classList.add('active');
+  if (summaryContent) summaryContent.classList.add('active');
+
+  fetch('/api/analyze/' + matchId)
+    .then(function(response) {
+      if (!response.ok) throw new Error('HTTP ' + response.status);
+      return response.json();
+    })
+    .then(function(data) {
+      renderAnalysis(data);
+    })
+    .catch(function(e) {
+      console.error('Error analizando partido:', e);
+      alert('Error analizando partido: ' + e.message);
+      showMatches();
+    });
 }
 
 function renderAnalysis(data) {
