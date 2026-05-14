@@ -12,7 +12,7 @@ from fastapi.templating import Jinja2Templates
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
 
-app = FastAPI(title="TipFactory", version="3.0.0")
+app = FastAPI(title="TipFactory", version="3.1.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -30,6 +30,7 @@ BASE_URL = "https://api.football-data.org/v4"
 HEADERS = {"X-Auth-Token": API_KEY} if API_KEY else {}
 
 CACHE = {}
+RATE_LIMIT_UNTIL = None  # Timestamp hasta cuando respetamos rate limit
 
 COMPETITIONS = {
     "PD": "La Liga",
@@ -47,7 +48,7 @@ COMPETITIONS = {
 DEFAULT_COMPETITIONS = ["PD", "PL", "SA", "BL1", "FL1", "PPL", "DED", "BSA", "CL", "EL"]
 
 
-def cache_get(key, ttl=300):
+def cache_get(key, ttl=3600):
     if key in CACHE:
         data, ts = CACHE[key]
         if (datetime.now() - ts).seconds < ttl:
@@ -59,7 +60,18 @@ def cache_set(key, data):
     CACHE[key] = (data, datetime.now())
 
 
-def api_get(endpoint, params=None, cache_key=None, ttl=300):
+def api_get(endpoint, params=None, cache_key=None, ttl=3600):
+    global RATE_LIMIT_UNTIL
+    
+    # Si estamos en rate limit cooldown, devolver cache o None
+    if RATE_LIMIT_UNTIL and datetime.now() < RATE_LIMIT_UNTIL:
+        if cache_key:
+            cached = cache_get(cache_key, ttl=86400)  # Cache extendida durante rate limit
+            if cached is not None:
+                return cached
+        logger.warning(f"RATE LIMIT COOLDOWN: skipping {endpoint}")
+        return None
+
     if cache_key:
         cached = cache_get(cache_key, ttl)
         if cached is not None:
@@ -71,22 +83,27 @@ def api_get(endpoint, params=None, cache_key=None, ttl=300):
 
     try:
         url = f"{BASE_URL}/{endpoint.lstrip('/')}"
-        logger.info(f"API CALL: {url} | params={params}")
         resp = requests.get(url, headers=HEADERS, params=params, timeout=30)
 
-        if resp.status_code == 404:
-            logger.warning(f"NOT FOUND {endpoint} {params}")
-            return None
-        if resp.status_code in (401, 403, 402):
-            logger.error(f"AUTH ERROR {resp.status_code} on {endpoint}: {resp.text[:200]}")
-            return None
         if resp.status_code == 429:
-            logger.error(f"RATE LIMIT on {endpoint}")
+            # Rate limit - esperar 60 segundos
+            RATE_LIMIT_UNTIL = datetime.now() + timedelta(seconds=60)
+            logger.error(f"RATE LIMIT HIT on {endpoint}. Cooling down 60s.")
+            return None
+            
+        if resp.status_code in (401, 403, 402):
+            logger.error(f"AUTH ERROR {resp.status_code} on {endpoint}")
+            # Cachear el error para no repetir
+            if cache_key:
+                cache_set(cache_key, {"_error": resp.status_code})
+            return None
+
+        if resp.status_code == 404:
+            logger.warning(f"NOT FOUND {endpoint}")
             return None
 
         resp.raise_for_status()
         data = resp.json()
-        logger.info(f"API SUCCESS: {endpoint} -> matches={len(data.get('matches', [])) if isinstance(data, dict) else 'N/A'}")
 
         if cache_key:
             cache_set(cache_key, data)
@@ -173,11 +190,10 @@ def format_match(m):
     }
 
 
-def get_team_matches(team_id, season_year, venue=None, limit=50):
+def get_team_matches(team_id, season_year, venue=None, limit=20):
     """
-    Obtiene TODOS los partidos FINISHED de un equipo para una temporada.
-    football-data.org gratis: NO filtramos por competición porque el plan gratuito
-    a veces no permite filtrar por competitions en /teams/{id}/matches
+    Obtiene partidos FINISHED de un equipo. SIN filtro de competición para evitar 403.
+    Cache TTL: 1 hora
     """
     params = {
         "season": season_year,
@@ -193,30 +209,22 @@ def get_team_matches(team_id, season_year, venue=None, limit=50):
         f"teams/{team_id}/matches",
         params=params,
         cache_key=cache_key,
-        ttl=1800
+        ttl=3600
     )
 
     if not data or not isinstance(data, dict):
-        logger.warning(f"No data returned for team {team_id}")
+        return []
+
+    # Si es un error cacheado, devolver vacío
+    if "_error" in data:
         return []
 
     matches = data.get("matches", [])
     logger.info(f"Team {team_id}: {len(matches)} matches retrieved")
-    
-    # Log del primer match para debug
-    if matches:
-        first = matches[0]
-        score = first.get("score", {})
-        logger.info(f"Sample match: {first.get('id')} | score={score}")
-    
     return matches
 
 
 def extract_team_view(team_id, matches, target_competition_id=None):
-    """
-    Extrae estadísticas de una lista de partidos.
-    Si target_competition_id se proporciona, filtra por esa competición.
-    """
     played = won = draw = lost = 0
     gf = ga = 0
     over15 = over25 = over35 = btts = clean_sheet = failed_to_score = 0
@@ -225,28 +233,17 @@ def extract_team_view(team_id, matches, target_competition_id=None):
     # Filtrar por competición si se especifica
     if target_competition_id:
         matches = [m for m in matches if safe_get(m, "competition", "id") == target_competition_id]
-        logger.info(f"After comp filter ({target_competition_id}): {len(matches)} matches")
 
-    for m in matches[:10]:  # Solo últimos 10
+    for m in matches[:10]:
         home = m.get("homeTeam", {}) or {}
         away = m.get("awayTeam", {}) or {}
-        
-        # El score en football-data.org v4 está en score.fullTime
         score = m.get("score", {}) or {}
         full = score.get("fullTime", {}) or {}
 
-        # Intentar diferentes estructuras por si acaso
         hg = full.get("home")
         ag = full.get("away")
-        
-        # Fallback: a veces viene en score.home / score.away directamente
-        if hg is None and "home" in score:
-            hg = score.get("home")
-        if ag is None and "away" in score:
-            ag = score.get("away")
 
         if hg is None or ag is None:
-            logger.warning(f"Match {m.get('id')}: no score data (home={hg}, away={ag}) | score obj={score}")
             continue
 
         is_home = home.get("id") == team_id
@@ -297,7 +294,7 @@ def extract_team_view(team_id, matches, target_competition_id=None):
                 "competition": safe_get(m, "competition", "name", default="")
             })
 
-    result = {
+    return {
         "played": played,
         "won": won,
         "draw": draw,
@@ -316,9 +313,6 @@ def extract_team_view(team_id, matches, target_competition_id=None):
         "form_string": "".join([x["result"] for x in form]),
         "form": form
     }
-    
-    logger.info(f"Team {team_id} FINAL STATS: played={played}, GF={gf}, GA={ga}, form={result['form_string']}")
-    return result
 
 
 def find_team_row(table_rows, team_id):
@@ -346,10 +340,10 @@ def get_standings_bundle(team_id, competition_id, season_year):
         ttl=3600
     )
 
-    result = {"TOTAL": None, "HOME": None, "AWAY": None}
-    if not data or not data.get("standings"):
-        return result
+    if not data or not isinstance(data, dict) or "_error" in data:
+        return {"TOTAL": None, "HOME": None, "AWAY": None}
 
+    result = {"TOTAL": None, "HOME": None, "AWAY": None}
     for standing in data.get("standings", []):
         standing_type = standing.get("type")
         if standing_type in result:
@@ -376,10 +370,10 @@ def api_matches(date: str = Query(None)):
             f"competitions/{code}/matches",
             params={"dateFrom": date, "dateTo": date},
             cache_key=f"matches_{code}_{date}",
-            ttl=300
+            ttl=1800  # 30 min cache para partidos del día
         )
 
-        if data and data.get("matches"):
+        if data and isinstance(data, dict) and "_error" not in data and data.get("matches"):
             comp_matches = [format_match(m) for m in data["matches"]]
             comp_matches = [m for m in comp_matches if m["matchDate"] == date]
             if comp_matches:
@@ -427,15 +421,15 @@ def analyze(
     matchday: int = Query(0),
     status: str = Query("SCHEDULED")
 ):
-    logger.info(f"=== ANALYZE match_id={match_id}, home_id={home_id}, away_id={away_id}, comp_id={competition_id} ===")
+    logger.info(f"=== ANALYZE match_id={match_id}, home={home_id}, away={away_id}, comp={competition_id} ===")
     
     match_detail = api_get(
         f"matches/{match_id}",
         cache_key=f"match_detail_{match_id}",
-        ttl=1800
+        ttl=3600
     )
 
-    if match_detail:
+    if match_detail and isinstance(match_detail, dict) and "_error" not in match_detail:
         home_team = safe_get(match_detail, "homeTeam", "name", default=home_team)
         away_team = safe_get(match_detail, "awayTeam", "name", default=away_team)
         home_short = safe_get(match_detail, "homeTeam", "shortName", default=home_short)
@@ -456,44 +450,45 @@ def analyze(
         if away_score == "":
             away_score = safe_get(match_detail, "score", "fullTime", "away", default="")
 
-    # Determinar temporada - usar año actual o extraer del partido
+    # Determinar temporada
     season_year = datetime.utcnow().year
-    if match_detail:
+    if match_detail and isinstance(match_detail, dict) and "_error" not in match_detail:
         season_start = safe_get(match_detail, "season", "startDate", default="")
         if isinstance(season_start, str) and len(season_start) >= 4:
             season_year = int(season_start[:4])
     
-    logger.info(f"Using season year: {season_year}")
+    logger.info(f"Season year: {season_year}")
 
-    # OBTENER PARTIDOS HISTÓRICOS - SIN FILTRO DE COMPETICIÓN (plan gratuito)
-    home_recent_home = get_team_matches(home_id, season_year, venue="HOME", limit=50)
-    away_recent_away = get_team_matches(away_id, season_year, venue="AWAY", limit=50)
-    home_recent_all = get_team_matches(home_id, season_year, venue=None, limit=50)
-    away_recent_all = get_team_matches(away_id, season_year, venue=None, limit=50)
+    # SOLO 2 LLAMADAS A LA API PARA ESTADÍSTICAS (home + away)
+    # Usamos ALL matches (sin venue filter) para reducir a 1 llamada por equipo
+    home_all = get_team_matches(home_id, season_year, venue=None, limit=20)
+    away_all = get_team_matches(away_id, season_year, venue=None, limit=20)
 
-    # Extraer estadísticas
-    if len(home_recent_home) >= 3:
-        home_stats = extract_team_view(home_id, home_recent_home, target_competition_id=competition_id)
-        home_mode = "HOME"
-    else:
-        home_stats = extract_team_view(home_id, home_recent_all, target_competition_id=competition_id)
-        home_mode = "ALL"
+    # Extraer stats
+    home_stats = extract_team_view(home_id, home_all, target_competition_id=competition_id)
+    away_stats = extract_team_view(away_id, away_all, target_competition_id=competition_id)
 
-    if len(away_recent_away) >= 3:
-        away_stats = extract_team_view(away_id, away_recent_away, target_competition_id=competition_id)
-        away_mode = "AWAY"
-    else:
-        away_stats = extract_team_view(away_id, away_recent_all, target_competition_id=competition_id)
-        away_mode = "ALL"
+    # Decidir modo (si hay pocos datos en la competición, usamos ALL sin filtro)
+    home_mode = "ALL" if home_stats["played"] < 3 else "COMP"
+    away_mode = "ALL" if away_stats["played"] < 3 else "COMP"
 
-    # Standings
+    # Si no hay datos filtrados por competición, usar todos los partidos sin filtro
+    if home_stats["played"] == 0 and home_all:
+        home_stats = extract_team_view(home_id, home_all, target_competition_id=None)
+        home_mode = "ALL_FALLBACK"
+    
+    if away_stats["played"] == 0 and away_all:
+        away_stats = extract_team_view(away_id, away_all, target_competition_id=None)
+        away_mode = "ALL_FALLBACK"
+
+    # Standings (1 llamada, cacheada)
     home_bundle = get_standings_bundle(home_id, competition_id, season_year)
     away_bundle = get_standings_bundle(away_id, competition_id, season_year)
 
     home_table = home_bundle["TOTAL"] or {"position": 0, "points": 0, "won": 0, "draw": 0, "lost": 0, "goals_for": 0, "goals_against": 0}
     away_table = away_bundle["TOTAL"] or {"position": 0, "points": 0, "won": 0, "draw": 0, "lost": 0, "goals_for": 0, "goals_against": 0}
 
-    # H2H
+    # H2H (1 llamada, opcional)
     h2h_data = api_get(
         f"matches/{match_id}/head2head",
         params={"limit": 5},
@@ -511,7 +506,7 @@ def analyze(
         "total_matches": 0
     }
 
-    if h2h_data and h2h_data.get("aggregates"):
+    if h2h_data and isinstance(h2h_data, dict) and "_error" not in h2h_data and h2h_data.get("aggregates"):
         agg = h2h_data["aggregates"]
         h2h_stats = {
             "home_wins": safe_get(agg, "homeTeam", "wins", default=0),
@@ -589,16 +584,15 @@ def analyze(
             "away_id": away_id,
             "competition_id": competition_id,
             "season_year_used": season_year,
-            "home_recent_home_count": len(home_recent_home),
-            "away_recent_away_count": len(away_recent_away),
-            "home_recent_all_count": len(home_recent_all),
-            "away_recent_all_count": len(away_recent_all),
+            "home_matches_raw": len(home_all),
+            "away_matches_raw": len(away_all),
             "home_mode_used": home_mode,
             "away_mode_used": away_mode,
+            "home_stats_played": home_stats["played"],
+            "away_stats_played": away_stats["played"],
             "home_total_found": bool(home_bundle["TOTAL"]),
             "away_total_found": bool(away_bundle["TOTAL"]),
-            "home_stats_played": home_stats["played"],
-            "away_stats_played": away_stats["played"]
+            "rate_limit_active": RATE_LIMIT_UNTIL.isoformat() if RATE_LIMIT_UNTIL else None
         }
     })
 
@@ -610,7 +604,8 @@ def health():
         "time": datetime.now().isoformat(),
         "cache_size": len(CACHE),
         "api_key": "configured" if API_KEY else "missing",
-        "version": "3.0.0"
+        "rate_limit_until": RATE_LIMIT_UNTIL.isoformat() if RATE_LIMIT_UNTIL else None,
+        "version": "3.1.0"
     }
 
 
