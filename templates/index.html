@@ -2,10 +2,7 @@
 <html lang="es">
 <head>
   <meta charset="UTF-8" />
-  <meta
-    name="viewport"
-    content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"
-  />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
   <title>TipFactory</title>
   <link rel="stylesheet" href="/static/css/style.css" />
 <base target="_blank">
@@ -19,98 +16,11 @@
 
     <div class="date-selector">
       <button class="date-nav" id="prev-date">&#9664;</button>
-
       <div class="date-display">
         <span id="current-date">--/--/----</span>
         <input type="date" id="date-picker" />
       </div>
-
       <button class="date-nav" id="next-date">&#9654;</button>
-    </div>
-
-    <div class="league-filters" id="league-filters">
-      <button class="filter-btn active" data-filter="all">Todos</button>
-      <button class="filter-btn" data-filter="spain">España</button>
-      <button class="filter-btn" data-filter="england">Inglaterra</button>
-      <button class="filter-btn" data-filter="italy">Italia</button>
-      <button class="filter-btn" data-filter="germany">Alemania</button>
-      <button class="filter-btn" data-filter="france">Francia</button>
-      <button class="filter-btn" data-filter="portugal">Portugal</button>
-      <button class="filter-btn" data-filter="netherlands">Holanda</button>
-      <button class="filter-btn" data-filter="brazil">Brasil</button>
-      <button class="filter-btn" data-filter="argentina">Argentina</button>
-      <button class="filter-btn" data-filter="champions">Champions</button>
-      <button class="filter-btn" data-filter="europa">Europa</button>
-      <button class="filter-btn" data-filter="mls">MLS</button>
-      <button class="filter-btn" data-filter="mexico">México</button>
-      <button class="filter-btn" data-filter="colombia">Colombia</button>
-      <button class="filter-btn" data-filter="chile">Chile</button>
-      <button class="filter-btn" data-filter="uruguay">Uruguay</button>
-      <button class="filter-btn" data-filter="peru">Perú</button>
-      <button class="filter-btn" data-filter="ecuador">Ecuador</button>
-      <button class="filter-btn" data-filter="japan">Japón</button>
-      <button class="filter-btn" data-filter="korea">Corea</button>
-      <button class="filter-btn" data-filter="china">China</button>
-      <button class="filter-btn" data-filter="saudi">Arabia</button>
-      <button class="filter-btn" data-filter="egypt">Egipto</button>
-      <button class="filter-btn" data-filter="south africa">Sudáfrica</button>
-      <button class="filter-btn" data-filter="morocco">Marruecos</button>
-      <button class="filter-btn" data-filter="tunisia">Túnez</button>
-      <button class="filter-btn" data-filter="algeria">Argelia</button>
-      <button class="filter-btn" data-filter="nigeria">Nigeria</button>
-      <button class="filter-btn" data-filter="ghana">Ghana</button>
-      <button class="filter-btn" data-filter="belgium">Bélgica</button>
-      <button class="filter-btn" data-filter="switzerland">Suiza</button>
-      <button class="filter-btn" data-filter="austria">Austria</button>
-      <button class="filter-btn" data-filter="denmark">Dinamarca</button>
-      <button class="filter-btn" data-filter="norway">Noruega</button>
-      <button class="filter-btn" data-filter="finland">Finlandia</button>
-      <button class="filter-btn" data-filter="czech">Rep. Checa</button>
-      <button class="filter-btn" data-filter="greece">Grecia</button>
-      <button class="filter-btn" data-filter="turkey">Turquía</button>
-      <button class="filter-btn" data-filter="ukraine">Ucrania</button>
-      <button class="filter-btn" data-filter="croatia">Croacia</button>
-      <button class="filter-btn" data-filter="romania">Rumanía</button>
-      <button class="filter-btn" data-filter="scotland">Escocia</button>
-      <button class="filter-btn" data-filter="russia">Rusia</button>
-      <button class="filter-btn" data-filter="poland">Polonia</button>
-      <button class="filter-btn" data-filter="costa rica">Costa Rica</button>
-      <button class="filter-btn" data-filter="guatemala">Guatemala</button>
-      <button class="filter-btn" data-filter="honduras">Honduras</button>
-      <button class="filter-btn" data-filter="el salvador">El Salvador</button>
-      <button class="filter-btn" data-filter="panama">Panamá</button>
-      <button class="filter-btn" data-filter="jamaica">Jamaica</button>
-      <button class="filter-btn" data-filter="usl">USL</button>
-      <button class="filter-btn" data-filter="canada">Canadá</button>
-      <button class="filter-btn" data-filter="iran">Irán</button>
-      <button class="filter-btn" data-filter="qatar">Qatar</button>
-      <button class="filter-btn" data-filter="uae">Emiratos</button>
-      <button class="filter-btn" data-filter="indonesia">Indonesia</button>
-      <button class="filter-btn" data-filter="malaysia">Malasia</button>
-      <button class="filter-btn" data-filter="singapore">Singapur</button>
-      <button class="filter-btn" data-filter="vietnam">Vietnam</button>
-      <button class="filter-btn" data-filter="hong kong">Hong Kong</button>
-      <button class="filter-btn" data-filter="taiwan">Taiwán</button>
-      <button class="filter-btn" data-filter="kenya">Kenia</button>
-      <button class="filter-btn" data-filter="tanzania">Tanzania</button>
-      <button class="filter-btn" data-filter="uganda">Uganda</button>
-      <button class="filter-btn" data-filter="zambia">Zambia</button>
-      <button class="filter-btn" data-filter="zimbabwe">Zimbabue</button>
-      <button class="filter-btn" data-filter="ivory coast">Costa de Marfil</button>
-      <button class="filter-btn" data-filter="senegal">Senegal</button>
-      <button class="filter-btn" data-filter="world cup">Mundial</button>
-      <button class="filter-btn" data-filter="euro">Euro</button>
-      <button class="filter-btn" data-filter="copa america">Copa América</button>
-      <button class="filter-btn" data-filter="nations">Nations League</button>
-      <button class="filter-btn" data-filter="africa cup">África</button>
-      <button class="filter-btn" data-filter="gold cup">Gold Cup</button>
-      <button class="filter-btn" data-filter="asian cup">Asia</button>
-      <button class="filter-btn" data-filter="women">Femenino</button>
-      <button class="filter-btn" data-filter="olympic">Olímpico</button>
-      <button class="filter-btn" data-filter="u20">U-20</button>
-      <button class="filter-btn" data-filter="u17">U-17</button>
-      <button class="filter-btn" data-filter="futsal">Futsal</button>
-      <button class="filter-btn" data-filter="beach">Beach Soccer</button>
     </div>
 
     <section id="matches-section">
@@ -139,15 +49,12 @@
               <img id="home-logo" src="" alt="Local" onerror="this.style.display='none'">
               <span id="home-name">Local</span>
             </div>
-
             <div class="vs-center">VS</div>
-
             <div class="team-block">
               <img id="away-logo" src="" alt="Visitante" onerror="this.style.display='none'">
               <span id="away-name">Visitante</span>
             </div>
           </div>
-
           <div class="form-row">
             <div class="form-badges" id="home-form-badges"></div>
             <div class="form-badges" id="away-form-badges"></div>
@@ -216,7 +123,6 @@
             <tbody id="corners-table-body"></tbody>
           </table>
         </div>
-
         <div class="card">
           <div class="card-title">Total de corners (líneas)</div>
           <table class="stats-table" id="total-corners-table">
