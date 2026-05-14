@@ -172,6 +172,11 @@ function loadMatches() {
 
   fetch('/api/matches?date=' + encodeURIComponent(dateStr))
     .then(function (response) {
+      if (!response.ok) {
+        return response.text().then(function (txt) {
+          throw new Error('HTTP ' + response.status + ' - ' + txt);
+        });
+      }
       return response.json();
     })
     .then(function (data) {
@@ -181,7 +186,7 @@ function loadMatches() {
     .catch(function (error) {
       console.error('Error cargando partidos:', error);
       if (matchesContainer) {
-        matchesContainer.innerHTML = '<div class="no-matches">Error cargando partidos</div>';
+        matchesContainer.innerHTML = '<div class="no-matches">Error cargando partidos: ' + error.message + '</div>';
       }
     });
 }
@@ -219,16 +224,7 @@ function renderMatches() {
 
     html += ''
       + '<div class="match-card"'
-      + ' data-match-id="' + valueOrDash(match.id) + '"'
-      + ' data-home-team="' + encodeURIComponent(home.name || 'Local') + '"'
-      + ' data-away-team="' + encodeURIComponent(away.name || 'Visitante') + '"'
-      + ' data-home-logo="' + encodeURIComponent(home.crest || '') + '"'
-      + ' data-away-logo="' + encodeURIComponent(away.crest || '') + '"'
-      + ' data-league="' + encodeURIComponent(match.league_name || '') + '"'
-      + ' data-country="' + encodeURIComponent(match.country || '') + '"'
-      + ' data-date="' + encodeURIComponent(match.matchDate || '') + '"'
-      + ' data-time="' + encodeURIComponent(formatLocalTime(match.utcDate)) + '"'
-      + ' data-venue="' + encodeURIComponent(match.venue || '') + '">'
+      + ' data-match-id="' + valueOrDash(match.id) + '">'
 
       + '<div class="match-time-row">'
       + '<span class="match-time">' + formatLocalTime(match.utcDate) + '</span>'
@@ -437,34 +433,23 @@ function openAnalysis(card) {
     return;
   }
 
-  var params = new URLSearchParams({
-    home_team: decodeURIComponent(card.dataset.homeTeam || 'Local'),
-    away_team: decodeURIComponent(card.dataset.awayTeam || 'Visitante'),
-    home_logo: decodeURIComponent(card.dataset.homeLogo || ''),
-    away_logo: decodeURIComponent(card.dataset.awayLogo || ''),
-    league: decodeURIComponent(card.dataset.league || ''),
-    date: decodeURIComponent(card.dataset.date || ''),
-    time: decodeURIComponent(card.dataset.time || '--:--'),
-    country: decodeURIComponent(card.dataset.country || ''),
-    venue: decodeURIComponent(card.dataset.venue || '')
-  });
-
   showAnalysis();
   activateTab('resumen');
 
   var analysisBox = getEl('analysis-text-box');
   if (analysisBox) analysisBox.innerHTML = 'Cargando análisis...';
 
-  fetch('/api/analyze/' + encodeURIComponent(matchId) + '?' + params.toString())
+  fetch('/api/analyze/' + encodeURIComponent(matchId))
     .then(function (response) {
       if (!response.ok) {
-        throw new Error('HTTP ' + response.status);
+        return response.text().then(function (txt) {
+          throw new Error('HTTP ' + response.status + ' - ' + txt);
+        });
       }
       return response.json();
     })
     .then(function (data) {
       console.log('ANALYSIS DATA', data);
-
       fillHeader(data);
       renderFormBadges(data.home_form || [], 'home-form-badges');
       renderFormBadges(data.away_form || [], 'away-form-badges');
@@ -477,7 +462,7 @@ function openAnalysis(card) {
     })
     .catch(function (error) {
       console.error('Error cargando analisis:', error);
-      if (analysisBox) analysisBox.innerHTML = 'Error cargando análisis.';
+      if (analysisBox) analysisBox.innerHTML = 'Error cargando análisis: ' + error.message;
     });
 }
 
