@@ -42,8 +42,12 @@ TOP_COMPETITIONS = {
     "FL1": "Ligue 1",
     "PPL": "Primeira Liga",
     "DED": "Eredivisie",
+    "ELC": "Championship",
+    "BSA": "Brazil Serie A",
     "CL": "Champions League",
-    "EL": "Europa League"
+    "EL": "Europa League",
+    "EC": "Euro Cup",
+    "WC": "World Cup"
 }
 
 
@@ -80,7 +84,7 @@ def api_request(endpoint, params=None, cache_key=None, ttl=300):
             logger.error(f"AUTH ERROR {resp.status_code}")
             return None
         if resp.status_code == 404:
-            logger.error(f"NOT FOUND {endpoint}")
+            logger.warning(f"NOT FOUND {endpoint}")
             return None
 
         resp.raise_for_status()
@@ -96,9 +100,9 @@ def api_request(endpoint, params=None, cache_key=None, ttl=300):
 
 
 def format_match(m):
-    home = m.get("homeTeam", {})
-    away = m.get("awayTeam", {})
-    competition = m.get("competition", {})
+    home = m.get("homeTeam", {}) or {}
+    away = m.get("awayTeam", {}) or {}
+    competition = m.get("competition", {}) or {}
     area = m.get("area", {}) or competition.get("area", {}) or {}
     score = m.get("score", {}) if isinstance(m.get("score", {}), dict) else {}
     ft = score.get("fullTime", {}) if isinstance(score.get("fullTime", {}), dict) else {}
@@ -121,13 +125,17 @@ def format_match(m):
         "AWARDED": "AWD"
     }
 
+    minute = m.get("minute", 0)
+    if isinstance(minute, dict):
+        minute = minute.get("regular", 0)
+
     return {
         "id": m.get("id"),
         "utcDate": utc_date,
         "matchDate": match_date,
         "status": status_map.get(status, status),
         "statusText": status,
-        "minute": 0,
+        "minute": minute or 0,
         "venue": m.get("venue", "") or "",
         "matchday": m.get("matchday", 0) or 0,
         "homeTeam": {
@@ -156,7 +164,24 @@ def format_match(m):
     }
 
 
+def dedupe_matches(matches):
+    unique = []
+    seen = set()
+
+    for m in matches:
+        if not m.get("id"):
+            continue
+        if m["id"] not in seen:
+            seen.add(m["id"])
+            unique.append(m)
+
+    return unique
+
+
 def get_team_form(team_id, comp_code=None):
+    if not team_id:
+        return []
+
     params = {"status": "FINISHED", "limit": 5}
     if comp_code:
         params["competitions"] = comp_code
@@ -181,25 +206,25 @@ def get_team_form(team_id, comp_code=None):
         is_home = home.get("id") == team_id
 
         if is_home:
-            team_goals = hg
-            opp_goals = ag
+            tg = hg
+            og = ag
             opponent = away.get("name", "Rival")
         else:
-            team_goals = ag
-            opp_goals = hg
+            tg = ag
+            og = hg
             opponent = home.get("name", "Rival")
 
         result = "D"
-        if team_goals > opp_goals:
+        if tg > og:
             result = "W"
-        elif team_goals < opp_goals:
+        elif tg < og:
             result = "L"
 
         form.append({
             "result": result,
             "result_text": "Victoria" if result == "W" else "Empate" if result == "D" else "Derrota",
-            "team_goals": team_goals,
-            "opp_goals": opp_goals,
+            "team_goals": tg,
+            "opp_goals": og,
             "opponent": opponent,
             "venue": "home" if is_home else "away",
             "date": (m.get("utcDate") or "")[:10],
@@ -210,7 +235,7 @@ def get_team_form(team_id, comp_code=None):
 
 
 def get_team_standings(team_id, comp_code, season_year):
-    if not comp_code:
+    if not team_id or not comp_code:
         return None
 
     data = api_request(
@@ -294,6 +319,19 @@ def matches(date: str = Query(None)):
     all_matches = []
     found_competitions = set()
 
+    general_data = api_request(
+        "matches",
+        params={"dateFrom": date, "dateTo": date},
+        cache_key=f"matches_{date}",
+        ttl=300
+    )
+
+    if general_data and general_data.get("matches"):
+        general_matches = [format_match(m) for m in general_data["matches"]]
+        general_matches = [m for m in general_matches if m["matchDate"] == date]
+        all_matches.extend(general_matches)
+        logger.info(f"/matches general: {len(general_matches)} partidos")
+
     for comp_code, comp_name in TOP_COMPETITIONS.items():
         try:
             data = api_request(
@@ -313,34 +351,11 @@ def matches(date: str = Query(None)):
         except Exception as e:
             logger.error(f"Error en {comp_name}: {e}")
 
-    if not all_matches:
-        logger.info("No se encontraron partidos en competiciones individuales, probando /matches general")
-        try:
-            data = api_request(
-                "matches",
-                params={"dateFrom": date, "dateTo": date},
-                cache_key=f"matches_{date}",
-                ttl=300
-            )
+    unique_matches = dedupe_matches(all_matches)
 
-            if data and data.get("matches"):
-                general_matches = [format_match(m) for m in data["matches"]]
-                general_matches = [m for m in general_matches if m["matchDate"] == date]
-                all_matches.extend(general_matches)
-                logger.info(f"/matches general: {len(general_matches)} partidos")
-        except Exception as e:
-            logger.error(f"Error en /matches general: {e}")
-
-    unique = []
-    seen = set()
-    for m in all_matches:
-        if m["id"] not in seen:
-            seen.add(m["id"])
-            unique.append(m)
-
-    if unique:
+    if unique_matches:
         return {
-            "matches": unique,
+            "matches": unique_matches,
             "requested_date": date,
             "source_date": date,
             "is_exact": True,
@@ -348,33 +363,41 @@ def matches(date: str = Query(None)):
         }
 
     logger.info("Buscando en fechas cercanas...")
+
     for delta in [-1, 1, -2, 2, -3, 3, -4, 4, -5, 5, -6, 6, -7, 7]:
         try:
             check_date = (datetime.strptime(date, "%Y-%m-%d") + timedelta(days=delta)).strftime("%Y-%m-%d")
             fallback_matches = []
 
+            data = api_request(
+                "matches",
+                params={"dateFrom": check_date, "dateTo": check_date},
+                cache_key=f"matches_{check_date}",
+                ttl=300
+            )
+
+            if data and data.get("matches"):
+                general_matches = [format_match(m) for m in data["matches"]]
+                general_matches = [m for m in general_matches if m["matchDate"] == check_date]
+                fallback_matches.extend(general_matches)
+
             for comp_code, comp_name in TOP_COMPETITIONS.items():
-                data = api_request(
+                comp_data = api_request(
                     f"competitions/{comp_code}/matches",
                     params={"dateFrom": check_date, "dateTo": check_date},
                     cache_key=f"comp_{comp_code}_{check_date}",
                     ttl=600
                 )
 
-                if data and data.get("matches"):
-                    comp_matches = [format_match(m) for m in data["matches"]]
+                if comp_data and comp_data.get("matches"):
+                    comp_matches = [format_match(m) for m in comp_data["matches"]]
                     comp_matches = [m for m in comp_matches if m["matchDate"] == check_date]
                     fallback_matches.extend(comp_matches)
 
-            if fallback_matches:
-                unique_fallback = []
-                seen_fallback = set()
+            unique_fallback = dedupe_matches(fallback_matches)
 
-                for m in fallback_matches:
-                    if m["id"] not in seen_fallback:
-                        seen_fallback.add(m["id"])
-                        unique_fallback.append(m)
-
+            if unique_fallback:
+                logger.info(f"ENCONTRADOS {len(unique_fallback)} partidos en fecha alternativa {check_date}")
                 return {
                     "matches": unique_fallback,
                     "requested_date": date,
@@ -383,8 +406,9 @@ def matches(date: str = Query(None)):
                     "competitions_found": list(found_competitions)
                 }
         except Exception as e:
-            logger.error(f"Error buscando fecha alternativa: {e}")
+            logger.error(f"Error buscando {check_date}: {e}")
 
+    logger.warning(f"NO HAY PARTIDOS para {date}")
     return {
         "matches": [],
         "requested_date": date,
@@ -395,7 +419,17 @@ def matches(date: str = Query(None)):
 
 
 @app.get("/api/analyze/{match_id}")
-def analyze(match_id: int):
+def analyze(
+    match_id: int,
+    home_team: str = Query("Local"),
+    away_team: str = Query("Visitante"),
+    home_logo: str = Query(""),
+    away_logo: str = Query(""),
+    league: str = Query(""),
+    date: str = Query(""),
+    time: str = Query("--:--"),
+    country: str = Query("")
+):
     logger.info(f"ANALIZANDO PARTIDO {match_id}")
 
     match = api_request(
@@ -405,19 +439,107 @@ def analyze(match_id: int):
     )
 
     if not match:
-        raise HTTPException(status_code=404, detail="Partido no encontrado")
+        logger.warning(f"No se pudo obtener matches/{match_id}, usando fallback")
+        return {
+            "match_info": {
+                "home_team": home_team,
+                "away_team": away_team,
+                "home_short": home_team[:12],
+                "away_short": away_team[:12],
+                "home_logo": home_logo,
+                "away_logo": away_logo,
+                "home_formation": "",
+                "away_formation": "",
+                "home_coach": "",
+                "away_coach": "",
+                "league": league,
+                "country": country,
+                "date": date,
+                "time": time,
+                "venue": "",
+                "status": "SCHEDULED",
+                "minute": 0,
+                "matchday": 0,
+                "home_score": None,
+                "away_score": None,
+                "halfTimeHome": None,
+                "halfTimeAway": None
+            },
+            "home_form": [],
+            "away_form": [],
+            "home_stats": {
+                "position": 0,
+                "played": 0,
+                "won": 0,
+                "draw": 0,
+                "lost": 0,
+                "goals_for": 0,
+                "goals_against": 0,
+                "points": 0,
+                "form_string": "",
+                "avg_total_goals": 0,
+                "avg_team_goals": 0,
+                "avg_conceded": 0,
+                "btts_pct": 0,
+                "over_1_5_pct": 0,
+                "over_2_5_pct": 0,
+                "over_3_5_pct": 0,
+                "avg_corners": 5.0,
+                "avg_cards": 2.5
+            },
+            "away_stats": {
+                "position": 0,
+                "played": 0,
+                "won": 0,
+                "draw": 0,
+                "lost": 0,
+                "goals_for": 0,
+                "goals_against": 0,
+                "points": 0,
+                "form_string": "",
+                "avg_total_goals": 0,
+                "avg_team_goals": 0,
+                "avg_conceded": 0,
+                "btts_pct": 0,
+                "over_1_5_pct": 0,
+                "over_2_5_pct": 0,
+                "over_3_5_pct": 0,
+                "avg_corners": 4.5,
+                "avg_cards": 2.3
+            },
+            "h2h": {
+                "matches": [],
+                "stats": {
+                    "home_wins": 0,
+                    "away_wins": 0,
+                    "draws": 0,
+                    "home_goals": 0,
+                    "away_goals": 0,
+                    "total_matches": 0
+                }
+            },
+            "probabilities": {
+                "over_1_5": 0,
+                "over_2_5": 0,
+                "over_3_5": 0,
+                "btts": 0,
+                "total_expected_goals": 0,
+                "expected_corners": 9.5,
+                "expected_cards": 4.8
+            },
+            "odds": {"home": 0, "draw": 0, "away": 0}
+        }
 
-    home_team = match.get("homeTeam", {})
-    away_team = match.get("awayTeam", {})
-    competition = match.get("competition", {})
+    home_team_data = match.get("homeTeam", {}) or {}
+    away_team_data = match.get("awayTeam", {}) or {}
+    competition = match.get("competition", {}) or {}
     area = match.get("area", {}) or competition.get("area", {}) or {}
-    season = match.get("season", {})
+    season = match.get("season", {}) or {}
     season_year = (season.get("startDate") or "2025")[:4]
     comp_code = competition.get("code")
 
-    home_id = home_team.get("id")
-    away_id = away_team.get("id")
-
+    home_id = home_team_data.get("id")
+    away_id = away_team_data.get("id")
     match_detail = format_match(match)
 
     home_form = get_team_form(home_id, comp_code)
@@ -481,7 +603,7 @@ def analyze(match_id: int):
         "expected_cards": round(home_stats["avg_cards"] + away_stats["avg_cards"], 1)
     }
 
-    h2h = api_request(
+    h2h_data = api_request(
         f"matches/{match_id}/head2head",
         params={"limit": 10},
         cache_key=f"h2h_{match_id}",
@@ -498,8 +620,8 @@ def analyze(match_id: int):
         "total_matches": 0
     }
 
-    if h2h and h2h.get("aggregates"):
-        agg = h2h["aggregates"]
+    if h2h_data and h2h_data.get("aggregates"):
+        agg = h2h_data["aggregates"]
         h2h_stats = {
             "home_wins": agg.get("homeTeam", {}).get("wins", 0),
             "away_wins": agg.get("awayTeam", {}).get("wins", 0),
@@ -509,7 +631,7 @@ def analyze(match_id: int):
             "total_matches": agg.get("numberOfMatches", 0)
         }
 
-        for item in h2h.get("matches", [])[:5]:
+        for item in h2h_data.get("matches", [])[:5]:
             h2h_matches.append({
                 "date": (item.get("utcDate") or "")[:10],
                 "home": item.get("homeTeam", {}).get("name", ""),
@@ -521,20 +643,20 @@ def analyze(match_id: int):
 
     return {
         "match_info": {
-            "home_team": home_team.get("name", "Local"),
-            "away_team": away_team.get("name", "Visitante"),
-            "home_short": home_team.get("shortName") or home_team.get("tla") or home_team.get("name", "Local")[:12],
-            "away_short": away_team.get("shortName") or away_team.get("tla") or away_team.get("name", "Visitante")[:12],
-            "home_logo": home_team.get("crest", "") or "",
-            "away_logo": away_team.get("crest", "") or "",
+            "home_team": home_team_data.get("name", home_team),
+            "away_team": away_team_data.get("name", away_team),
+            "home_short": home_team_data.get("shortName") or home_team_data.get("tla") or home_team_data.get("name", home_team)[:12],
+            "away_short": away_team_data.get("shortName") or away_team_data.get("tla") or away_team_data.get("name", away_team)[:12],
+            "home_logo": home_team_data.get("crest", home_logo) or home_logo,
+            "away_logo": away_team_data.get("crest", away_logo) or away_logo,
             "home_formation": "",
             "away_formation": "",
             "home_coach": "",
             "away_coach": "",
-            "league": competition.get("name", ""),
-            "country": area.get("name", ""),
-            "date": (match.get("utcDate") or "")[:10] if match.get("utcDate") else "N/A",
-            "time": (match.get("utcDate") or "")[11:16] if match.get("utcDate") else "--:--",
+            "league": competition.get("name", league),
+            "country": area.get("name", country),
+            "date": (match.get("utcDate") or "")[:10] if match.get("utcDate") else date,
+            "time": (match.get("utcDate") or "")[11:16] if match.get("utcDate") else time,
             "venue": match.get("venue", "") or "",
             "status": match.get("status", "SCHEDULED"),
             "minute": match_detail.get("minute", 0),
@@ -553,11 +675,7 @@ def analyze(match_id: int):
             "stats": h2h_stats
         },
         "probabilities": probabilities,
-        "odds": {
-            "home": 0,
-            "draw": 0,
-            "away": 0
-        }
+        "odds": {"home": 0, "draw": 0, "away": 0}
     }
 
 
