@@ -33,22 +33,6 @@ HEADERS = {
 
 _cache = {}
 
-# Top competitions
-TOP_COMPETITIONS = {
-    'PL': 'Premier League',
-    'PD': 'La Liga', 
-    'SA': 'Serie A',
-    'BL1': 'Bundesliga',
-    'FL1': 'Ligue 1',
-    'CL': 'Champions League',
-    'EL': 'Europa League',
-    'EC': 'European Championship',
-    'PPL': 'Primeira Liga',
-    'DED': 'Eredivisie',
-    'BSA': 'Serie A Brazil',
-    'CLI': 'Copa Libertadores',
-}
-
 def get_cache(key, ttl=300):
     if key in _cache:
         data, ts = _cache[key]
@@ -71,7 +55,6 @@ def api_request(endpoint, params=None, cache_key=None, ttl=300):
 
     try:
         url = f"{BASE_URL}/{endpoint}"
-        logger.info(f"API CALL: {url} | params: {params}")
         resp = requests.get(url, headers=HEADERS, params=params, timeout=15)
 
         if resp.status_code == 429:
@@ -86,7 +69,6 @@ def api_request(endpoint, params=None, cache_key=None, ttl=300):
 
         resp.raise_for_status()
         data = resp.json()
-        logger.info(f"API RESPONSE: {len(data)} keys, matches: {len(data.get('matches', []))}")
 
         if cache_key:
             set_cache(cache_key, data)
@@ -102,7 +84,6 @@ def format_match(m):
     score = m.get('score', {})
     ft = score.get('fullTime', {}) if isinstance(score, dict) else {}
     ht = score.get('halfTime', {}) if isinstance(score, dict) else {}
-    match_date = m.get('utcDate', '')[:10] if m.get('utcDate') else ''
 
     status = m.get('status', 'SCHEDULED')
     status_map = {
@@ -118,7 +99,6 @@ def format_match(m):
     return {
         "id": m.get('id'),
         "utcDate": m.get('utcDate'),
-        "matchDate": match_date,
         "status": status_map.get(status, status),
         "statusText": status,
         "minute": minute,
@@ -142,7 +122,7 @@ def format_match(m):
             "code": competition.get('code', ''),
         },
         "league_name": competition.get('name', ''),
-        "country": m.get('area', {}).get('name', '') if m.get('area') else competition.get('area', {}).get('name', ''),
+        "country": m.get('area', {}).get('name', ''),
         "homeScore": ft.get('home') if isinstance(ft, dict) else None,
         "awayScore": ft.get('away') if isinstance(ft, dict) else None,
         "halfTimeHome": ht.get('home') if isinstance(ht, dict) else None,
@@ -158,145 +138,42 @@ def matches(date: str = Query(None)):
     if not date:
         date = datetime.now().strftime("%Y-%m-%d")
 
-    logger.info(f"=" * 50)
     logger.info(f"BUSCANDO PARTIDOS PARA: {date}")
 
-    all_matches = []
-    found_competitions = set()
-
-    # STRATEGY 1: General /matches endpoint WITHOUT competitions filter
-    # This should return ALL matches the API key has access to for the date range
-    logger.info("STRATEGY 1: General /matches sin filtro de competiciones")
-    data = api_request(
-        'matches',
-        {'dateFrom': date, 'dateTo': date},
-        f"matches_general_{date}",
-        300
-    )
+    # Clean call: just date range, no competitions filter
+    # This returns ALL matches the API key has access to for this date
+    data = api_request('matches', {'dateFrom': date, 'dateTo': date}, f"matches_{date}", 300)
 
     if data and data.get('matches'):
-        general_matches = [format_match(m) for m in data['matches']]
-        # Filter to exact date
-        general_matches = [m for m in general_matches if m['matchDate'] == date]
-        if general_matches:
-            all_matches.extend(general_matches)
-            for m in general_matches:
-                found_competitions.add(m['competition'].get('name', 'Unknown'))
-            logger.info(f"  General: {len(general_matches)} partidos")
-
-    # STRATEGY 2: General /matches WITH competitions filter
-    if not all_matches:
-        logger.info("STRATEGY 2: General /matches CON filtro de competiciones")
-        competitions = 'PL,PD,SA,BL1,FL1,CL,EL,EC,PPL,DED'
-        data = api_request(
-            'matches',
-            {'dateFrom': date, 'dateTo': date, 'competitions': competitions},
-            f"matches_filtered_{date}",
-            300
-        )
-
-        if data and data.get('matches'):
-            filtered_matches = [format_match(m) for m in data['matches']]
-            filtered_matches = [m for m in filtered_matches if m['matchDate'] == date]
-            if filtered_matches:
-                all_matches.extend(filtered_matches)
-                for m in filtered_matches:
-                    found_competitions.add(m['competition'].get('name', 'Unknown'))
-                logger.info(f"  Filtrado: {len(filtered_matches)} partidos")
-
-    # STRATEGY 3: Competition-specific endpoints
-    if not all_matches:
-        logger.info("STRATEGY 3: Endpoints especificos por competicion")
-        for comp_code, comp_name in TOP_COMPETITIONS.items():
-            try:
-                # Determine season based on date
-                date_year = int(date[:4])
-                season = date_year - 1 if int(date[5:7]) < 8 else date_year
-
-                data = api_request(
-                    f'competitions/{comp_code}/matches',
-                    {
-                        'dateFrom': date,
-                        'dateTo': date,
-                        'season': season
-                    },
-                    f"comp_{comp_code}_{date}_{season}",
-                    600
-                )
-
-                if data and data.get('matches'):
-                    comp_matches = [format_match(m) for m in data['matches']]
-                    comp_matches = [m for m in comp_matches if m['matchDate'] == date]
-                    if comp_matches:
-                        all_matches.extend(comp_matches)
-                        found_competitions.add(comp_name)
-                        logger.info(f"  {comp_name}: {len(comp_matches)} partidos")
-
-            except Exception as e:
-                logger.error(f"Error en {comp_name}: {e}")
-                continue
-
-    # Remove duplicates
-    seen_ids = set()
-    unique_matches = []
-    for m in all_matches:
-        if m['id'] not in seen_ids:
-            seen_ids.add(m['id'])
-            unique_matches.append(m)
-
-    logger.info(f"TOTAL ENCONTRADOS: {len(unique_matches)} partidos unicos")
-    logger.info(f"Competiciones: {', '.join(found_competitions) if found_competitions else 'Ninguna'}")
-    logger.info(f"=" * 50)
-
-    if unique_matches:
+        matches_list = [format_match(m) for m in data['matches']]
+        logger.info(f"ENCONTRADOS {len(matches_list)} partidos en {date}")
         return {
-            "matches": unique_matches,
+            "matches": matches_list,
             "requested_date": date,
             "source_date": date,
-            "is_exact": True,
-            "competitions_found": list(found_competitions),
-            "search_strategy": "direct"
+            "is_exact": True
         }
 
-    # FALLBACK: Search nearby dates (wider range)
-    logger.info("FALLBACK: Buscando en fechas cercanas...")
-    for delta in [-1, 1, -2, 2, -3, 3]:
+    # Fallback: search nearby dates
+    logger.info("Buscando en fechas cercanas...")
+    for delta in [-1, 1, -2, 2, -3, 3, -4, 4, -5, 5, -6, 6, -7, 7]:
         try:
             check_date = (datetime.strptime(date, "%Y-%m-%d") + timedelta(days=delta)).strftime("%Y-%m-%d")
-            fallback_matches = []
 
-            # Try general endpoint first for fallback
-            data = api_request(
-                'matches',
-                {'dateFrom': check_date, 'dateTo': check_date},
-                f"matches_general_{check_date}",
-                300
-            )
+            data = api_request('matches', {'dateFrom': check_date, 'dateTo': check_date}, f"matches_{check_date}", 300)
+
             if data and data.get('matches'):
-                fb_matches = [format_match(m) for m in data['matches']]
-                fb_matches = [m for m in fb_matches if m['matchDate'] == check_date]
-                fallback_matches.extend(fb_matches)
-
-            if fallback_matches:
-                seen_ids = set()
-                unique_fallback = []
-                for m in fallback_matches:
-                    if m['id'] not in seen_ids:
-                        seen_ids.add(m['id'])
-                        unique_fallback.append(m)
-
-                logger.info(f"FALLBACK ENCONTRADO: {len(unique_fallback)} partidos en {check_date}")
+                matches_list = [format_match(m) for m in data['matches']]
+                logger.info(f"ENCONTRADOS {len(matches_list)} partidos en fecha alternativa {check_date}")
                 return {
-                    "matches": unique_fallback,
+                    "matches": matches_list,
                     "requested_date": date,
                     "source_date": check_date,
-                    "is_exact": False,
-                    "competitions_found": list(found_competitions),
-                    "search_strategy": "fallback"
+                    "is_exact": False
                 }
 
         except Exception as e:
-            logger.error(f"Error fallback {check_date}: {e}")
+            logger.error(f"Error buscando {check_date}: {e}")
             continue
 
     logger.warning(f"NO HAY PARTIDOS para {date}")
@@ -304,25 +181,23 @@ def matches(date: str = Query(None)):
         "matches": [],
         "requested_date": date,
         "source_date": None,
-        "is_exact": True,
-        "competitions_found": [],
-        "search_strategy": "none"
+        "is_exact": True
     }
 
 @app.get("/api/analyze/{match_id}")
 def analyze(match_id: int):
     logger.info(f"ANALIZANDO PARTIDO {match_id}")
 
-    # Strategy 1: Try general endpoint
+    # Try general endpoint first
     data = api_request(f'matches/{match_id}', cache_key=f"match_{match_id}", ttl=300)
 
-    # Strategy 2: Search in cache
+    # If 404, search in cached match lists
     if not data:
         logger.warning(f"Match {match_id} not in general endpoint, searching cache...")
         found_match = None
 
         for cache_key in list(_cache.keys()):
-            if cache_key.startswith('matches_general_') or cache_key.startswith('matches_filtered_') or cache_key.startswith('comp_'):
+            if cache_key.startswith('matches_'):
                 cached_data = get_cache(cache_key)
                 if cached_data and cached_data.get('matches'):
                     for m in cached_data['matches']:
@@ -338,31 +213,19 @@ def analyze(match_id: int):
         else:
             logger.error(f"Match {match_id} not found anywhere")
             raise HTTPException(404, "Partido no encontrado o no disponible con tu plan API.")
+    
 
     match = data
-    home_team = match.get('homeTeam', {})
-    away_team = match.get('awayTeam', {})
-    competition = match.get('competition', {})
-
-    home_id = home_team.get('id')
-    away_id = away_team.get('id')
-    comp_id = competition.get('id')
-
-    if not home_id or not away_id:
-        logger.error(f"Missing team IDs for match {match_id}")
-        raise HTTPException(500, "Datos del partido incompletos")
-
+    home_id = match['homeTeam']['id']
+    away_id = match['awayTeam']['id']
+    comp_id = match['competition']['id']
     season = match.get('season', {})
     season_year = season.get('startDate', '')[:4] if season.get('startDate') else '2025'
 
     match_detail = format_match(match)
 
     # H2H
-    h2h_data = None
-    try:
-        h2h_data = api_request(f'matches/{match_id}/head2head', {'limit': 10}, f"h2h_{match_id}", 3600)
-    except Exception as e:
-        logger.warning(f"H2H fetch failed: {e}")
+    h2h_data = api_request(f'matches/{match_id}/head2head', {'limit': 10}, f"h2h_{match_id}", 3600)
 
     h2h_matches = []
     h2h_stats = {'home_wins': 0, 'away_wins': 0, 'draws': 0, 'home_goals': 0, 'away_goals': 0, 'total_matches': 0}
@@ -389,17 +252,11 @@ def analyze(match_id: int):
 
     # FORMA
     def get_form(team_id, comp_id=None):
-        if not team_id:
-            return []
         params = {'status': 'FINISHED', 'limit': 5}
         if comp_id:
             params['competitions'] = comp_id
 
-        try:
-            team_matches = api_request(f'teams/{team_id}/matches', params, f"form_{team_id}_{comp_id}", 1800)
-        except Exception as e:
-            logger.warning(f"Form fetch failed: {e}")
-            return []
+        team_matches = api_request(f'teams/{team_id}/matches', params, f"form_{team_id}_{comp_id}", 1800)
 
         form = []
         if not team_matches or not team_matches.get('matches'):
@@ -432,14 +289,7 @@ def analyze(match_id: int):
 
     # STANDINGS
     def get_standings(team_id, comp_id, season_year):
-        if not comp_id:
-            return None
-        try:
-            stats_data = api_request(f'competitions/{comp_id}/standings', {'season': season_year}, f"standings_{comp_id}_{season_year}", 3600)
-        except Exception as e:
-            logger.warning(f"Standings fetch failed: {e}")
-            return None
-
+        stats_data = api_request(f'competitions/{comp_id}/standings', {'season': season_year}, f"standings_{comp_id}_{season_year}", 3600)
         if not stats_data or not stats_data.get('standings'):
             return None
 
@@ -540,20 +390,20 @@ def analyze(match_id: int):
 
     return {
         "match_info": {
-            "home_team": home_team.get('name', 'Local'),
-            "away_team": away_team.get('name', 'Visitante'),
-            "home_short": home_team.get('shortName', home_team.get('name', 'Local')[:12]),
-            "away_short": away_team.get('shortName', away_team.get('name', 'Visitante')[:12]),
-            "home_logo": home_team.get('crest', ''),
-            "away_logo": away_team.get('crest', ''),
-            "home_formation": home_team.get('formation', ''),
-            "away_formation": away_team.get('formation', ''),
-            "home_coach": home_team.get('coach', {}).get('name', ''),
-            "away_coach": away_team.get('coach', {}).get('name', ''),
-            "league": competition.get('name', ''),
-            "country": match.get('area', {}).get('name', '') if match.get('area') else competition.get('area', {}).get('name', ''),
-            "date": match.get('utcDate', '')[:10] if match.get('utcDate') else 'N/A',
-            "time": match.get('utcDate', '')[11:16] if match.get('utcDate') else '--:--',
+            "home_team": match['homeTeam']['name'],
+            "away_team": match['awayTeam']['name'],
+            "home_short": match['homeTeam'].get('shortName', match['homeTeam']['name'][:12]),
+            "away_short": match['awayTeam'].get('shortName', match['awayTeam']['name'][:12]),
+            "home_logo": match['homeTeam'].get('crest', ''),
+            "away_logo": match['awayTeam'].get('crest', ''),
+            "home_formation": match['homeTeam'].get('formation', ''),
+            "away_formation": match['awayTeam'].get('formation', ''),
+            "home_coach": match['homeTeam'].get('coach', {}).get('name', ''),
+            "away_coach": match['awayTeam'].get('coach', {}).get('name', ''),
+            "league": match['competition']['name'],
+            "country": match.get('area', {}).get('name', ''),
+            "date": match['utcDate'][:10] if match.get('utcDate') else 'N/A',
+            "time": match['utcDate'][11:16] if match.get('utcDate') else '--:--',
             "venue": match.get('venue', ''),
             "status": match.get('status', 'SCHEDULED'),
             "minute": match_detail.get('minute', 0),
