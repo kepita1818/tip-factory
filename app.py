@@ -15,7 +15,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-app = FastAPI(title="TipFactory", version="6.3.0")
+app = FastAPI(title="TipFactory", version="8.0.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -38,27 +38,6 @@ FDIO_HEADERS = {"Authorization": f"Bearer {FOOTBALLDATA_IO_KEY}"} if FOOTBALLDAT
 FDORG_HEADERS = {"X-Auth-Token": FOOTBALL_DATA_ORG_KEY} if FOOTBALL_DATA_ORG_KEY else {}
 
 CACHE = {}
-
-COMPETITION_CODE_MAP = {
-    "la liga": "PD",
-    "spain la liga": "PD",
-    "premier league": "PL",
-    "england premier league": "PL",
-    "bundesliga": "BL1",
-    "germany bundesliga": "BL1",
-    "serie a": "SA",
-    "italy serie a": "SA",
-    "ligue 1": "FL1",
-    "france ligue 1": "FL1",
-    "primeira liga": "PPL",
-    "portugal primeira liga": "PPL",
-    "erediࢠvisie": "DED",
-    "eredivisie": "DED",
-    "champions league": "CL",
-    "uefa champions league": "CL",
-    "europa league": "EL",
-    "uefa europa league": "EL"
-}
 
 
 def cache_get(key, ttl=300):
@@ -153,6 +132,9 @@ def normalize_match(raw):
     away = raw.get("away_team", {}) or {}
     venue = raw.get("venue", {}) or {}
     score = raw.get("score", {}) or {}
+    xg = raw.get("xg", {}) or {}
+    odds = raw.get("odds", {}) or {}
+    probabilities = raw.get("probabilities", {}) or {}
 
     utc_date = raw.get("match_date", "") or ""
 
@@ -187,7 +169,16 @@ def normalize_match(raw):
         "homeScore": score.get("home"),
         "awayScore": score.get("away"),
         "halfTimeHome": None,
-        "halfTimeAway": None
+        "halfTimeAway": None,
+        "xg_home": xg.get("home"),
+        "xg_away": xg.get("away"),
+        "xg_total": xg.get("total"),
+        "odds_home": odds.get("home_win"),
+        "odds_draw": odds.get("draw"),
+        "odds_away": odds.get("away_win"),
+        "prob_home": probabilities.get("home_win"),
+        "prob_draw": probabilities.get("draw"),
+        "prob_away": probabilities.get("away_win")
     }
 
 
@@ -199,7 +190,6 @@ def fetch_fdio_matches(date_str):
     if date_str:
         matches = [m for m in matches if m["matchDate"] == date_str]
 
-    logger.info(f"FDIO MATCHES COUNT: {len(matches)}")
     return matches
 
 
@@ -210,33 +200,58 @@ def normalize_name(name):
     replacements = {
         " cf": "",
         " fc": "",
+        " sad": "",
         " de futbol": "",
         " fútbol": "",
+        " balompié": " balompie",
         ".": "",
         ",": "",
-        "-": " "
+        "-": " ",
+        "  ": " "
     }
     for old, new in replacements.items():
         text = text.replace(old, new)
     return " ".join(text.split())
 
 
-def map_competition_code(league_name, country_name=""):
-    key1 = normalize_name(league_name)
-    key2 = normalize_name((country_name + " " + league_name).strip())
-    return COMPETITION_CODE_MAP.get(key1) or COMPETITION_CODE_MAP.get(key2)
+def get_fdorg_competitions():
+    data = fdorg_request("competitions", cache_key="fdorg_competitions", ttl=86400)
+    if not data or not isinstance(data, dict):
+        return []
+    return data.get("competitions", [])
 
 
-def find_team_id(team_name, competition_code=None):
+def resolve_competition(league_name, country_name=""):
+    comps = get_fdorg_competitions()
+    target_league = normalize_name(league_name)
+    target_country = normalize_name(country_name)
+
+    for comp in comps:
+        comp_name = normalize_name(comp.get("name", ""))
+        area_name = normalize_name(safe_get(comp, "area", "name", default=""))
+        code = comp.get("code", "")
+        if comp_name == target_league and (not target_country or area_name == target_country):
+            return {"id": comp.get("id"), "code": code, "name": comp.get("name")}
+    for comp in comps:
+        comp_name = normalize_name(comp.get("name", ""))
+        area_name = normalize_name(safe_get(comp, "area", "name", default=""))
+        code = comp.get("code", "")
+        if target_league in comp_name or comp_name in target_league:
+            if not target_country or area_name == target_country:
+                return {"id": comp.get("id"), "code": code, "name": comp.get("name")}
+    return None
+
+
+def find_team_id(team_name, competition_id=None):
     if not team_name:
         return None
 
     target = normalize_name(team_name)
 
-    if competition_code:
+    if competition_id:
         comp_data = fdorg_request(
-            f"competitions/{competition_code}/teams",
-            cache_key=f"comp_teams_{competition_code}",
+            f"competitions/{competition_id}/teams",
+            cache_key=f"comp_teams_{competition_id}",
             ttl=86400
         )
         if comp_data and isinstance(comp_data, dict):
@@ -256,10 +271,10 @@ def find_team_id(team_name, competition_code=None):
                     normalize_name(team.get("name", "")),
                     normalize_name(team.get("shortName", ""))
                 ]
-                if any(target in opt or opt in target for opt in options if opt):
+                if any(target == opt or target in opt or opt in target for opt in options if opt):
                     return team.get("id")
 
-    data = fdorg_request("teams", cache_key="fdorg_all_teams", ttl=86400)
+    data = fdorg_request("teams", params={"limit": 500}, cache_key="fdorg_all_teams_500", ttl=86400)
     if not data or not isinstance(data, dict):
         return None
 
@@ -279,13 +294,13 @@ def find_team_id(team_name, competition_code=None):
             normalize_name(team.get("name", "")),
             normalize_name(team.get("shortName", ""))
         ]
-        if any(target in opt or opt in target for opt in options if opt):
+        if any(target == opt or target in opt or opt in target for opt in options if opt):
             return team.get("id")
 
     return None
 
 
-def get_team_recent_matches(team_id, competition_code=None, limit=10):
+def get_team_recent_matches(team_id, competition_id=None, limit=10):
     if not team_id:
         return []
 
@@ -294,13 +309,13 @@ def get_team_recent_matches(team_id, competition_code=None, limit=10):
         "limit": limit
     }
 
-    if competition_code:
-        params["competitions"] = competition_code
+    if competition_id:
+        params["competitions"] = str(competition_id)
 
     data = fdorg_request(
         f"teams/{team_id}/matches",
         params=params,
-        cache_key=f"fdorg_recent_{team_id}_{competition_code}_{limit}",
+        cache_key=f"fdorg_recent_{team_id}_{competition_id}_{limit}",
         ttl=1800
     )
 
@@ -458,27 +473,48 @@ def analyze(
     date: str = Query(""),
     time: str = Query("--:--"),
     country: str = Query(""),
-    competition_id: int = Query(None)
+    venue: str = Query(""),
+    home_score: float = Query(None),
+    away_score: float = Query(None),
+    xg_home: float = Query(None),
+    xg_away: float = Query(None),
+    xg_total: float = Query(None),
+    odds_home: float = Query(None),
+    odds_draw: float = Query(None),
+    odds_away: float = Query(None),
+    prob_home: float = Query(None),
+    prob_draw: float = Query(None),
+    prob_away: float = Query(None)
 ):
-    competition_code = map_competition_code(league, country)
+    competition = resolve_competition(league, country)
+    competition_id = competition["id"] if competition else None
 
-    home_id = find_team_id(home_team, competition_code)
-    away_id = find_team_id(away_team, competition_code)
+    home_id = find_team_id(home_team, competition_id)
+    away_id = find_team_id(away_team, competition_id)
 
-    home_recent = get_team_recent_matches(home_id, competition_code, 10)
-    away_recent = get_team_recent_matches(away_id, competition_code, 10)
+    home_recent = get_team_recent_matches(home_id, competition_id, 10)
+    away_recent = get_team_recent_matches(away_id, competition_id, 10)
 
     home_form, home_stats = build_form_and_stats(home_id, home_recent)
     away_form, away_stats = build_form_and_stats(away_id, away_recent)
 
     probabilities = {
+        "home_win": prob_home if prob_home is not None else 0,
+        "draw": prob_draw if prob_draw is not None else 0,
+        "away_win": prob_away if prob_away is not None else 0,
         "over_1_5": round((home_stats["over_1_5_pct"] + away_stats["over_1_5_pct"]) / 2, 1),
         "over_2_5": round((home_stats["over_2_5_pct"] + away_stats["over_2_5_pct"]) / 2, 1),
         "over_3_5": round((home_stats["over_3_5_pct"] + away_stats["over_3_5_pct"]) / 2, 1),
         "btts": round((home_stats["btts_pct"] + away_stats["btts_pct"]) / 2, 1),
-        "total_expected_goals": round(home_stats["avg_team_goals"] + away_stats["avg_team_goals"], 2),
-        "expected_corners": None,
-        "expected_cards": None
+        "total_expected_goals": xg_total if xg_total is not None else round(home_stats["avg_team_goals"] + away_stats["avg_team_goals"], 2),
+        "home_xg": xg_home if xg_home is not None else 0,
+        "away_xg": xg_away if xg_away is not None else 0
+    }
+
+    odds = {
+        "home": odds_home if odds_home is not None else 0,
+        "draw": odds_draw if odds_draw is not None else 0,
+        "away": odds_away if odds_away is not None else 0
     }
 
     return JSONResponse({
@@ -493,12 +529,12 @@ def analyze(
             "country": country,
             "date": date,
             "time": time,
-            "venue": "",
+            "venue": venue,
             "status": "SCHEDULED",
             "minute": 0,
             "matchday": 0,
-            "home_score": None,
-            "away_score": None,
+            "home_score": home_score,
+            "away_score": away_score,
             "halfTimeHome": None,
             "halfTimeAway": None
         },
@@ -508,18 +544,15 @@ def analyze(
         "away_stats": away_stats,
         "h2h": {"matches": [], "stats": {}},
         "probabilities": probabilities,
-        "odds": {"home": 0, "draw": 0, "away": 0},
+        "odds": odds,
         "stats_available": bool(home_stats["played"] or away_stats["played"]),
         "debug": {
             "match_id": match_id,
-            "competition_id": competition_id,
-            "competition_code": competition_code,
+            "competition": competition,
             "home_id": home_id,
             "away_id": away_id,
             "home_recent_count": len(home_recent),
-            "away_recent_count": len(away_recent),
-            "home_form_string": home_stats.get("form_string", ""),
-            "away_form_string": away_stats.get("form_string", "")
+            "away_recent_count": len(away_recent)
         }
     })
 
@@ -532,7 +565,7 @@ def health():
         "cache_size": len(CACHE),
         "footballdata_io": "configured" if FOOTBALLDATA_IO_KEY else "missing",
         "football_data_org": "configured" if FOOTBALL_DATA_ORG_KEY else "missing",
-        "version": "6.3.0"
+        "version": "8.0.0"
     }
 
 
