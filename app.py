@@ -13,7 +13,7 @@ from fastapi.templating import Jinja2Templates
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
 
-app = FastAPI(title="TipFactory", version="11.3.1")
+app = FastAPI(title="TipFactory", version="11.4.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -32,8 +32,12 @@ BASE_URL = "https://v3.football.api-sports.io"
 HEADERS = {"x-apisports-key": API_KEY}
 
 CACHE = {}
+REQUEST_COUNT = {"total": 0, "today": datetime.now().date(), "by_endpoint": {}}
 
-# === LIGAS SOPORTADAS (v11.3.1 - FIX: La Liga 2 ID corregido) ===
+# === RATE LIMIT TRACKING ===
+RATE_LIMIT = {"remaining": None, "limit": None, "reset": None}
+
+# === LIGAS SOPORTADAS (v11.4 - Optimizado) ===
 LEAGUE_IDS = {
     # === 5 GRANDES LIGAS ===
     "PL": 39, "PD": 140, "SA": 135, "BL1": 78, "FL1": 61,
@@ -63,20 +67,16 @@ LEAGUE_IDS = {
 }
 
 COMPETITIONS = {
-    # 5 Grandes
     "PL": "Premier League", "PD": "La Liga", "SA": "Serie A",
     "BL1": "Bundesliga", "FL1": "Ligue 1",
-    # Segundas
     "ELC": "Championship", "SP": "La Liga 2", "SI": "Serie B",
     "SD": "2. Bundesliga", "FL2": "Ligue 2",
-    # Europa
     "PPL": "Primeira Liga", "DED": "Eredivisie", "BE": "Jupiler Pro League",
     "CH": "Super League Suiza", "DK": "Superliga Dinamarca",
     "NO": "Eliteserien", "FI": "Veikkausliiga", "CZ": "First League Checa",
     "GR": "Super League Grecia", "TR": "Süper Lig", "HR": "HNL Croacia",
     "RO": "Liga I Rumanía", "SC": "Premiership Escocia",
     "PLN": "Ekstraklasa Polonia", "AU": "Bundesliga Austria",
-    # América
     "BSA": "Brasileirao", "BRA_B": "Série B Brasil",
     "ARG": "Liga Argentina", "ARG_B": "Primera Nacional",
     "COL": "Liga Colombia", "CHI": "Primera División Chile",
@@ -87,42 +87,31 @@ COMPETITIONS = {
     "CRC": "Primera División Costa Rica", "GT": "Liga Nacional Guatemala",
     "HN": "Liga Nacional Honduras", "SV": "Primera División El Salvador",
     "PA": "LPF Panamá", "JM": "Premier League Jamaica",
-    # Asia
     "JP": "J1 League", "JP_B": "J2 League", "KR": "K League",
     "KR_B": "K League 2", "CN": "Super League China",
     "AU_A": "A-League", "SA_A": "Pro League Saudi",
     "AE": "UAE Pro League", "QA": "Stars League Qatar",
     "IR": "Persian Gulf Pro League",
-    # África
     "EG": "Premier League Egypt", "ZA": "Premier Division RSA",
     "MA": "Botola Pro", "TN": "Ligue 1 Túnez", "DZ": "Ligue 1 Argelia",
     "NG": "NPFL Nigeria", "GH": "Premier League Ghana",
-    # Europeas
     "CL": "Champions League", "EL": "Europa League",
     "ECL": "Conference League", "NATIONS": "Nations League",
-    # CONMEBOL
     "CLI": "Copa Libertadores", "CSA": "Copa Sudamericana",
     "COPA": "Copa América",
-    # Mundiales
     "WC": "World Cup", "EURO": "Euro", "AFCON": "Africa Cup",
     "GOLD": "Gold Cup", "ASIA": "Asian Cup", "WCC": "FIFA Club World Cup",
 }
 
 DEFAULT_COMPETITIONS = [
-    # 5 Grandes + Segundas
     "PL", "PD", "SA", "BL1", "FL1", "ELC", "SP", "SI", "SD", "FL2",
-    # Europa
     "PPL", "DED", "BE", "CH", "DK", "NO", "FI", "CZ", "GR", "TR",
     "HR", "RO", "SC", "PLN", "AU",
-    # América
     "BSA", "BRA_B", "ARG", "ARG_B", "COL", "CHI", "URU", "PAR",
     "ECU", "PER", "MX", "MX_B", "MLS", "USL", "CAN",
     "CRC", "GT", "HN", "SV", "PA", "JM",
-    # Asia
     "JP", "JP_B", "KR", "KR_B", "CN", "AU_A", "SA_A", "AE", "QA", "IR",
-    # África
     "EG", "ZA", "MA", "TN", "DZ", "NG", "GH",
-    # Europeas + CONMEBOL + Mundiales
     "CL", "EL", "ECL", "NATIONS", "CLI", "CSA", "COPA",
     "WC", "EURO", "AFCON", "GOLD", "ASIA", "WCC",
 ]
@@ -140,6 +129,17 @@ def cache_set(key, data):
     CACHE[key] = (data, datetime.now())
 
 
+def track_request(endpoint):
+    """Track API requests for monitoring."""
+    today = datetime.now().date()
+    if REQUEST_COUNT["today"] != today:
+        REQUEST_COUNT["total"] = 0
+        REQUEST_COUNT["by_endpoint"] = {}
+        REQUEST_COUNT["today"] = today
+    REQUEST_COUNT["total"] += 1
+    REQUEST_COUNT["by_endpoint"][endpoint] = REQUEST_COUNT["by_endpoint"].get(endpoint, 0) + 1
+
+
 def api_get(endpoint, params=None, cache_key=None, ttl=3600):
     if cache_key:
         cached = cache_get(cache_key, ttl)
@@ -148,11 +148,17 @@ def api_get(endpoint, params=None, cache_key=None, ttl=3600):
 
     try:
         url = f"{BASE_URL}/{endpoint.lstrip('/')}/"
-        logger.info(f"API CALL: {url} | params={params}")
+        track_request(endpoint)
+        logger.info(f"API CALL #{REQUEST_COUNT['total']}: {url} | params={params}")
         resp = requests.get(url, headers=HEADERS, params=params, timeout=30)
 
+        # Track rate limits from headers
+        RATE_LIMIT["remaining"] = resp.headers.get("x-ratelimit-requests-remaining")
+        RATE_LIMIT["limit"] = resp.headers.get("x-ratelimit-requests-limit")
+        RATE_LIMIT["reset"] = resp.headers.get("x-ratelimit-reset")
+
         if resp.status_code == 429:
-            logger.warning("RATE LIMIT API-Football")
+            logger.warning(f"RATE LIMIT API-Football! Remaining: {RATE_LIMIT.get('remaining')}")
             return None
         if resp.status_code in (401, 403):
             logger.error(f"AUTH ERROR {resp.status_code}: {resp.text[:200]}")
@@ -205,7 +211,7 @@ def get_season():
 
 
 # ============================================================
-# OBTENER ESTADÍSTICAS DE UN PARTIDO ESPECÍFICO
+# ESTADÍSTICAS DE PARTIDO (fixture statistics)
 # ============================================================
 
 def get_fixture_statistics(fixture_id):
@@ -216,7 +222,7 @@ def get_fixture_statistics(fixture_id):
         "fixtures/statistics",
         params={"fixture": fixture_id},
         cache_key=f"fixture_stats_{fixture_id}",
-        ttl=86400
+        ttl=86400  # 24h cache - stats no cambian
     )
 
     if not data or not isinstance(data, dict):
@@ -226,16 +232,13 @@ def get_fixture_statistics(fixture_id):
     for item in data.get("response", []):
         team_id = safe_get(item, "team", "id")
         stats_list = item.get("statistics", [])
-
         parsed = {}
         for stat in stats_list:
             stat_type = stat.get("type", "").strip()
             value = stat.get("value")
             parsed[stat_type] = value
-
         if team_id:
             result[team_id] = parsed
-
     return result
 
 
@@ -252,27 +255,25 @@ def get_fixture_events(fixture_id):
 
     if not data or not isinstance(data, dict):
         return []
-
     return data.get("response", [])
 
 
-def count_events_for_team(events, team_id, event_types):
-    count = 0
-    for event in events:
-        if event.get("team", {}).get("id") == team_id:
-            if event.get("type") in event_types:
-                count += 1
-    return count
-
-
 # ============================================================
-# CALCULAR ESTADÍSTICAS REALES DESDE PARTIDOS JUGADOS
+# ESTADÍSTICAS REALES DEL EQUIPO - MÁXIMO DATOS
+# max_fixtures=15 para medias más precisas
 # ============================================================
 
-def get_team_real_stats(team_id, league_id, season, max_fixtures=10):
+def get_team_real_stats(team_id, league_id, season, max_fixtures=15):
+    """
+    Obtiene estadísticas REALES del equipo con máximo de partidos.
+    Optimizado para no exceder rate limits:
+    - Cache agresivo (4h para fixtures, 24h para stats de partido)
+    - max_fixtures=15 (balance entre precisión y requests)
+    """
     if not team_id or not league_id or not season:
         return None
 
+    # 1. Obtener partidos jugados (cache 4h)
     fixtures_data = api_get(
         "fixtures",
         params={
@@ -283,7 +284,7 @@ def get_team_real_stats(team_id, league_id, season, max_fixtures=10):
             "status": "ft"
         },
         cache_key=f"team_fixtures_ft_{team_id}_{league_id}_{season}_{max_fixtures}",
-        ttl=3600
+        ttl=14400  # 4 horas
     )
 
     if not fixtures_data or not isinstance(fixtures_data, dict):
@@ -293,41 +294,34 @@ def get_team_real_stats(team_id, league_id, season, max_fixtures=10):
     if not fixtures:
         return None
 
-    total_gf = 0
-    total_ga = 0
-    total_corners = 0
-    total_yellow = 0
-    total_red = 0
-    total_shots = 0
-    total_shots_on = 0
-    total_possession = 0
-    total_fouls = 0
+    # Acumuladores
+    total_gf = 0; total_ga = 0
+    total_corners = 0; total_corners_conceded = 0
+    total_yellow = 0; total_red = 0
+    total_shots = 0; total_shots_on = 0
+    total_possession = 0; total_fouls = 0
+    total_offsides = 0; total_passes = 0; total_passes_acc = 0
 
     matches_with_stats = 0
     matches_with_goals = 0
+    matches_with_corners = 0
+    matches_with_cards = 0
 
-    over_15_count = 0
-    over_25_count = 0
-    over_35_count = 0
-    btts_count = 0
-    clean_sheet_count = 0
-    failed_score_count = 0
+    # Goles
+    over_15_count = 0; over_25_count = 0; over_35_count = 0
+    btts_count = 0; clean_sheet_count = 0; failed_score_count = 0
 
-    corners_matches = 0
-    corners_over_45 = 0
-    corners_over_55 = 0
-    corners_over_65 = 0
-    corners_over_75 = 0
-    corners_over_85 = 0
-    corners_over_95 = 0
+    # Córners
+    corners_over_45 = 0; corners_over_55 = 0; corners_over_65 = 0
+    corners_over_75 = 0; corners_over_85 = 0; corners_over_95 = 0
     corners_over_105 = 0
 
-    cards_matches = 0
-    cards_over_15 = 0
-    cards_over_25 = 0
-    cards_over_35 = 0
-    cards_over_45 = 0
-    cards_over_55 = 0
+    # Tarjetas
+    cards_over_15 = 0; cards_over_25 = 0; cards_over_35 = 0
+    cards_over_45 = 0; cards_over_55 = 0; cards_over_65 = 0
+
+    # Tiros
+    shots_over_95 = 0; shots_over_115 = 0; shots_over_135 = 0
 
     for fixture in fixtures:
         fixture_id = safe_get(fixture, "fixture", "id")
@@ -337,62 +331,66 @@ def get_team_real_stats(team_id, league_id, season, max_fixtures=10):
         home_team = teams.get("home", {})
         away_team = teams.get("away", {})
         is_home = home_team.get("id") == team_id
+        opponent_id = away_team.get("id") if is_home else home_team.get("id")
 
         home_goals = goals.get("home", 0) or 0
         away_goals = goals.get("away", 0) or 0
 
         if is_home:
-            gf = home_goals
-            ga = away_goals
+            gf = home_goals; ga = away_goals
         else:
-            gf = away_goals
-            ga = home_goals
+            gf = away_goals; ga = home_goals
 
         total_goals = gf + ga
-
-        total_gf += gf
-        total_ga += ga
+        total_gf += gf; total_ga += ga
         matches_with_goals += 1
 
-        if total_goals > 1.5:
-            over_15_count += 1
-        if total_goals > 2.5:
-            over_25_count += 1
-        if total_goals > 3.5:
-            over_35_count += 1
-        if gf > 0 and ga > 0:
-            btts_count += 1
-        if ga == 0:
-            clean_sheet_count += 1
-        if gf == 0:
-            failed_score_count += 1
+        # Over/Under/BTTS reales
+        if total_goals > 1.5: over_15_count += 1
+        if total_goals > 2.5: over_25_count += 1
+        if total_goals > 3.5: over_35_count += 1
+        if gf > 0 and ga > 0: btts_count += 1
+        if ga == 0: clean_sheet_count += 1
+        if gf == 0: failed_score_count += 1
 
+        # Estadísticas detalladas del partido (cache 24h)
         fixture_stats = get_fixture_statistics(fixture_id)
         team_stats = fixture_stats.get(team_id, {})
+        opponent_stats = fixture_stats.get(opponent_id, {}) if opponent_id else {}
 
         has_stats = False
         match_corners = None
-        match_yellow = None
-        match_red = None
+        match_corners_opp = None
+        match_yellow = None; match_red = None
+        match_shots = None
 
         if team_stats:
+            # Córners obtenidos
             corners = team_stats.get("Corner Kicks")
             if corners is not None:
                 try:
                     match_corners = int(corners)
                     total_corners += match_corners
                     has_stats = True
-                except:
-                    pass
+                except: pass
 
+            # Córners en contra (del oponente)
+            if opponent_stats:
+                opp_corners = opponent_stats.get("Corner Kicks")
+                if opp_corners is not None:
+                    try:
+                        match_corners_opp = int(opp_corners)
+                        total_corners_conceded += match_corners_opp
+                    except: pass
+
+            # Tarjetas
             yellow = team_stats.get("Yellow Cards")
             if yellow is not None:
                 try:
                     match_yellow = int(yellow)
                     total_yellow += match_yellow
                     has_stats = True
-                except:
-                    pass
+                except: pass
 
             red = team_stats.get("Red Cards")
             if red is not None:
@@ -400,25 +398,25 @@ def get_team_real_stats(team_id, league_id, season, max_fixtures=10):
                     match_red = int(red)
                     total_red += match_red
                     has_stats = True
-                except:
-                    pass
+                except: pass
 
+            # Tiros
             shots = team_stats.get("Total Shots")
             if shots is not None:
                 try:
-                    total_shots += int(shots)
+                    match_shots = int(shots)
+                    total_shots += match_shots
                     has_stats = True
-                except:
-                    pass
+                except: pass
 
             shots_on = team_stats.get("Shots on Goal")
             if shots_on is not None:
                 try:
                     total_shots_on += int(shots_on)
                     has_stats = True
-                except:
-                    pass
+                except: pass
 
+            # Posesión
             possession = team_stats.get("Ball Possession")
             if possession is not None:
                 try:
@@ -426,17 +424,25 @@ def get_team_real_stats(team_id, league_id, season, max_fixtures=10):
                         possession = int(possession.replace("%", "").strip())
                     total_possession += int(possession)
                     has_stats = True
-                except:
-                    pass
+                except: pass
 
+            # Faltas
             fouls = team_stats.get("Fouls")
             if fouls is not None:
                 try:
                     total_fouls += int(fouls)
                     has_stats = True
-                except:
-                    pass
+                except: pass
 
+            # Offsides
+            offsides = team_stats.get("Offsides")
+            if offsides is not None:
+                try:
+                    total_offsides += int(offsides)
+                    has_stats = True
+                except: pass
+
+        # Fallback a events si no hay statistics para tarjetas
         if match_yellow is None or match_red is None:
             events = get_fixture_events(fixture_id)
             if events:
@@ -457,36 +463,33 @@ def get_team_real_stats(team_id, league_id, season, max_fixtures=10):
                     total_red += match_red
                 has_stats = True
 
+        # === CORNERS REALES ===
         if match_corners is not None:
-            corners_matches += 1
-            if match_corners > 4.5:
-                corners_over_45 += 1
-            if match_corners > 5.5:
-                corners_over_55 += 1
-            if match_corners > 6.5:
-                corners_over_65 += 1
-            if match_corners > 7.5:
-                corners_over_75 += 1
-            if match_corners > 8.5:
-                corners_over_85 += 1
-            if match_corners > 9.5:
-                corners_over_95 += 1
-            if match_corners > 10.5:
-                corners_over_105 += 1
+            matches_with_corners += 1
+            if match_corners > 4.5: corners_over_45 += 1
+            if match_corners > 5.5: corners_over_55 += 1
+            if match_corners > 6.5: corners_over_65 += 1
+            if match_corners > 7.5: corners_over_75 += 1
+            if match_corners > 8.5: corners_over_85 += 1
+            if match_corners > 9.5: corners_over_95 += 1
+            if match_corners > 10.5: corners_over_105 += 1
 
+        # === TARJETAS REALES ===
         if match_yellow is not None and match_red is not None:
             total_cards = match_yellow + match_red
-            cards_matches += 1
-            if total_cards > 1.5:
-                cards_over_15 += 1
-            if total_cards > 2.5:
-                cards_over_25 += 1
-            if total_cards > 3.5:
-                cards_over_35 += 1
-            if total_cards > 4.5:
-                cards_over_45 += 1
-            if total_cards > 5.5:
-                cards_over_55 += 1
+            matches_with_cards += 1
+            if total_cards > 1.5: cards_over_15 += 1
+            if total_cards > 2.5: cards_over_25 += 1
+            if total_cards > 3.5: cards_over_35 += 1
+            if total_cards > 4.5: cards_over_45 += 1
+            if total_cards > 5.5: cards_over_55 += 1
+            if total_cards > 6.5: cards_over_65 += 1
+
+        # === TIROS REALES ===
+        if match_shots is not None:
+            if match_shots > 9.5: shots_over_95 += 1
+            if match_shots > 11.5: shots_over_115 += 1
+            if match_shots > 13.5: shots_over_135 += 1
 
         if has_stats:
             matches_with_stats += 1
@@ -495,18 +498,23 @@ def get_team_real_stats(team_id, league_id, season, max_fixtures=10):
     if played == 0:
         return None
 
+    # === CALCULAR MÉDIAS ===
     avg_gf = round(total_gf / played, 2)
     avg_ga = round(total_ga / played, 2)
     avg_total = round((total_gf + total_ga) / played, 2)
 
-    avg_corners = round(total_corners / corners_matches, 2) if corners_matches else 0
+    avg_corners = round(total_corners / matches_with_corners, 2) if matches_with_corners else 0
+    avg_corners_conceded = round(total_corners_conceded / matches_with_corners, 2) if matches_with_corners else 0
     avg_yellow = round(total_yellow / matches_with_stats, 2) if matches_with_stats else 0
     avg_red = round(total_red / matches_with_stats, 2) if matches_with_stats else 0
+    avg_total_cards = round(avg_yellow + avg_red, 2)
     avg_shots = round(total_shots / matches_with_stats, 2) if matches_with_stats else 0
     avg_shots_on = round(total_shots_on / matches_with_stats, 2) if matches_with_stats else 0
     avg_possession = round(total_possession / matches_with_stats, 2) if matches_with_stats else 0
     avg_fouls = round(total_fouls / matches_with_stats, 2) if matches_with_stats else 0
+    avg_offsides = round(total_offsides / matches_with_stats, 2) if matches_with_stats else 0
 
+    # === PORCENTAJES REALES ===
     over_15_pct = round((over_15_count / played) * 100, 1)
     over_25_pct = round((over_25_count / played) * 100, 1)
     over_35_pct = round((over_35_count / played) * 100, 1)
@@ -515,27 +523,35 @@ def get_team_real_stats(team_id, league_id, season, max_fixtures=10):
     failed_score_pct = round((failed_score_count / played) * 100, 1)
 
     corners_pct = {
-        "over_4_5": round((corners_over_45 / corners_matches) * 100, 1) if corners_matches else 0,
-        "over_5_5": round((corners_over_55 / corners_matches) * 100, 1) if corners_matches else 0,
-        "over_6_5": round((corners_over_65 / corners_matches) * 100, 1) if corners_matches else 0,
-        "over_7_5": round((corners_over_75 / corners_matches) * 100, 1) if corners_matches else 0,
-        "over_8_5": round((corners_over_85 / corners_matches) * 100, 1) if corners_matches else 0,
-        "over_9_5": round((corners_over_95 / corners_matches) * 100, 1) if corners_matches else 0,
-        "over_10_5": round((corners_over_105 / corners_matches) * 100, 1) if corners_matches else 0,
-        "matches": corners_matches,
+        "over_4_5": round((corners_over_45 / matches_with_corners) * 100, 1) if matches_with_corners else 0,
+        "over_5_5": round((corners_over_55 / matches_with_corners) * 100, 1) if matches_with_corners else 0,
+        "over_6_5": round((corners_over_65 / matches_with_corners) * 100, 1) if matches_with_corners else 0,
+        "over_7_5": round((corners_over_75 / matches_with_corners) * 100, 1) if matches_with_corners else 0,
+        "over_8_5": round((corners_over_85 / matches_with_corners) * 100, 1) if matches_with_corners else 0,
+        "over_9_5": round((corners_over_95 / matches_with_corners) * 100, 1) if matches_with_corners else 0,
+        "over_10_5": round((corners_over_105 / matches_with_corners) * 100, 1) if matches_with_corners else 0,
+        "matches": matches_with_corners,
     }
 
     cards_pct = {
-        "over_1_5": round((cards_over_15 / cards_matches) * 100, 1) if cards_matches else 0,
-        "over_2_5": round((cards_over_25 / cards_matches) * 100, 1) if cards_matches else 0,
-        "over_3_5": round((cards_over_35 / cards_matches) * 100, 1) if cards_matches else 0,
-        "over_4_5": round((cards_over_45 / cards_matches) * 100, 1) if cards_matches else 0,
-        "over_5_5": round((cards_over_55 / cards_matches) * 100, 1) if cards_matches else 0,
-        "matches": cards_matches,
+        "over_1_5": round((cards_over_15 / matches_with_cards) * 100, 1) if matches_with_cards else 0,
+        "over_2_5": round((cards_over_25 / matches_with_cards) * 100, 1) if matches_with_cards else 0,
+        "over_3_5": round((cards_over_35 / matches_with_cards) * 100, 1) if matches_with_cards else 0,
+        "over_4_5": round((cards_over_45 / matches_with_cards) * 100, 1) if matches_with_cards else 0,
+        "over_5_5": round((cards_over_55 / matches_with_cards) * 100, 1) if matches_with_cards else 0,
+        "over_6_5": round((cards_over_65 / matches_with_cards) * 100, 1) if matches_with_cards else 0,
+        "matches": matches_with_cards,
     }
 
-    logger.info(f"Team {team_id}: played={played}, corners_matches={corners_matches}, "
-                f"cards_matches={cards_matches}, avg_corners={avg_corners}")
+    shots_pct = {
+        "over_9_5": round((shots_over_95 / matches_with_stats) * 100, 1) if matches_with_stats else 0,
+        "over_11_5": round((shots_over_115 / matches_with_stats) * 100, 1) if matches_with_stats else 0,
+        "over_13_5": round((shots_over_135 / matches_with_stats) * 100, 1) if matches_with_stats else 0,
+        "matches": matches_with_stats,
+    }
+
+    logger.info(f"Team {team_id}: played={played}, corners={matches_with_corners}, "
+                f"cards={matches_with_cards}, stats={matches_with_stats}")
 
     return {
         "played": played,
@@ -545,13 +561,15 @@ def get_team_real_stats(team_id, league_id, season, max_fixtures=10):
         "avg_conceded": avg_ga,
         "avg_total_goals": avg_total,
         "avg_corners": avg_corners,
+        "avg_corners_conceded": avg_corners_conceded,
         "avg_yellow_cards": avg_yellow,
         "avg_red_cards": avg_red,
-        "avg_total_cards": round(avg_yellow + avg_red, 2),
+        "avg_total_cards": avg_total_cards,
         "avg_shots": avg_shots,
         "avg_shots_on": avg_shots_on,
         "avg_possession": avg_possession,
         "avg_fouls": avg_fouls,
+        "avg_offsides": avg_offsides,
         "over_1_5_pct": over_15_pct,
         "over_2_5_pct": over_25_pct,
         "over_3_5_pct": over_35_pct,
@@ -561,6 +579,7 @@ def get_team_real_stats(team_id, league_id, season, max_fixtures=10):
         "matches_with_stats": matches_with_stats,
         "corners_pct": corners_pct,
         "cards_pct": cards_pct,
+        "shots_pct": shots_pct,
     }
 
 
@@ -587,7 +606,6 @@ def get_predictions(fixture_id):
         return None
 
     pred = response[0] if isinstance(response, list) else response
-
     predictions = pred.get("predictions", {})
     comparison = pred.get("comparison", {})
 
@@ -617,12 +635,11 @@ def get_fixtures_by_date(date, league_id=None, season=None):
         "fixtures",
         params=params,
         cache_key=f"fixtures_{date}_{league_id or 'all'}",
-        ttl=1800
+        ttl=7200  # 2h cache para fixtures del día
     )
 
     if not data or not isinstance(data, dict):
         return []
-
     return data.get("response", [])
 
 
@@ -651,9 +668,8 @@ def format_fixture(f):
     elif isinstance(raw_matchday, str):
         parts = raw_matchday.split("-")
         if parts:
-            last_part = parts[-1].strip()
             try:
-                matchday = int(last_part)
+                matchday = int(parts[-1].strip())
             except:
                 matchday = 0
 
@@ -687,8 +703,6 @@ def format_fixture(f):
         "country": league.get("country", ""),
         "homeScore": goals.get("home"),
         "awayScore": goals.get("away"),
-        "halfTimeHome": None,
-        "halfTimeAway": None,
         "api_football_fixture_id": fixture.get("id")
     }
 
@@ -735,7 +749,9 @@ def api_matches(date: str = Query(None)):
         "source_date": date if unique else None,
         "is_exact": True,
         "competitions_found": found,
-        "source": "api-football.com"
+        "source": "api-football.com",
+        "requests_today": REQUEST_COUNT["total"],
+        "rate_limit_remaining": RATE_LIMIT.get("remaining")
     }
 
 
@@ -780,23 +796,25 @@ def analyze(
 
     logger.info(f"Comp: {comp_code}, League ID: {league_id}, Season: {season}")
 
-    home_stats = get_team_real_stats(home_id, league_id, season, max_fixtures=10) if league_id else None
-    away_stats = get_team_real_stats(away_id, league_id, season, max_fixtures=10) if league_id else None
+    # Obtener stats con max_fixtures=15 para máxima precisión
+    home_stats = get_team_real_stats(home_id, league_id, season, max_fixtures=15) if league_id else None
+    away_stats = get_team_real_stats(away_id, league_id, season, max_fixtures=15) if league_id else None
 
     home_mode = "REAL" if (home_stats and home_stats["played"] > 0) else "NO_DATA"
     away_mode = "REAL" if (away_stats and away_stats["played"] > 0) else "NO_DATA"
 
+    # Forma (1 llamada extra por equipo, cacheada 8h)
     home_form_data = api_get(
         "teams/statistics",
         params={"team": home_id, "league": league_id, "season": season},
         cache_key=f"team_stats_form_{home_id}_{league_id}_{season}",
-        ttl=7200
+        ttl=28800
     )
     away_form_data = api_get(
         "teams/statistics",
         params={"team": away_id, "league": league_id, "season": season},
         cache_key=f"team_stats_form_{away_id}_{league_id}_{season}",
-        ttl=7200
+        ttl=28800
     )
 
     def parse_form(form_data):
@@ -817,13 +835,15 @@ def analyze(
     home_form, home_form_str = parse_form(home_form_data)
     away_form, away_form_str = parse_form(away_form_data)
 
+    # FALLBACK mejorado con datos más realistas
     if not home_stats or home_stats["played"] == 0:
         home_stats = {
             "played": 0, "goals_for": 0, "goals_against": 0,
             "avg_team_goals": 1.25, "avg_conceded": 1.25, "avg_total_goals": 2.5,
-            "avg_corners": 4.5, "avg_yellow_cards": 2.0, "avg_red_cards": 0.15,
+            "avg_corners": 4.5, "avg_corners_conceded": 4.5,
+            "avg_yellow_cards": 2.0, "avg_red_cards": 0.15,
             "avg_total_cards": 2.15, "avg_shots": 10, "avg_shots_on": 4,
-            "avg_possession": 50, "avg_fouls": 12,
+            "avg_possession": 50, "avg_fouls": 12, "avg_offsides": 2,
             "over_1_5_pct": 70, "over_2_5_pct": 50, "over_3_5_pct": 25,
             "btts_pct": 50, "clean_sheet_pct": 20, "failed_to_score_pct": 20,
             "matches_with_stats": 0,
@@ -833,7 +853,10 @@ def analyze(
             },
             "cards_pct": {
                 "over_1_5": 0, "over_2_5": 0, "over_3_5": 0, "over_4_5": 0,
-                "over_5_5": 0, "matches": 0
+                "over_5_5": 0, "over_6_5": 0, "matches": 0
+            },
+            "shots_pct": {
+                "over_9_5": 0, "over_11_5": 0, "over_13_5": 0, "matches": 0
             },
         }
         home_mode = "DEFAULT"
@@ -842,9 +865,10 @@ def analyze(
         away_stats = {
             "played": 0, "goals_for": 0, "goals_against": 0,
             "avg_team_goals": 1.25, "avg_conceded": 1.25, "avg_total_goals": 2.5,
-            "avg_corners": 4.5, "avg_yellow_cards": 2.0, "avg_red_cards": 0.15,
+            "avg_corners": 4.5, "avg_corners_conceded": 4.5,
+            "avg_yellow_cards": 2.0, "avg_red_cards": 0.15,
             "avg_total_cards": 2.15, "avg_shots": 10, "avg_shots_on": 4,
-            "avg_possession": 50, "avg_fouls": 12,
+            "avg_possession": 50, "avg_fouls": 12, "avg_offsides": 2,
             "over_1_5_pct": 70, "over_2_5_pct": 50, "over_3_5_pct": 25,
             "btts_pct": 50, "clean_sheet_pct": 20, "failed_to_score_pct": 20,
             "matches_with_stats": 0,
@@ -854,13 +878,17 @@ def analyze(
             },
             "cards_pct": {
                 "over_1_5": 0, "over_2_5": 0, "over_3_5": 0, "over_4_5": 0,
-                "over_5_5": 0, "matches": 0
+                "over_5_5": 0, "over_6_5": 0, "matches": 0
+            },
+            "shots_pct": {
+                "over_9_5": 0, "over_11_5": 0, "over_13_5": 0, "matches": 0
             },
         }
         away_mode = "DEFAULT"
 
     predictions = get_predictions(match_id)
 
+    # Probabilidades calculadas desde datos reales
     probabilities = {
         "over_1_5": round((home_stats["over_1_5_pct"] + away_stats["over_1_5_pct"]) / 2, 1),
         "over_2_5": round((home_stats["over_2_5_pct"] + away_stats["over_2_5_pct"]) / 2, 1),
@@ -906,6 +934,8 @@ def analyze(
         "probabilities": probabilities,
         "odds": odds,
         "stats_available": bool(home_stats["played"] or away_stats["played"]),
+        "requests_today": REQUEST_COUNT["total"],
+        "rate_limit_remaining": RATE_LIMIT.get("remaining"),
         "debug": {
             "match_id": match_id,
             "home_id": home_id,
@@ -929,7 +959,10 @@ def health():
         "time": datetime.now().isoformat(),
         "cache_size": len(CACHE),
         "api_football": "configured",
-        "version": "11.3.1"
+        "version": "11.4.0",
+        "requests_today": REQUEST_COUNT["total"],
+        "rate_limit_remaining": RATE_LIMIT.get("remaining"),
+        "rate_limit_total": RATE_LIMIT.get("limit")
     }
 
 
