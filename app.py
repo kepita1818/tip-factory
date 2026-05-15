@@ -1,7 +1,10 @@
 import os
 import logging
+import hashlib
+import threading
 from datetime import datetime, timedelta, timezone
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from functools import lru_cache
 
 import requests
 from fastapi import FastAPI, Query, Request
@@ -13,7 +16,7 @@ from fastapi.templating import Jinja2Templates
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
 
-app = FastAPI(title="TipFactory", version="12.0.0")
+app = FastAPI(title="TipFactory", version="13.0.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -31,134 +34,91 @@ API_KEY = "247e8b9eb521d5081463f72ca03ca37b"
 BASE_URL = "https://v3.football.api-sports.io"
 HEADERS = {"x-apisports-key": API_KEY}
 
+# === CACHE GLOBAL CON TTL ===
 CACHE = {}
+CACHE_LOCK = threading.Lock()
 
 # ============================================================
-# LIGAS SOPORTADAS - EXPANDIDO MASIVAMENTE
+# LIGAS SOPORTADAS - EXPANDIDO
 # ============================================================
 
 LEAGUE_IDS = {
-    # === TOP 5 EUROPA ===
+    # TOP 5
     "PL": 39, "PD": 140, "SA": 135, "BL1": 78, "FL1": 61,
-    
-    # === OTRAS EUROPA OCCIDENTAL ===
+    # OTRAS EUROPA
     "PPL": 94, "DED": 88, "ELC": 40, "SP": 207, "SI": 131,
     "SD": 81, "FL2": 62, "BE": 144, "CH": 207, "AU": 218,
     "DK": 119, "NO": 103, "FI": 244, "CZ": 346, "GR": 197,
     "TR": 203, "UA": 333, "HR": 210, "RO": 283, "SC": 180,
     "RU": 235, "PLN": 106, "IE": 357, "SE": 113, "IS": 164,
-    
-    # === EUROPA ORIENTAL ===
-    "RS": 286, "BG": 172, "HU": 271, "SK": 332, "SI": 131,
+    # EUROPA ORIENTAL
+    "RS": 286, "BG": 172, "HU": 271, "SK": 332,
     "BA": 290, "MK": 317, "ME": 318, "AL": 319, "MD": 320,
     "EE": 328, "LV": 330, "LT": 331, "BY": 116, "KZ": 325,
     "AM": 342, "GE": 343, "AZ": 324, "UZ": 350, "KG": 351,
-    
-    # === IBERIA ===
-    "CDR": 143, "COPA_ESP": 143, "SUPER_ESP": 556,
-    "TACA_POR": 96, "SUPER_POR": 550,
-    "COUPE_FR": 66, "TROPHEE": 526,
-    "DFB_POKAL": 81, "SUPER_CUP_GER": 529,
-    "COPA_ITA": 137, "SUPER_ITA": 547,
-    "FA_CUP": 45, "EFL_CUP": 48, "COMM_SHIELD": 528,
-    
-    # === AMÉRICA DEL SUR ===
+    # COPAS
+    "CDR": 143, "COPA_ESP": 143, "TACA_POR": 96,
+    "COUPE_FR": 66, "DFB_POKAL": 81, "COPA_ITA": 137,
+    "FA_CUP": 45, "EFL_CUP": 48, "CDB": 73, "COPA_ARG": 130,
+    "COPA_MX": 265, "CCL": 16, "LEAGUES_CUP": 853,
+    # SUDAMERICA
     "BSA": 71, "BRA_B": 72, "BRA_C": 75, "BRA_D": 76,
-    "CDB": 73, "COPA_BR": 73,
     "ARG": 128, "ARG_B": 129, "ARG_C": 130,
-    "COPA_ARG": 130, "SUPER_ARG": 556,
-    "COL": 239, "COL_B": 240,
-    "CHI": 265, "CHI_B": 266,
-    "URU": 268, "URU_B": 269,
-    "PAR": 252, "PAR_B": 253,
-    "VEN": 277, "VEN_B": 278,
-    "BOL": 344, "BOL_B": 345,
-    "ECU": 242, "ECU_B": 243,
-    "PER": 281, "PER_B": 282,
-    
-    # === CONMEBOL ===
-    "CLI": 13, "CSA": 11, "CSUD": 11, "RECOPA": 24,
-    "SUDAMERICANO": 34, "SUDAMERICANO_U20": 35,
-    
-    # === AMÉRICA DEL NORTE / CENTRO ===
-    "MX": 262, "MX_B": 263, "MX_C": 264, "COPA_MX": 265,
-    "MLS": 253, "USL": 255, "USL1": 256, "NASL": 257,
-    "CAN": 259, "CAN_PL": 259,
+    "COL": 239, "COL_B": 240, "CHI": 265, "CHI_B": 266,
+    "URU": 268, "URU_B": 269, "PAR": 252, "PAR_B": 253,
+    "VEN": 277, "VEN_B": 278, "BOL": 344, "BOL_B": 345,
+    "ECU": 242, "ECU_B": 243, "PER": 281, "PER_B": 282,
+    # CONMEBOL
+    "CLI": 13, "CSA": 11, "RECOPA": 24, "SUDAMERICANO": 34,
+    # NORTE/CENTRO
+    "MX": 262, "MX_B": 263, "MX_C": 264,
+    "MLS": 253, "USL": 255, "USL1": 256, "CAN": 259,
     "CRC": 163, "GT": 370, "HN": 300, "SV": 279,
     "PA": 287, "JM": 357, "NI": 358, "CU": 359,
-    
-    # === CONCACAF ===
-    "GOLD": 22, "CCL": 16, "LEAGUES_CUP": 853,
-    "NATIONS_CA": 31, "COPA_ORO": 22,
-    
-    # === ASIA ===
+    "GOLD": 22, "NATIONS_CA": 31,
+    # ASIA
     "JP": 98, "JP_B": 99, "JP_C": 100, "JP_LC": 101,
     "KR": 292, "KR_B": 293, "KR_C": 294,
     "CN": 169, "CN_B": 170, "CN_C": 171,
-    "TH": 295, "TH_B": 296,
-    "IDN": 274, "MYS": 274, "SGP": 275, "VNM": 276,
-    "PH": 297, "MM": 298, "KH": 299, "LA": 301,
-    "IR": 291, "IQ": 302, "JO": 303, "LB": 304,
-    "SY": 305, "YE": 306,
+    "TH": 295, "TH_B": 296, "IDN": 274, "MYS": 274,
+    "SGP": 275, "VNM": 276, "PH": 297, "MM": 298,
+    "KH": 299, "LA": 301, "IR": 291, "IQ": 302,
+    "JO": 303, "LB": 304, "SY": 305, "YE": 306,
     "SA_A": 307, "QA": 340, "AE": 301, "KW": 308,
-    "BH": 309, "OM": 310,
-    "UZ": 350, "KG": 351, "TJ": 352, "TM": 353,
+    "BH": 309, "OM": 310, "TJ": 352, "TM": 353,
     "IN": 323, "BD": 324, "PK": 325, "LK": 326,
     "NP": 327, "BT": 328, "MV": 329,
     "AU_A": 113, "AU_B": 114, "NZ": 115,
-    
-    # === AFC ===
-    "ACL": 17, "ACL2": 18, "AFC_CUP": 18,
-    "ASIA": 7, "ASIA_U23": 23,
-    
-    # === ÁFRICA ===
-    "EG": 233, "EG_B": 234, "EG_C": 235,
-    "ZA": 289, "ZA_B": 290,
-    "MA": 200, "TN": 194, "DZ": 186,
-    "NG": 371, "GH": 376, "CI": 372, "SN": 373,
-    "CM": 374, "AO": 375, "MZ": 377, "ZM": 378,
-    "ZW": 379, "BW": 380, "NA": 381, "SZ": 382,
-    "LS": 383, "ET": 384, "SD": 385, "SS": 386,
-    "UG": 387, "KE": 388, "TZ": 389, "RW": 390,
-    "BI": 391, "CD": 392, "CG": 393, "GA": 394,
-    "GQ": 395, "ST": 396, "TD": 397, "CF": 398,
-    "BJ": 399, "TG": 400, "BF": 401, "ML": 402,
-    "NE": 403, "MR": 404, "GN": 405, "GW": 406,
-    "SL": 407, "LR": 408, "GM": 409, "CV": 410,
-    "DJ": 411, "ER": 412, "SO": 413, "MG": 414,
-    "KM": 415, "MU": 416, "SC_AFR": 417, "RE": 418,
-    
-    # === CAF ===
+    "ACL": 17, "ACL2": 18, "ASIA": 7, "ASIA_U23": 23,
+    # AFRICA
+    "EG": 233, "EG_B": 234, "ZA": 289, "ZA_B": 290,
+    "MA": 200, "TN": 194, "DZ": 186, "NG": 371, "GH": 376,
+    "CI": 372, "SN": 373, "CM": 374, "AO": 375, "MZ": 377,
+    "ZM": 378, "ZW": 379, "BW": 380, "NA": 381, "SZ": 382,
+    "LS": 383, "ET": 384, "SD": 385, "SS": 386, "UG": 387,
+    "KE": 388, "TZ": 389, "RW": 390, "BI": 391, "CD": 392,
+    "CG": 393, "GA": 394, "GQ": 395, "ST": 396, "TD": 397,
+    "CF": 398, "BJ": 399, "TG": 400, "BF": 401, "ML": 402,
+    "NE": 403, "MR": 404, "GN": 405, "GW": 406, "SL": 407,
+    "LR": 408, "GM": 409, "CV": 410, "DJ": 411, "ER": 412,
+    "SO": 413, "MG": 414, "KM": 415, "MU": 416, "SC_AFR": 417, "RE": 418,
     "AFCON": 6, "AFCON_U23": 29, "AFCON_U20": 30,
     "CAF_CL": 12, "CAF_CC": 14, "CAF_SC": 15,
-    
-    # === OCEANÍA ===
-    "OFC": 32, "OFC_U20": 33,
-    "FIJI": 419, "PNG": 420, "SOL": 421, "VAN": 422,
-    "NCL": 423, "TAH": 424, "SAM": 425, "TGA": 426,
-    
-    # === MUNDIALES / INTERNACIONALES ===
-    "WC": 1, "EURO": 4, "COPA": 9,
-    "NATIONS": 5, "WCC": 10,
+    # OCEANIA
+    "OFC": 32, "FIJI": 419, "PNG": 420, "SOL": 421,
+    "VAN": 422, "NCL": 423, "TAH": 424, "SAM": 425, "TGA": 426,
+    # MUNDIALES
+    "WC": 1, "EURO": 4, "COPA": 9, "NATIONS": 5, "WCC": 10,
     "CONFED": 21, "OLYMPICS": 25, "OLYMPICS_W": 26,
     "U20_WC": 27, "U17_WC": 28,
-    
-    # === UEFA ===
-    "CL": 2, "EL": 3, "ECL": 848,
-    "SUPER_CUP_UEFA": 531,
+    # UEFA
+    "CL": 2, "EL": 3, "ECL": 848, "SUPER_CUP_UEFA": 531,
     "YOUTH_LEAGUE": 159,
-    "UEFA_NATIONS": 5,
-    
-    # === AMISTOSOS / OTROS ===
-    "FRIENDLY_INT": 10, "FRIENDLY_CLUB": 11,
 }
 
 COMPETITIONS = {
-    # === TOP 5 ===
     "PL": "Premier League", "PD": "La Liga", "SA": "Serie A",
     "BL1": "Bundesliga", "FL1": "Ligue 1",
-    
-    # === OTRAS EUROPA ===
     "PPL": "Primeira Liga", "DED": "Eredivisie", "ELC": "Championship",
     "SP": "La Liga 2", "SI": "Serie B", "SD": "2. Bundesliga",
     "FL2": "Ligue 2", "BE": "Jupiler Pro League", "CH": "Super League Suiza",
@@ -170,8 +130,6 @@ COMPETITIONS = {
     "RU": "Premier League Rusia", "PLN": "Ekstraklasa Polonia",
     "IE": "Premier Division Irlanda", "SE": "Allsvenskan Suecia",
     "IS": "Besta deild Islandia",
-    
-    # === EUROPA ORIENTAL ===
     "RS": "SuperLiga Serbia", "BG": "First League Bulgaria",
     "HU": "Nemzeti Bajnokság", "SK": "Fortuna Liga Eslovaquia",
     "BA": "Premier Liga Bosnia", "MK": "First League Macedonia",
@@ -182,23 +140,17 @@ COMPETITIONS = {
     "AM": "Premier League Armenia", "GE": "Erovnuli Liga Georgia",
     "AZ": "Premier League Azerbaiyán", "UZ": "Super League Uzbekistán",
     "KG": "Premier League Kirguistán",
-    
-    # === COPAS EUROPA ===
     "CDR": "Copa del Rey", "COPA_ESP": "Copa del Rey",
-    "SUPER_ESP": "Supercopa España", "TACA_POR": "Taça de Portugal",
-    "SUPER_POR": "Supertaça Portugal", "COUPE_FR": "Coupe de France",
-    "TROPHEE": "Trophée des Champions", "DFB_POKAL": "DFB-Pokal",
-    "SUPER_CUP_GER": "Supercopa Alemania", "COPA_ITA": "Coppa Italia",
-    "SUPER_ITA": "Supercoppa Italiana", "FA_CUP": "FA Cup",
-    "EFL_CUP": "EFL Cup", "COMM_SHIELD": "Community Shield",
-    
-    # === SUDAMÉRICA ===
+    "TACA_POR": "Taça de Portugal", "COUPE_FR": "Coupe de France",
+    "DFB_POKAL": "DFB-Pokal", "COPA_ITA": "Coppa Italia",
+    "FA_CUP": "FA Cup", "EFL_CUP": "EFL Cup",
+    "CDB": "Copa do Brasil", "COPA_ARG": "Copa Argentina",
+    "COPA_MX": "Copa MX", "CCL": "Concacaf Champions League",
+    "LEAGUES_CUP": "Leagues Cup",
     "BSA": "Brasileirão", "BRA_B": "Série B Brasil",
     "BRA_C": "Série C Brasil", "BRA_D": "Série D Brasil",
-    "CDB": "Copa do Brasil", "COPA_BR": "Copa do Brasil",
     "ARG": "Liga Profesional Argentina", "ARG_B": "Primera Nacional",
-    "ARG_C": "Primera C Argentina", "COPA_ARG": "Copa Argentina",
-    "SUPER_ARG": "Supercopa Argentina", "COL": "Primera A Colombia",
+    "ARG_C": "Primera C Argentina", "COL": "Primera A Colombia",
     "COL_B": "Primera B Colombia", "CHI": "Primera División Chile",
     "CHI_B": "Primera B Chile", "URU": "Primera División Uruguay",
     "URU_B": "Segunda División Uruguay", "PAR": "Primera División Paraguay",
@@ -207,29 +159,16 @@ COMPETITIONS = {
     "BOL_B": "Nacional B Bolivia", "ECU": "Serie A Ecuador",
     "ECU_B": "Serie B Ecuador", "PER": "Liga 1 Perú",
     "PER_B": "Liga 2 Perú",
-    
-    # === CONMEBOL ===
     "CLI": "Copa Libertadores", "CSA": "Copa Sudamericana",
-    "CSUD": "Copa Sudamericana", "RECOPA": "Recopa Sudamericana",
-    "SUDAMERICANO": "Sudamericano Sub-20", "SUDAMERICANO_U20": "Sudamericano Sub-20",
-    
-    # === NORTE/CENTROAMÉRICA ===
-    "MX": "Liga MX", "MX_B": "Liga Expansión MX",
-    "MX_C": "Liga Premier MX", "COPA_MX": "Copa MX",
-    "MLS": "MLS", "USL": "USL Championship",
-    "USL1": "USL League One", "NASL": "NASL",
-    "CAN": "Canadian Premier League", "CAN_PL": "Canadian Premier League",
+    "RECOPA": "Recopa Sudamericana", "SUDAMERICANO": "Sudamericano Sub-20",
+    "MX": "Liga MX", "MX_B": "Liga Expansión MX", "MX_C": "Liga Premier MX",
+    "MLS": "MLS", "USL": "USL Championship", "USL1": "USL League One",
+    "CAN": "Canadian Premier League",
     "CRC": "Primera División Costa Rica", "GT": "Liga Nacional Guatemala",
     "HN": "Liga Nacional Honduras", "SV": "Primera División El Salvador",
     "PA": "LPF Panamá", "JM": "Premier League Jamaica",
     "NI": "Primera División Nicaragua", "CU": "Campeonato Nacional Cuba",
-    
-    # === CONCACAF ===
-    "GOLD": "Copa Oro", "CCL": "Concacaf Champions League",
-    "LEAGUES_CUP": "Leagues Cup", "NATIONS_CA": "Nations League CONCACAF",
-    "COPA_ORO": "Copa Oro",
-    
-    # === ASIA ===
+    "GOLD": "Copa Oro", "NATIONS_CA": "Nations League CONCACAF",
     "JP": "J1 League", "JP_B": "J2 League", "JP_C": "J3 League",
     "JP_LC": "J.League Cup", "KR": "K League 1", "KR_B": "K League 2",
     "KR_C": "K3 League", "CN": "Super League China", "CN_B": "China League One",
@@ -244,24 +183,17 @@ COMPETITIONS = {
     "SA_A": "Pro League Saudi", "QA": "Stars League Qatar",
     "AE": "UAE Pro League", "KW": "Kuwait Premier League",
     "BH": "Bahraini Premier League", "OM": "Oman Professional League",
-    "UZ": "Super League Uzbekistán", "KG": "Premier League Kirguistán",
     "TJ": "Tajikistan League", "TM": "Turkmenistan League",
     "IN": "ISL India", "BD": "Bangladesh Premier League",
     "PK": "Pakistan Premier League", "LK": "Sri Lanka Premier League",
     "NP": "Martyr's Memorial A-Division", "BT": "Bhutan Premier League",
     "MV": "Dhivehi Premier League", "AU_A": "A-League",
     "AU_B": "NPL Australia", "NZ": "National League Nueva Zelanda",
-    
-    # === AFC ===
     "ACL": "AFC Champions League Elite", "ACL2": "AFC Champions League Two",
-    "AFC_CUP": "AFC Cup", "ASIA": "Copa Asiática",
-    "ASIA_U23": "Copa Asiática U23",
-    
-    # === ÁFRICA ===
+    "ASIA": "Copa Asiática", "ASIA_U23": "Copa Asiática U23",
     "EG": "Premier League Egypt", "EG_B": "Second Division Egypt",
-    "EG_C": "Third Division Egypt", "ZA": "Premier Division RSA",
-    "ZA_B": "National First Division RSA", "MA": "Botola Pro",
-    "TN": "Ligue 1 Túnez", "DZ": "Ligue 1 Argelia",
+    "ZA": "Premier Division RSA", "ZA_B": "National First Division RSA",
+    "MA": "Botola Pro", "TN": "Ligue 1 Túnez", "DZ": "Ligue 1 Argelia",
     "NG": "NPFL Nigeria", "GH": "Premier League Ghana",
     "CI": "Ligue 1 Costa de Marfil", "SN": "Ligue 1 Senegal",
     "CM": "Elite One Camerún", "AO": "Girabola Angola",
@@ -286,37 +218,26 @@ COMPETITIONS = {
     "SO": "Somali First Division", "MG": "THB Champions League Madagascar",
     "KM": "Comoros Premier League", "MU": "Mauritian Premier League",
     "SC_AFR": "Seychelles First Division", "RE": "Réunion Premier League",
-    
-    # === CAF ===
     "AFCON": "Africa Cup of Nations", "AFCON_U23": "Africa Cup U23",
     "AFCON_U20": "Africa Cup U20", "CAF_CL": "CAF Champions League",
     "CAF_CC": "CAF Confederation Cup", "CAF_SC": "CAF Super Cup",
-    
-    # === OCEANÍA ===
-    "OFC": "OFC Nations Cup", "OFC_U20": "OFC U20 Championship",
-    "FIJI": "Fiji Premier League", "PNG": "Papua New Guinea NSL",
-    "SOL": "Solomon Islands S-League", "VAN": "Vanuatu Premia Divisen",
-    "NCL": "New Caledonia Super Ligue", "TAH": "Tahiti Ligue 1",
-    "SAM": "Samoa National League", "TGA": "Tonga Major League",
-    
-    # === MUNDIALES ===
+    "OFC": "OFC Nations Cup", "FIJI": "Fiji Premier League",
+    "PNG": "Papua New Guinea NSL", "SOL": "Solomon Islands S-League",
+    "VAN": "Vanuatu Premia Divisen", "NCL": "New Caledonia Super Ligue",
+    "TAH": "Tahiti Ligue 1", "SAM": "Samoa National League",
+    "TGA": "Tonga Major League",
     "WC": "World Cup", "EURO": "Euro", "COPA": "Copa América",
     "NATIONS": "Nations League", "WCC": "FIFA Club World Cup",
     "CONFED": "Confederations Cup", "OLYMPICS": "Olympic Football",
     "OLYMPICS_W": "Olympic Football Women", "U20_WC": "U20 World Cup",
     "U17_WC": "U17 World Cup",
-    
-    # === UEFA ===
     "CL": "Champions League", "EL": "Europa League",
     "ECL": "Conference League", "SUPER_CUP_UEFA": "UEFA Super Cup",
-    "YOUTH_LEAGUE": "UEFA Youth League", "UEFA_NATIONS": "Nations League",
-    
-    # === AMISTOSOS ===
-    "FRIENDLY_INT": "Amistoso Internacional", "FRIENDLY_CLUB": "Amistoso Club",
+    "YOUTH_LEAGUE": "UEFA Youth League",
 }
 
-DEFAULT_COMPETITIONS = [
-    # === TOP 5 + competiciones principales ===
+# === LIGAS PRIORITARIAS (las que se cargan primero y siempre) ===
+PRIORITY_COMPETITIONS = [
     "PD", "PL", "SA", "BL1", "FL1", "PPL", "DED", "BSA", "CL", "EL",
     "ARG", "COL", "MX", "MLS", "JP", "KR", "SA_A", "EG", "ZA", "MA",
     "BE", "CH", "AU", "DK", "NO", "FI", "CZ", "GR", "TR", "UA",
@@ -326,62 +247,82 @@ DEFAULT_COMPETITIONS = [
     "AFCON", "COPA", "GOLD", "ASIA", "BRA_B", "ARG_B", "MX_B", "JP_B",
     "KR_B", "CN", "AU_A", "IN", "TH", "NG", "GH", "TN", "DZ", "ELC",
     "SP", "SI", "SD", "FL2", "WC", "EURO", "WCC",
-    
-    # === NUEVAS LIGAS ===
-    # Europa Oriental
+]
+
+# === LIGAS SECUNDARIAS (cargadas solo si hay quota disponible) ===
+SECONDARY_COMPETITIONS = [
     "RS", "BG", "HU", "SK", "BA", "MK", "ME", "AL", "MD", "EE",
     "LV", "LT", "BY", "KZ", "AM", "GE", "AZ", "UZ", "KG",
-    
-    # Asia
     "JP_C", "KR_C", "CN_B", "CN_C", "TH_B", "PH", "MM", "KH", "LA",
     "IQ", "JO", "LB", "SY", "YE", "KW", "BH", "OM", "TJ", "TM",
     "BD", "PK", "LK", "NP", "BT", "MV", "AU_B", "NZ",
-    
-    # África
     "EG_B", "ZA_B", "CI", "SN", "CM", "AO", "MZ", "ZM", "ZW",
     "BW", "NA", "SZ", "LS", "ET", "SD", "SS", "UG", "KE", "TZ",
     "RW", "BI", "CD", "CG", "GA", "GQ", "ST", "TD", "CF",
     "BJ", "TG", "BF", "ML", "NE", "MR", "GN", "GW", "SL",
     "LR", "GM", "CV", "DJ", "ER", "SO", "MG", "KM", "MU",
     "SC_AFR", "RE",
-    
-    # Sudamérica
     "BRA_C", "BRA_D", "ARG_C", "COL_B", "CHI_B", "URU_B", "PAR_B",
     "VEN_B", "BOL_B", "ECU_B", "PER_B", "RECOPA", "SUDAMERICANO",
-    
-    # Norteamérica
     "MX_C", "USL1", "NASL", "NI", "CU",
-    
-    # Copa Nacional
     "CDR", "COPA_ESP", "TACA_POR", "COUPE_FR", "DFB_POKAL",
     "COPA_ITA", "FA_CUP", "EFL_CUP", "CDB", "COPA_ARG",
     "COPA_MX", "CCL", "LEAGUES_CUP",
-    
-    # Oceanía
     "FIJI", "PNG", "SOL", "VAN", "NCL", "TAH", "SAM", "TGA",
-    
-    # Internacional
     "CONFED", "OLYMPICS", "OLYMPICS_W", "U20_WC", "U17_WC",
-    "YOUTH_LEAGUE", "SUPER_CUP_UEFA", "SUPER_ESP", "SUPER_POR",
-    "TROPHEE", "SUPER_CUP_GER", "SUPER_ITA", "COMM_SHIELD",
+    "YOUTH_LEAGUE", "SUPER_CUP_UEFA",
     "CAF_CL", "CAF_CC", "CAF_SC", "ACL", "ACL2", "ASIA_U23",
-    "AFCON_U23", "AFCON_U20", "NATIONS_CA", "OFC", "OFC_U20",
+    "AFCON_U23", "AFCON_U20", "NATIONS_CA", "OFC",
 ]
 
+DEFAULT_COMPETITIONS = PRIORITY_COMPETITIONS + SECONDARY_COMPETITIONS
+
+
+# ============================================================
+# CACHE AVANZADO CON TTL
+# ============================================================
 
 def cache_get(key, ttl=3600):
-    if key in CACHE:
-        data, ts = CACHE[key]
-        if (datetime.now() - ts).seconds < ttl:
-            return data
+    with CACHE_LOCK:
+        if key in CACHE:
+            data, ts, max_age = CACHE[key]
+            if (datetime.now() - ts).seconds < max_age:
+                return data
+            else:
+                del CACHE[key]
     return None
 
 
-def cache_set(key, data):
-    CACHE[key] = (data, datetime.now())
+def cache_set(key, data, ttl=3600):
+    with CACHE_LOCK:
+        CACHE[key] = (data, datetime.now(), ttl)
 
 
-def api_get(endpoint, params=None, cache_key=None, ttl=3600):
+def cache_clear_old():
+    """Limpia entradas de cache expiradas."""
+    now = datetime.now()
+    with CACHE_LOCK:
+        expired = [k for k, (_, ts, ttl) in CACHE.items() if (now - ts).seconds > ttl]
+        for k in expired:
+            del CACHE[k]
+        return len(expired)
+
+
+# ============================================================
+# API CLIENT OPTIMIZADO
+# ============================================================
+
+_session = None
+
+def get_session():
+    global _session
+    if _session is None:
+        _session = requests.Session()
+        _session.headers.update(HEADERS)
+    return _session
+
+
+def api_get(endpoint, params=None, cache_key=None, ttl=3600, timeout=15):
     if cache_key:
         cached = cache_get(cache_key, ttl)
         if cached is not None:
@@ -390,10 +331,11 @@ def api_get(endpoint, params=None, cache_key=None, ttl=3600):
     try:
         url = f"{BASE_URL}/{endpoint.lstrip('/')}/"
         logger.info(f"API CALL: {url} | params={params}")
-        resp = requests.get(url, headers=HEADERS, params=params, timeout=30)
+        session = get_session()
+        resp = session.get(url, params=params, timeout=timeout)
 
         if resp.status_code == 429:
-            logger.warning("RATE LIMIT API-Football")
+            logger.warning("RATE LIMIT API-Football - esperando...")
             return None
         if resp.status_code in (401, 403):
             logger.error(f"AUTH ERROR {resp.status_code}: {resp.text[:200]}")
@@ -407,12 +349,168 @@ def api_get(endpoint, params=None, cache_key=None, ttl=3600):
             return None
 
         if cache_key:
-            cache_set(cache_key, data)
+            cache_set(cache_key, data, ttl)
 
         return data
     except Exception as e:
         logger.error(f"API error: {e}")
         return None
+
+
+# ============================================================
+# FIXTURES POR FECHA - CARGA PARALELA OPTIMIZADA
+# ============================================================
+
+def get_fixtures_by_date(date, league_id=None, season=None):
+    params = {"date": date}
+    if league_id:
+        params["league"] = league_id
+    if season:
+        params["season"] = season
+
+    data = api_get(
+        "fixtures",
+        params=params,
+        cache_key=f"fixtures_{date}_{league_id or 'all'}",
+        ttl=1800
+    )
+
+    if not data or not isinstance(data, dict):
+        return []
+
+    return data.get("response", [])
+
+
+def fetch_league_fixtures(code, date, season):
+    """Obtiene fixtures para una liga específica. Usa cache."""
+    league_id = LEAGUE_IDS.get(code)
+    if not league_id:
+        return None, []
+    
+    fixtures = get_fixtures_by_date(date, league_id=league_id, season=season)
+    if fixtures:
+        comp_name = COMPETITIONS.get(code, code)
+        return {"code": code, "name": comp_name}, fixtures
+    return None, []
+
+
+def format_fixture(f):
+    fixture = f.get("fixture", {})
+    teams = f.get("teams", {})
+    goals = f.get("goals", {})
+    league = f.get("league", {})
+
+    home = teams.get("home", {})
+    away = teams.get("away", {})
+
+    status = fixture.get("status", {}).get("short", "NS")
+    status_map = {
+        "NS": "NS", "1H": "1H", "HT": "HT", "2H": "2H",
+        "ET": "ET", "P": "PEN", "FT": "FT", "AET": "AET",
+        "PEN": "PEN", "SUSP": "SUSP", "INT": "INT",
+        "PST": "PST", "CANC": "CANC", "ABD": "ABD",
+        "AWD": "AWD", "WO": "WO"
+    }
+
+    raw_matchday = league.get("round", "")
+    matchday = 0
+    if isinstance(raw_matchday, int):
+        matchday = raw_matchday
+    elif isinstance(raw_matchday, str):
+        parts = raw_matchday.split("-")
+        if parts:
+            last_part = parts[-1].strip()
+            try:
+                matchday = int(last_part)
+            except:
+                matchday = 0
+
+    return {
+        "id": fixture.get("id"),
+        "utcDate": fixture.get("date"),
+        "matchDate": (fixture.get("date") or "")[:10],
+        "status": status_map.get(status, status),
+        "statusText": status,
+        "minute": fixture.get("status", {}).get("elapsed", 0),
+        "venue": fixture.get("venue", {}).get("name", ""),
+        "matchday": matchday,
+        "homeTeam": {
+            "id": home.get("id"),
+            "name": home.get("name", "Local"),
+            "shortName": home.get("name", "Local")[:15],
+            "crest": home.get("logo", "")
+        },
+        "awayTeam": {
+            "id": away.get("id"),
+            "name": away.get("name", "Visitante"),
+            "shortName": away.get("name", "Visitante")[:15],
+            "crest": away.get("logo", "")
+        },
+        "competition": {
+            "id": league.get("id"),
+            "name": league.get("name", ""),
+            "code": ""
+        },
+        "league_name": league.get("name", ""),
+        "country": league.get("country", ""),
+        "homeScore": goals.get("home"),
+        "awayScore": goals.get("away"),
+        "halfTimeHome": None,
+        "halfTimeAway": None,
+        "api_football_fixture_id": fixture.get("id")
+    }
+
+
+# ============================================================
+# ESTADÍSTICAS REALES - CACHE AGRESIVO
+# ============================================================
+
+def get_fixture_statistics(fixture_id):
+    if not fixture_id:
+        return {}
+
+    data = api_get(
+        "fixtures/statistics",
+        params={"fixture": fixture_id},
+        cache_key=f"fixture_stats_{fixture_id}",
+        ttl=86400 * 3  # 3 días
+    )
+
+    if not data or not isinstance(data, dict):
+        return {}
+
+    result = {}
+    for item in data.get("response", []):
+        team_id = safe_get(item, "team", "id")
+        stats_list = item.get("statistics", [])
+
+        parsed = {}
+        for stat in stats_list:
+            stat_type = stat.get("type", "").strip()
+            value = stat.get("value")
+            parsed[stat_type] = value
+
+        if team_id:
+            result[team_id] = parsed
+
+    return result
+
+
+def get_fixture_events(fixture_id):
+    if not fixture_id:
+        return []
+
+    data = api_get(
+        "fixtures/events",
+        params={"fixture": fixture_id},
+        cache_key=f"fixture_events_{fixture_id}",
+        ttl=86400 * 3  # 3 días
+    )
+
+    if not data or not isinstance(data, dict):
+        return []
+
+    return data.get("response", [])
 
 
 def safe_get(d, *keys, default=None):
@@ -445,74 +543,28 @@ def get_season():
         return now.year - 1
 
 
-# ============================================================
-# OBTENER ESTADÍSTICAS DE UN PARTIDO ESPECÍFICO
-# ============================================================
-
-def get_fixture_statistics(fixture_id):
-    if not fixture_id:
-        return {}
-
-    data = api_get(
-        "fixtures/statistics",
-        params={"fixture": fixture_id},
-        cache_key=f"fixture_stats_{fixture_id}",
-        ttl=86400
-    )
-
-    if not data or not isinstance(data, dict):
-        return {}
-
-    result = {}
-    for item in data.get("response", []):
-        team_id = safe_get(item, "team", "id")
-        stats_list = item.get("statistics", [])
-
-        parsed = {}
-        for stat in stats_list:
-            stat_type = stat.get("type", "").strip()
-            value = stat.get("value")
-            parsed[stat_type] = value
-
-        if team_id:
-            result[team_id] = parsed
-
-    return result
-
-
-def get_fixture_events(fixture_id):
-    if not fixture_id:
-        return []
-
-    data = api_get(
-        "fixtures/events",
-        params={"fixture": fixture_id},
-        cache_key=f"fixture_events_{fixture_id}",
-        ttl=86400
-    )
-
-    if not data or not isinstance(data, dict):
-        return []
-
-    return data.get("response", [])
-
-
-def count_events_for_team(events, team_id, event_types):
-    count = 0
-    for event in events:
-        if event.get("team", {}).get("id") == team_id:
-            if event.get("type") in event_types:
-                count += 1
-    return count
-
-
-# ============================================================
-# CALCULAR ESTADÍSTICAS REALES DESDE PARTIDOS JUGADOS
-# ============================================================
+# Cache de stats por equipo para evitar recalcular en la misma sesión
+_TEAM_STATS_CACHE = {}
 
 def get_team_real_stats(team_id, league_id, season, max_fixtures=10):
+    """
+    Obtiene estadísticas REALES del equipo desde partidos jugados.
+    Cache agresivo: 12h para datos ya calculados.
+    """
     if not team_id or not league_id or not season:
         return None
+
+    cache_key = f"team_real_stats_{team_id}_{league_id}_{season}_{max_fixtures}"
+    
+    # Cache en memoria de proceso
+    if cache_key in _TEAM_STATS_CACHE:
+        return _TEAM_STATS_CACHE[cache_key]
+    
+    # Cache global
+    cached = cache_get(cache_key, ttl=43200)  # 12 horas
+    if cached is not None:
+        _TEAM_STATS_CACHE[cache_key] = cached
+        return cached
 
     fixtures_data = api_get(
         "fixtures",
@@ -524,7 +576,7 @@ def get_team_real_stats(team_id, league_id, season, max_fixtures=10):
             "status": "ft"
         },
         cache_key=f"team_fixtures_ft_{team_id}_{league_id}_{season}_{max_fixtures}",
-        ttl=3600
+        ttl=21600  # 6 horas
     )
 
     if not fixtures_data or not isinstance(fixtures_data, dict):
@@ -775,10 +827,7 @@ def get_team_real_stats(team_id, league_id, season, max_fixtures=10):
         "matches": cards_matches,
     }
 
-    logger.info(f"Team {team_id}: played={played}, corners_matches={corners_matches}, "
-                f"cards_matches={cards_matches}, avg_corners={avg_corners}")
-
-    return {
+    result = {
         "played": played,
         "goals_for": total_gf,
         "goals_against": total_ga,
@@ -803,10 +852,73 @@ def get_team_real_stats(team_id, league_id, season, max_fixtures=10):
         "corners_pct": corners_pct,
         "cards_pct": cards_pct,
     }
+    
+    # Guardar en caches
+    _TEAM_STATS_CACHE[cache_key] = result
+    cache_set(cache_key, result, ttl=43200)
+    
+    return result
 
 
 # ============================================================
-# PREDICCIONES
+# FORMA DESDE FIXTURES (sin llamada extra a teams/statistics)
+# ============================================================
+
+def get_team_form_from_fixtures(team_id, league_id, season, limit=5):
+    """
+    Obtiene la forma reciente del equipo desde fixtures ya cacheados.
+    Evita la llamada extra a /teams/statistics.
+    """
+    cache_key = f"team_form_{team_id}_{league_id}_{season}_{limit}"
+    cached = cache_get(cache_key, ttl=21600)
+    if cached is not None:
+        return cached
+
+    fixtures_data = api_get(
+        "fixtures",
+        params={
+            "team": team_id,
+            "league": league_id,
+            "season": season,
+            "last": limit,
+            "status": "ft"
+        },
+        cache_key=f"team_fixtures_ft_{team_id}_{league_id}_{season}_{limit}",
+        ttl=21600
+    )
+
+    if not fixtures_data or not isinstance(fixtures_data, dict):
+        return [], ""
+
+    fixtures = fixtures_data.get("response", [])
+    form_list = []
+    
+    for fixture in fixtures:
+        teams = fixture.get("teams", {})
+        home_team = teams.get("home", {})
+        away_team = teams.get("away", {})
+        
+        is_home = home_team.get("id") == team_id
+        winner = fixture.get("teams", {}).get("home" if is_home else "away", {}).get("winner")
+        
+        if winner is True:
+            form_list.append({"result": "W", "result_text": "Victoria"})
+        elif winner is False:
+            form_list.append({"result": "L", "result_text": "Derrota"})
+        else:
+            form_list.append({"result": "D", "result_text": "Empate"})
+
+    # Invertir para que el más reciente esté primero
+    form_list.reverse()
+    form_str = "".join([f["result"] for f in form_list])
+    
+    result = (form_list, form_str)
+    cache_set(cache_key, result, ttl=21600)
+    return result
+
+
+# ============================================================
+# PREDICCIONES - SOLO BAJO DEMANDA
 # ============================================================
 
 def get_predictions(fixture_id):
@@ -817,7 +929,7 @@ def get_predictions(fixture_id):
         "predictions",
         params={"fixture": fixture_id},
         cache_key=f"predictions_{fixture_id}",
-        ttl=3600
+        ttl=86400  # 24h (las predicciones no cambian)
     )
 
     if not data or not isinstance(data, dict):
@@ -844,95 +956,8 @@ def get_predictions(fixture_id):
 
 
 # ============================================================
-# FIXTURES POR FECHA
+# ENDPOINTS
 # ============================================================
-
-def get_fixtures_by_date(date, league_id=None, season=None):
-    params = {"date": date}
-    if league_id:
-        params["league"] = league_id
-    if season:
-        params["season"] = season
-
-    data = api_get(
-        "fixtures",
-        params=params,
-        cache_key=f"fixtures_{date}_{league_id or 'all'}",
-        ttl=1800
-    )
-
-    if not data or not isinstance(data, dict):
-        return []
-
-    return data.get("response", [])
-
-
-def format_fixture(f):
-    fixture = f.get("fixture", {})
-    teams = f.get("teams", {})
-    goals = f.get("goals", {})
-    league = f.get("league", {})
-
-    home = teams.get("home", {})
-    away = teams.get("away", {})
-
-    status = fixture.get("status", {}).get("short", "NS")
-    status_map = {
-        "NS": "NS", "1H": "1H", "HT": "HT", "2H": "2H",
-        "ET": "ET", "P": "PEN", "FT": "FT", "AET": "AET",
-        "PEN": "PEN", "SUSP": "SUSP", "INT": "INT",
-        "PST": "PST", "CANC": "CANC", "ABD": "ABD",
-        "AWD": "AWD", "WO": "WO"
-    }
-
-    raw_matchday = league.get("round", "")
-    matchday = 0
-    if isinstance(raw_matchday, int):
-        matchday = raw_matchday
-    elif isinstance(raw_matchday, str):
-        parts = raw_matchday.split("-")
-        if parts:
-            last_part = parts[-1].strip()
-            try:
-                matchday = int(last_part)
-            except:
-                matchday = 0
-
-    return {
-        "id": fixture.get("id"),
-        "utcDate": fixture.get("date"),
-        "matchDate": (fixture.get("date") or "")[:10],
-        "status": status_map.get(status, status),
-        "statusText": status,
-        "minute": fixture.get("status", {}).get("elapsed", 0),
-        "venue": fixture.get("venue", {}).get("name", ""),
-        "matchday": matchday,
-        "homeTeam": {
-            "id": home.get("id"),
-            "name": home.get("name", "Local"),
-            "shortName": home.get("name", "Local")[:15],
-            "crest": home.get("logo", "")
-        },
-        "awayTeam": {
-            "id": away.get("id"),
-            "name": away.get("name", "Visitante"),
-            "shortName": away.get("name", "Visitante")[:15],
-            "crest": away.get("logo", "")
-        },
-        "competition": {
-            "id": league.get("id"),
-            "name": league.get("name", ""),
-            "code": ""
-        },
-        "league_name": league.get("name", ""),
-        "country": league.get("country", ""),
-        "homeScore": goals.get("home"),
-        "awayScore": goals.get("away"),
-        "halfTimeHome": None,
-        "halfTimeAway": None,
-        "api_football_fixture_id": fixture.get("id")
-    }
-
 
 @app.get("/", response_class=HTMLResponse)
 def home(request: Request):
@@ -945,21 +970,43 @@ def api_matches(date: str = Query(None)):
         date = datetime.now(timezone.utc).strftime("%Y-%m-%d")
 
     season = get_season()
+    
+    # Limpiar cache viejo periódicamente
+    cache_clear_old()
+
     collected = []
     found = []
+    all_codes = list(DEFAULT_COMPETITIONS)
 
-    for code in DEFAULT_COMPETITIONS:
-        league_id = get_league_id(code)
-        if not league_id:
-            continue
-
-        fixtures = get_fixtures_by_date(date, league_id=league_id, season=season)
-
-        if fixtures:
-            comp_matches = [format_fixture(f) for f in fixtures]
-            if comp_matches:
+    # === FASE 1: Cargar ligas prioritarias en paralelo (máx 8 workers) ===
+    with ThreadPoolExecutor(max_workers=8) as executor:
+        future_to_code = {
+            executor.submit(fetch_league_fixtures, code, date, season): code 
+            for code in PRIORITY_COMPETITIONS
+        }
+        
+        for future in as_completed(future_to_code):
+            comp_info, fixtures = future.result()
+            if comp_info and fixtures:
+                comp_matches = [format_fixture(f) for f in fixtures]
                 collected.extend(comp_matches)
-                found.append({"code": code, "name": COMPETITIONS.get(code, code)})
+                found.append(comp_info)
+
+    # Si ya tenemos muchos partidos de prioridad, podemos saltar secundarias
+    # para ahorrar requests, o cargarlas también
+    if len(collected) < 30:
+        with ThreadPoolExecutor(max_workers=6) as executor:
+            future_to_code = {
+                executor.submit(fetch_league_fixtures, code, date, season): code 
+                for code in SECONDARY_COMPETITIONS
+            }
+            
+            for future in as_completed(future_to_code):
+                comp_info, fixtures = future.result()
+                if comp_info and fixtures:
+                    comp_matches = [format_fixture(f) for f in fixtures]
+                    collected.extend(comp_matches)
+                    found.append(comp_info)
 
     seen = set()
     unique = []
@@ -976,7 +1023,9 @@ def api_matches(date: str = Query(None)):
         "source_date": date if unique else None,
         "is_exact": True,
         "competitions_found": found,
-        "source": "api-football.com"
+        "source": "api-football.com",
+        "total_api_calls": len([c for c in CACHE if date in c]),
+        "cache_size": len(CACHE)
     }
 
 
@@ -1021,43 +1070,24 @@ def analyze(
 
     logger.info(f"Comp: {comp_code}, League ID: {league_id}, Season: {season}")
 
-    home_stats = get_team_real_stats(home_id, league_id, season, max_fixtures=10) if league_id else None
-    away_stats = get_team_real_stats(away_id, league_id, season, max_fixtures=10) if league_id else None
+    # === OBTENER STATS EN PARALELO ===
+    home_stats = None
+    away_stats = None
+    
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        future_home = executor.submit(get_team_real_stats, home_id, league_id, season, 10)
+        future_away = executor.submit(get_team_real_stats, away_id, league_id, season, 10)
+        home_stats = future_home.result()
+        away_stats = future_away.result()
 
     home_mode = "REAL" if (home_stats and home_stats["played"] > 0) else "NO_DATA"
     away_mode = "REAL" if (away_stats and away_stats["played"] > 0) else "NO_DATA"
 
-    home_form_data = api_get(
-        "teams/statistics",
-        params={"team": home_id, "league": league_id, "season": season},
-        cache_key=f"team_stats_form_{home_id}_{league_id}_{season}",
-        ttl=7200
-    )
-    away_form_data = api_get(
-        "teams/statistics",
-        params={"team": away_id, "league": league_id, "season": season},
-        cache_key=f"team_stats_form_{away_id}_{league_id}_{season}",
-        ttl=7200
-    )
+    # === FORMA DESDE FIXTURES (sin llamada extra) ===
+    home_form, home_form_str = get_team_form_from_fixtures(home_id, league_id, season, 5)
+    away_form, away_form_str = get_team_form_from_fixtures(away_id, league_id, season, 5)
 
-    def parse_form(form_data):
-        if not form_data or not isinstance(form_data, dict):
-            return [], ""
-        response = form_data.get("response", {})
-        form_str = response.get("form", "") if isinstance(response, dict) else ""
-        form_list = []
-        for char in (form_str or "")[-5:]:
-            if char == "W":
-                form_list.append({"result": "W", "result_text": "Victoria"})
-            elif char == "D":
-                form_list.append({"result": "D", "result_text": "Empate"})
-            elif char == "L":
-                form_list.append({"result": "L", "result_text": "Derrota"})
-        return form_list, form_str or ""
-
-    home_form, home_form_str = parse_form(home_form_data)
-    away_form, away_form_str = parse_form(away_form_data)
-
+    # === FALLBACK ===
     if not home_stats or home_stats["played"] == 0:
         home_stats = {
             "played": 0, "goals_for": 0, "goals_against": 0,
@@ -1100,6 +1130,7 @@ def analyze(
         }
         away_mode = "DEFAULT"
 
+    # === PREDICCIONES (bajo demanda, cacheadas 24h) ===
     predictions = get_predictions(match_id)
 
     probabilities = {
@@ -1170,7 +1201,7 @@ def health():
         "time": datetime.now().isoformat(),
         "cache_size": len(CACHE),
         "api_football": "configured",
-        "version": "12.0.0"
+        "version": "13.0.0"
     }
 
 
