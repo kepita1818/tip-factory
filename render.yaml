@@ -10,3 +10,31 @@ services:
         sync: false
       - key: PORT
         value: 8000
+      - key: REDIS_URL
+        fromService:
+          type: redis
+          name: tipfactory-redis
+          property: connectionString
+    # Precarga al iniciar el servidor
+    preDeployCommand: python precache.py
+
+  - type: cron
+    name: tip-factory-precache
+    env: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: python precache.py
+    schedule: "0 6,18 * * *"  # 6am y 6pm UTC
+    envVars:
+      - key: API_FOOTBALL_KEY
+        sync: false
+      - key: REDIS_URL
+        fromService:
+          type: redis
+          name: tipfactory-redis
+          property: connectionString
+
+redis:
+  - name: tipfactory-redis
+    plan: free
+    ipAllowList: []  # Acceso desde cualquier servicio Render
