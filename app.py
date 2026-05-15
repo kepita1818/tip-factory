@@ -13,7 +13,7 @@ from fastapi.templating import Jinja2Templates
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
 
-app = FastAPI(title="TipFactory", version="11.3.0")
+app = FastAPI(title="TipFactory", version="11.3.1")
 
 app.add_middleware(
     CORSMiddleware,
@@ -33,12 +33,12 @@ HEADERS = {"x-apisports-key": API_KEY}
 
 CACHE = {}
 
-# === LIGAS SOPORTADAS (v11.3 - Ligas limpias) ===
+# === LIGAS SOPORTADAS (v11.3.1 - FIX: La Liga 2 ID corregido) ===
 LEAGUE_IDS = {
     # === 5 GRANDES LIGAS ===
     "PL": 39, "PD": 140, "SA": 135, "BL1": 78, "FL1": 61,
     # === SEGUNDAS DIVISIONES ===
-    "ELC": 40, "SP": 207, "SI": 131, "SD": 81, "FL2": 62,
+    "ELC": 40, "SP": 141, "SI": 131, "SD": 81, "FL2": 62,
     # === EUROPA (otras ligas importantes) ===
     "PPL": 94, "DED": 88, "BE": 144, "CH": 207, "DK": 119,
     "NO": 103, "FI": 244, "CZ": 346, "GR": 197, "TR": 203,
@@ -929,7 +929,7 @@ def health():
         "time": datetime.now().isoformat(),
         "cache_size": len(CACHE),
         "api_football": "configured",
-        "version": "11.3.0"
+        "version": "11.3.1"
     }
 
 
