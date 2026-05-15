@@ -9,6 +9,15 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+# Añadir después de los imports existentes
+from cache import (
+    get_fixtures, save_fixtures,
+    get_team_stats, save_team_stats,
+    get_prediction, save_prediction,
+    get_match_stats, save_match_stats,
+    get_events, save_events,
+    get_cache_stats
+)
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
