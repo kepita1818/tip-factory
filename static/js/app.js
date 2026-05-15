@@ -402,14 +402,14 @@ function renderProbabilities(data) {
   html += '</div>';
 
   // Cards REALES
-  var avgCards = (num(hs.avg_yellow_cards) + num(as.avg_yellow_cards)) / 2;
+  var avgCards = num(hs.avg_yellow_cards) + num(as.avg_yellow_cards);
   html += '<div class="prob-box ' + probColorClass(avgCards * 15) + '">';
   html += '<div class="prob-box-value">' + dec(avgCards, 2) + ' Tarjetas</div>';
   html += '<div class="prob-box-sub">Amarillas reales por partido</div>';
   html += '</div>';
 
   // Corners REALES
-  var avgCorners = (num(hs.avg_corners) + num(as.avg_corners)) / 2;
+  var avgCorners = num(hs.avg_corners) + num(as.avg_corners);
   html += '<div class="prob-box ' + probColorClass(avgCorners * 7) + '">';
   html += '<div class="prob-box-value">' + dec(avgCorners, 2) + ' Córners</div>';
   html += '<div class="prob-box-sub">Córners reales por partido</div>';
