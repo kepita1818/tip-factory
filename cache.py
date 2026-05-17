@@ -141,3 +141,47 @@ def get_cache_stats():
         }
     except Exception as e:
         return {"error": str(e)}
+
+
+def get_cache_efficiency_stats():
+    """Devuelve estadísticas de uso del cache para monitoreo"""
+    if not redis_client:
+        return {"error": "Redis not connected", "disk_cache": get_disk_cache_stats()}
+    try:
+        info = redis_client.info()
+        keys = redis_client.dbsize()
+        return {
+            "redis_connected": True,
+            "keys_total": keys,
+            "memory_used": info.get("used_memory_human", "N/A"),
+            "hit_rate": info.get("keyspace_hits", 0),
+            "miss_rate": info.get("keyspace_misses", 0),
+            "uptime_seconds": info.get("uptime_in_seconds", 0)
+        }
+    except Exception as e:
+        return {"error": str(e)}
+
+def get_disk_cache_stats():
+    """Estadísticas del cache en disco (fallback)"""
+    import os
+    import json
+    from datetime import datetime, timezone
+
+    cache_dir = "/tmp/tipfactory_cache"
+    if not os.path.exists(cache_dir):
+        return {"files": 0, "size_mb": 0}
+
+    files = os.listdir(cache_dir)
+    total_size = sum(os.path.getsize(os.path.join(cache_dir, f)) for f in files)
+
+    # Contar por tipo
+    types = {}
+    for f in files:
+        prefix = f.split('_')[0] if '_' in f else 'other'
+        types[prefix] = types.get(prefix, 0) + 1
+
+    return {
+        "files": len(files),
+        "size_mb": round(total_size / (1024 * 1024), 2),
+        "by_type": types
+    }
