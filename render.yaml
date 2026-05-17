@@ -8,15 +8,15 @@ services:
     envVars:
       - key: API_FOOTBALL_KEY
         sync: false
+      - key: ADMIN_SECRET
+        generateValue: true  # Render genera una clave aleatoria automaticamente
       - key: PORT
         value: 8000
       - key: RENDER
         value: "true"
       - key: DAILY_API_LIMIT
         value: "7500"
-    # Keep-alive para evitar que Render duerma la app
     healthCheckPath: /health
-    # Auto-deploy al hacer push
     autoDeploy: true
 
   - type: cron
