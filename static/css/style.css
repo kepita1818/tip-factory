@@ -637,3 +637,102 @@ body {
     border-right: 1px solid var(--line);
   }
 }
+
+
+/* ===== PAYWALL OVERLAY ===== */
+.paywall-overlay {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 20px 16px;
+  margin-top: 10px;
+  border-radius: 12px;
+  overflow: hidden;
+  min-height: 280px;
+}
+
+.paywall-blur {
+  position: absolute;
+  inset: 0;
+  background: rgba(10, 22, 40, 0.85);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  z-index: 1;
+}
+
+.paywall-content {
+  position: relative;
+  z-index: 2;
+  text-align: center;
+  width: 100%;
+  max-width: 340px;
+}
+
+.paywall-lock {
+  font-size: 32px;
+  margin-bottom: 8px;
+}
+
+.paywall-title {
+  font-size: 18px;
+  font-weight: 800;
+  color: #fff;
+  margin-bottom: 4px;
+}
+
+.paywall-subtitle {
+  font-size: 12px;
+  color: var(--muted);
+  margin-bottom: 16px;
+  line-height: 1.4;
+}
+
+.paywall-features {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 20px;
+  text-align: left;
+  padding: 0 8px;
+}
+
+.paywall-feature {
+  font-size: 12px;
+  color: var(--text);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.paywall-btn {
+  background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+  color: #fff;
+  border: none;
+  border-radius: 24px;
+  padding: 14px 32px;
+  font-size: 14px;
+  font-weight: 800;
+  letter-spacing: 0.5px;
+  cursor: pointer;
+  width: 100%;
+  max-width: 280px;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+  box-shadow: 0 4px 15px rgba(59, 130, 246, 0.4);
+}
+
+.paywall-btn:active {
+  transform: scale(0.97);
+}
+
+.paywall-note {
+  font-size: 10px;
+  color: var(--muted);
+  margin-top: 10px;
+}
+
+/* Cuando está desbloqueado, ocultar overlay */
+.paywall-overlay.unlocked {
+  display: none !important;
+}
