@@ -16,7 +16,7 @@ from fastapi.templating import Jinja2Templates
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
 
-app = FastAPI(title="TipFactory", version="12.0.0")
+app = FastAPI(title="TipFactory", version="13.0.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -73,7 +73,6 @@ def disk_cache_path(key):
     return os.path.join(CACHE_DIR, f"{key}.json")
 
 def save_to_disk(key, data):
-    """Guarda cache en disco como JSON"""
     try:
         filepath = disk_cache_path(key)
         with open(filepath, 'w', encoding='utf-8') as f:
@@ -87,7 +86,6 @@ def save_to_disk(key, data):
         return False
 
 def load_from_disk(key, max_age_hours=24):
-    """Lee cache de disco si no ha expirado"""
     try:
         filepath = disk_cache_path(key)
         if not os.path.exists(filepath):
@@ -104,13 +102,58 @@ def load_from_disk(key, max_age_hours=24):
         return None
 
 def delete_disk_cache(pattern=""):
-    """Limpia archivos de cache antiguos"""
     try:
         for filename in os.listdir(CACHE_DIR):
             if pattern in filename:
                 os.remove(os.path.join(CACHE_DIR, filename))
     except Exception as e:
         logger.error(f"Error cleaning disk cache: {e}")
+
+# ============================================================
+# SISTEMA ANTI-REVENTA DE CODIGOS
+# ============================================================
+
+CODES_FILE = os.path.join(CACHE_DIR, "codes_db.json")
+
+def load_codes_db():
+    try:
+        if os.path.exists(CODES_FILE):
+            with open(CODES_FILE, 'r', encoding='utf-8') as f:
+                return json.load(f)
+    except Exception as e:
+        logger.error(f"Error loading codes DB: {e}")
+    return {}
+
+def save_codes_db(db):
+    try:
+        with open(CODES_FILE, 'w', encoding='utf-8') as f:
+            json.dump(db, f, ensure_ascii=False)
+        return True
+    except Exception as e:
+        logger.error(f"Error saving codes DB: {e}")
+        return False
+
+def init_codes():
+    db = load_codes_db()
+    default_codes = {
+        "TF2026A": {"used": False, "created": "2026-05-17", "used_by": None, "used_at": None},
+        "TF2026B": {"used": False, "created": "2026-05-17", "used_by": None, "used_at": None},
+        "TF2026C": {"used": False, "created": "2026-05-17", "used_by": None, "used_at": None},
+        "TF2026D": {"used": False, "created": "2026-05-17", "used_by": None, "used_at": None},
+        "TF2026E": {"used": False, "created": "2026-05-17", "used_by": None, "used_at": None},
+        "VIP001": {"used": False, "created": "2026-05-17", "used_by": None, "used_at": None},
+        "VIP002": {"used": False, "created": "2026-05-17", "used_by": None, "used_at": None},
+        "VIP003": {"used": False, "created": "2026-05-17", "used_by": None, "used_at": None},
+        "VIP004": {"used": False, "created": "2026-05-17", "used_by": None, "used_at": None},
+        "VIP005": {"used": False, "created": "2026-05-17", "used_by": None, "used_at": None},
+    }
+    for code, data in default_codes.items():
+        if code not in db:
+            db[code] = data
+    save_codes_db(db)
+    return db
+
+VALID_CODES = init_codes()
 
 # === LIGAS SOPORTADAS ===
 LEAGUE_IDS = {
@@ -140,49 +183,62 @@ COMPETITIONS = {
     "PPL": "Primeira Liga", "DED": "Eredivisie", "BE": "Jupiler Pro League",
     "CH": "Super League Suiza", "DK": "Superliga Dinamarca",
     "NO": "Eliteserien", "FI": "Veikkausliiga", "CZ": "First League Checa",
-    "GR": "Super League Grecia", "TR": "Süper Lig", "HR": "HNL Croacia",
-    "RO": "Liga I Rumanía", "SC": "Premiership Escocia",
+    "GR": "Super League Grecia", "TR": "Super Lig", "HR": "HNL Croacia",
+    "RO": "Liga I Rumania", "SC": "Premiership Escocia",
     "PLN": "Ekstraklasa Polonia", "AU": "Bundesliga Austria",
-    "BSA": "Brasileirao", "BRA_B": "Série B Brasil",
+    "BSA": "Brasileirao", "BRA_B": "Serie B Brasil",
     "ARG": "Liga Argentina", "ARG_B": "Primera Nacional",
-    "COL": "Liga Colombia", "CHI": "Primera División Chile",
-    "URU": "Primera División Uruguay", "PAR": "Primera División Paraguay",
-    "ECU": "Serie A Ecuador", "PER": "Liga 1 Perú",
-    "MX": "Liga MX", "MX_B": "Liga Expansión MX",
+    "COL": "Liga Colombia", "CHI": "Primera Division Chile",
+    "URU": "Primera Division Uruguay", "PAR": "Primera Division Paraguay",
+    "ECU": "Serie A Ecuador", "PER": "Liga 1 Peru",
+    "MX": "Liga MX", "MX_B": "Liga Expansion MX",
     "MLS": "MLS", "USL": "USL Championship", "CAN": "Canadian Premier League",
-    "CRC": "Primera División Costa Rica", "GT": "Liga Nacional Guatemala",
-    "HN": "Liga Nacional Honduras", "SV": "Primera División El Salvador",
-    "PA": "LPF Panamá", "JM": "Premier League Jamaica",
+    "CRC": "Primera Division Costa Rica", "GT": "Liga Nacional Guatemala",
+    "HN": "Liga Nacional Honduras", "SV": "Primera Division El Salvador",
+    "PA": "LPF Panama", "JM": "Premier League Jamaica",
     "JP": "J1 League", "JP_B": "J2 League", "KR": "K League",
     "KR_B": "K League 2", "CN": "Super League China",
     "AU_A": "A-League", "SA_A": "Pro League Saudi",
     "AE": "UAE Pro League", "QA": "Stars League Qatar",
     "IR": "Persian Gulf Pro League",
     "EG": "Premier League Egypt", "ZA": "Premier Division RSA",
-    "MA": "Botola Pro", "TN": "Ligue 1 Túnez", "DZ": "Ligue 1 Argelia",
+    "MA": "Botola Pro", "TN": "Ligue 1 Tunez", "DZ": "Ligue 1 Argelia",
     "NG": "NPFL Nigeria", "GH": "Premier League Ghana",
     "CL": "Champions League", "EL": "Europa League",
     "ECL": "Conference League", "NATIONS": "Nations League",
     "CLI": "Copa Libertadores", "CSA": "Copa Sudamericana",
-    "COPA": "Copa América",
+    "COPA": "Copa America",
     "WC": "World Cup", "EURO": "Euro", "AFCON": "Africa Cup",
     "GOLD": "Gold Cup", "ASIA": "Asian Cup", "WCC": "FIFA Club World Cup",
 }
 
-DEFAULT_COMPETITIONS = [
-    "PL", "PD", "SA", "BL1", "FL1", "ELC", "SP", "SI", "SD", "FL2",
+# === LIGAS PRIORITARIAS (reducidas para ahorrar API calls) ===
+TOP_LEAGUES = [
+    "PL", "PD", "SA", "BL1", "FL1",
+    "CL", "EL", "ECL",
+    "BSA", "ARG", "COL", "CHI", "URU",
+    "MLS", "MX",
+    "JP", "KR",
+    "EG", "ZA"
+]
+
+SECONDARY_LEAGUES = [
+    "ELC", "SP", "SI", "SD", "FL2",
     "PPL", "DED", "BE", "CH", "DK", "NO", "FI", "CZ", "GR", "TR",
     "HR", "RO", "SC", "PLN", "AU",
-    "BSA", "BRA_B", "ARG", "ARG_B", "COL", "CHI", "URU", "PAR",
-    "ECU", "PER", "MX", "MX_B", "MLS", "USL", "CAN",
+    "BRA_B", "ARG_B",
+    "ECU", "PER", "PAR",
+    "MX_B", "USL", "CAN",
     "CRC", "GT", "HN", "SV", "PA", "JM",
-    "JP", "JP_B", "KR", "KR_B", "CN", "AU_A", "SA_A", "AE", "QA", "IR",
-    "EG", "ZA", "MA", "TN", "DZ", "NG", "GH",
-    "CL", "EL", "ECL", "NATIONS", "CLI", "CSA", "COPA",
+    "JP_B", "KR_B", "CN", "AU_A", "SA_A", "AE", "QA", "IR",
+    "MA", "TN", "DZ", "NG", "GH",
+    "NATIONS", "CLI", "CSA", "COPA",
     "WC", "EURO", "AFCON", "GOLD", "ASIA", "WCC",
 ]
 
-MAX_WORKERS = 10
+DEFAULT_COMPETITIONS = TOP_LEAGUES + SECONDARY_LEAGUES
+
+MAX_WORKERS = 5
 
 def cache_get(key, ttl=3600):
     if key in CACHE:
@@ -239,6 +295,7 @@ def api_get(endpoint, params=None, cache_key=None, ttl=3600, force=False):
 
         if cache_key:
             cache_set(cache_key, data)
+            save_to_disk(cache_key, data)
 
         return data
     except Exception as e:
@@ -276,131 +333,103 @@ def get_season():
 # ============================================================
 
 def get_cached_fixtures(date_str):
-    """Lee fixtures de RAM o disco"""
-    # 1. Intentar RAM
     ram_key = f"fixtures_{date_str}"
-    ram_cached = cache_get(ram_key, ttl=43200)  # 12h en RAM
+    ram_cached = cache_get(ram_key, ttl=43200)
     if ram_cached:
         return ram_cached
-    
-    # 2. Intentar disco
     disk_cached = load_from_disk(ram_key, max_age_hours=12)
     if disk_cached:
-        # Guardar en RAM para próximas lecturas
         cache_set(ram_key, disk_cached)
         return disk_cached
-    
     return None
 
 def save_cached_fixtures(date_str, data):
-    """Guarda fixtures en RAM y disco"""
     ram_key = f"fixtures_{date_str}"
     cache_set(ram_key, data)
     save_to_disk(ram_key, data)
 
 def get_cached_team_stats(team_id, league_id, season):
-    """Lee stats de equipo de RAM o disco"""
     ram_key = f"team_stats_{team_id}_{league_id}_{season}"
-    ram_cached = cache_get(ram_key, ttl=86400)  # 24h en RAM
+    ram_cached = cache_get(ram_key, ttl=86400)
     if ram_cached:
         return ram_cached
-    
-    disk_cached = load_from_disk(ram_key, max_age_hours=24)
+    disk_cached = load_from_disk(ram_key, max_age_hours=48)
     if disk_cached:
         cache_set(ram_key, disk_cached)
         return disk_cached
-    
     return None
 
 def save_cached_team_stats(team_id, league_id, season, data):
-    """Guarda stats de equipo en RAM y disco"""
     ram_key = f"team_stats_{team_id}_{league_id}_{season}"
     cache_set(ram_key, data)
     save_to_disk(ram_key, data)
 
 def get_cached_prediction(fixture_id):
-    """Lee predicción de RAM o disco"""
     ram_key = f"prediction_{fixture_id}"
-    ram_cached = cache_get(ram_key, ttl=21600)  # 6h en RAM
+    ram_cached = cache_get(ram_key, ttl=21600)
     if ram_cached:
         return ram_cached
-    
-    disk_cached = load_from_disk(ram_key, max_age_hours=6)
+    disk_cached = load_from_disk(ram_key, max_age_hours=12)
     if disk_cached:
         cache_set(ram_key, disk_cached)
         return disk_cached
-    
     return None
 
 def save_cached_prediction(fixture_id, data):
-    """Guarda predicción en RAM y disco"""
     ram_key = f"prediction_{fixture_id}"
     cache_set(ram_key, data)
     save_to_disk(ram_key, data)
 
 def get_cached_match_stats(fixture_id):
-    """Lee stats de partido de RAM o disco"""
     ram_key = f"match_stats_{fixture_id}"
     ram_cached = cache_get(ram_key, ttl=86400)
     if ram_cached:
         return ram_cached
-    
-    disk_cached = load_from_disk(ram_key, max_age_hours=24)
+    disk_cached = load_from_disk(ram_key, max_age_hours=48)
     if disk_cached:
         cache_set(ram_key, disk_cached)
         return disk_cached
-    
     return None
 
 def save_cached_match_stats(fixture_id, data):
-    """Guarda stats de partido en RAM y disco"""
     ram_key = f"match_stats_{fixture_id}"
     cache_set(ram_key, data)
     save_to_disk(ram_key, data)
 
 def get_cached_events(fixture_id):
-    """Lee eventos de RAM o disco"""
     ram_key = f"events_{fixture_id}"
     ram_cached = cache_get(ram_key, ttl=86400)
     if ram_cached:
         return ram_cached
-    
-    disk_cached = load_from_disk(ram_key, max_age_hours=24)
+    disk_cached = load_from_disk(ram_key, max_age_hours=48)
     if disk_cached:
         cache_set(ram_key, disk_cached)
         return disk_cached
-    
     return None
 
 def save_cached_events(fixture_id, data):
-    """Guarda eventos en RAM y disco"""
     ram_key = f"events_{fixture_id}"
     cache_set(ram_key, data)
     save_to_disk(ram_key, data)
 
 # ============================================================
-# ESTADÍSTICAS DE PARTIDO
+# ESTADISTICAS DE PARTIDO
 # ============================================================
 
 def get_fixture_statistics(fixture_id):
     if not fixture_id:
         return {}
-
-    # INTENTAR CACHE PRIMERO
     cached = get_cached_match_stats(fixture_id)
     if cached is not None:
         return cached
-
     data = api_get(
         "fixtures/statistics",
         params={"fixture": fixture_id},
         cache_key=f"fixture_stats_{fixture_id}",
         ttl=86400
     )
-
     if not data or not isinstance(data, dict):
         return {}
-
     result = {}
     for item in data.get("response", []):
         team_id = safe_get(item, "team", "id")
@@ -412,48 +441,38 @@ def get_fixture_statistics(fixture_id):
             parsed[stat_type] = value
         if team_id:
             result[team_id] = parsed
-    
-    # GUARDAR EN CACHE
     save_cached_match_stats(fixture_id, result)
     return result
 
 def get_fixture_events(fixture_id):
     if not fixture_id:
         return []
-
-    # INTENTAR CACHE PRIMERO
     cached = get_cached_events(fixture_id)
     if cached is not None:
         return cached
-
     data = api_get(
         "fixtures/events",
         params={"fixture": fixture_id},
         cache_key=f"fixture_events_{fixture_id}",
         ttl=86400
     )
-
     if not data or not isinstance(data, dict):
         return []
-    
     events = data.get("response", [])
     save_cached_events(fixture_id, events)
     return events
 
 # ============================================================
-# ESTADÍSTICAS REALES DEL EQUIPO
+# ESTADISTICAS REALES DEL EQUIPO - OPTIMIZADO
 # ============================================================
 
-def get_team_real_stats(team_id, league_id, season, max_fixtures=10):
+def get_team_real_stats(team_id, league_id, season, max_fixtures=5):
     if not team_id or not league_id or not season:
         return None
-
-    # INTENTAR CACHE PRIMERO
     cached = get_cached_team_stats(team_id, league_id, season)
     if cached:
         logger.info(f"Team {team_id}: CACHE HIT")
         return cached
-
     fixtures_data = api_get(
         "fixtures",
         params={
@@ -464,12 +483,10 @@ def get_team_real_stats(team_id, league_id, season, max_fixtures=10):
             "status": "ft"
         },
         cache_key=f"team_fixtures_ft_{team_id}_{league_id}_{season}_{max_fixtures}",
-        ttl=14400
+        ttl=28800
     )
-
     if not fixtures_data or not isinstance(fixtures_data, dict):
         return None
-
     fixtures = fixtures_data.get("response", [])
     if not fixtures:
         return None
@@ -498,39 +515,14 @@ def get_team_real_stats(team_id, league_id, season, max_fixtures=10):
 
     shots_over_95 = 0; shots_over_115 = 0; shots_over_135 = 0
 
-    # === PARALELIZAR: Obtener stats de todos los partidos ===
-    def fetch_fixture_data(fixture):
+    recent_fixtures = fixtures[:3]
+
+    for fixture in recent_fixtures:
         fixture_id = safe_get(fixture, "fixture", "id")
         if not fixture_id:
-            return None
-        
+            continue
         stats = get_fixture_statistics(fixture_id)
         events = get_fixture_events(fixture_id)
-        return {
-            "fixture_id": fixture_id,
-            "fixture": fixture,
-            "stats": stats,
-            "events": events
-        }
-
-    fixture_results = []
-    with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
-        futures = [executor.submit(fetch_fixture_data, f) for f in fixtures]
-        for future in as_completed(futures):
-            result = future.result()
-            if result:
-                fixture_results.append(result)
-
-    fixture_results.sort(
-        key=lambda x: x["fixture"].get("fixture", {}).get("date", ""),
-        reverse=True
-    )
-
-    for result in fixture_results:
-        fixture = result["fixture"]
-        fixture_stats = result["stats"]
-        fixture_events = result["events"]
-        fixture_id = result["fixture_id"]
 
         teams = fixture.get("teams", {})
         goals = fixture.get("goals", {})
@@ -559,8 +551,8 @@ def get_team_real_stats(team_id, league_id, season, max_fixtures=10):
         if ga == 0: clean_sheet_count += 1
         if gf == 0: failed_score_count += 1
 
-        team_stats = fixture_stats.get(team_id, {}) if fixture_stats else {}
-        opponent_stats = fixture_stats.get(opponent_id, {}) if fixture_stats and opponent_id else {}
+        team_stats = stats.get(team_id, {}) if stats else {}
+        opponent_stats = stats.get(opponent_id, {}) if stats and opponent_id else {}
 
         has_stats = False
         match_corners = None
@@ -768,11 +760,10 @@ def get_team_real_stats(team_id, league_id, season, max_fixtures=10):
         "cards_pct": cards_pct,
         "shots_pct": shots_pct,
     }
-    
-    # GUARDAR EN CACHE (RAM + DISCO)
+
     save_cached_team_stats(team_id, league_id, season, result)
     logger.info(f"Team {team_id}: calculated and cached")
-    
+
     return result
 
 # ============================================================
@@ -782,30 +773,23 @@ def get_team_real_stats(team_id, league_id, season, max_fixtures=10):
 def get_predictions(fixture_id):
     if not fixture_id:
         return None
-
-    # INTENTAR CACHE PRIMERO
     cached = get_cached_prediction(fixture_id)
     if cached:
         return cached
-
     data = api_get(
         "predictions",
         params={"fixture": fixture_id},
         cache_key=f"predictions_{fixture_id}",
         ttl=3600
     )
-
     if not data or not isinstance(data, dict):
         return None
-
     response = data.get("response", [])
     if not response:
         return None
-
     pred = response[0] if isinstance(response, list) else response
     predictions = pred.get("predictions", {})
     comparison = pred.get("comparison", {})
-
     result = {
         "winner": predictions.get("winner", {}).get("name", ""),
         "winner_comment": predictions.get("winner", {}).get("comment", ""),
@@ -815,7 +799,6 @@ def get_predictions(fixture_id):
         "percent_draw": safe_get(comparison, "draw", default=""),
         "percent_away": safe_get(comparison, "away", default="")
     }
-    
     save_cached_prediction(fixture_id, result)
     return result
 
@@ -829,14 +812,12 @@ def get_fixtures_by_date(date, league_id=None, season=None):
         params["league"] = league_id
     if season:
         params["season"] = season
-
     data = api_get(
         "fixtures",
         params=params,
         cache_key=f"fixtures_{date}_{league_id or 'all'}",
         ttl=7200
     )
-
     if not data or not isinstance(data, dict):
         return []
     return data.get("response", [])
@@ -846,10 +827,8 @@ def format_fixture(f):
     teams = f.get("teams", {})
     goals = f.get("goals", {})
     league = f.get("league", {})
-
     home = teams.get("home", {})
     away = teams.get("away", {})
-
     status = fixture.get("status", {}).get("short", "NS")
     status_map = {
         "NS": "NS", "1H": "1H", "HT": "HT", "2H": "2H",
@@ -858,7 +837,6 @@ def format_fixture(f):
         "PST": "PST", "CANC": "CANC", "ABD": "ABD",
         "AWD": "AWD", "WO": "WO"
     }
-
     raw_matchday = league.get("round", "")
     matchday = 0
     if isinstance(raw_matchday, int):
@@ -870,7 +848,6 @@ def format_fixture(f):
                 matchday = int(parts[-1].strip())
             except:
                 matchday = 0
-
     return {
         "id": fixture.get("id"),
         "utcDate": fixture.get("date"),
@@ -905,32 +882,30 @@ def format_fixture(f):
     }
 
 # ============================================================
-# PRECARGA DIARIA (se ejecuta al iniciar y via cron)
+# PRECARGA DIARIA - OPTIMIZADA PARA AHORRAR REQUESTS
 # ============================================================
 
 def precache_daily_data():
-    """Precarga fixtures y stats para los próximos días"""
     logger.info("=" * 60)
-    logger.info("INICIANDO PRECARGA DIARIA")
+    logger.info("INICIANDO PRECARGA DIARIA (MODO AHORRO)")
     logger.info("=" * 60)
-    
+
     season = get_season()
     today = datetime.now(timezone.utc).date()
-    dates = [(today + timedelta(days=i)).strftime("%Y-%m-%d") for i in range(3)]
-    
-    # 1. Precargar fixtures
+    dates = [(today + timedelta(days=i)).strftime("%Y-%m-%d") for i in range(2)]
+
     for date_str in dates:
         logger.info(f"Precaching fixtures for {date_str}...")
         all_matches = []
-        
-        with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
+
+        with ThreadPoolExecutor(max_workers=3) as executor:
             future_to_code = {}
-            for code in DEFAULT_COMPETITIONS:
+            for code in TOP_LEAGUES:
                 league_id = get_league_id(code)
                 if league_id:
                     future = executor.submit(get_fixtures_by_date, date_str, league_id, season)
                     future_to_code[future] = code
-            
+
             for future in as_completed(future_to_code):
                 code = future_to_code[future]
                 try:
@@ -939,7 +914,27 @@ def precache_daily_data():
                         all_matches.extend([format_fixture(f) for f in fixtures])
                 except Exception as e:
                     logger.error(f"Error precaching {code}: {e}")
-        
+
+        remaining = get_requests_remaining()
+        if remaining > 50:
+            logger.info(f"Requests remaining: {remaining}, fetching secondary leagues...")
+            with ThreadPoolExecutor(max_workers=2) as executor:
+                future_to_code = {}
+                for code in SECONDARY_LEAGUES[:10]:
+                    league_id = get_league_id(code)
+                    if league_id:
+                        future = executor.submit(get_fixtures_by_date, date_str, league_id, season)
+                        future_to_code[future] = code
+
+                for future in as_completed(future_to_code):
+                    code = future_to_code[future]
+                    try:
+                        fixtures = future.result(timeout=30)
+                        if fixtures:
+                            all_matches.extend([format_fixture(f) for f in fixtures])
+                    except Exception as e:
+                        logger.error(f"Error precaching {code}: {e}")
+
         seen = set()
         unique = []
         for m in all_matches:
@@ -947,54 +942,43 @@ def precache_daily_data():
                 seen.add(m["id"])
                 unique.append(m)
         unique.sort(key=lambda x: x.get("utcDate", ""))
-        
+
         save_cached_fixtures(date_str, {
             "matches": unique,
             "competitions_found": [{"code": c, "name": COMPETITIONS.get(c, c)} for c in set(m.get("competition", {}).get("id", "") for m in unique)],
             "date": date_str
         })
         logger.info(f"Saved {len(unique)} fixtures for {date_str}")
-    
-    # 2. Precargar stats para ligas top
-    top_leagues = ["PL", "PD", "SA", "BL1", "FL1", "CL", "BSA", "ARG", "MLS", "MX"]
-    
-    for code in top_leagues:
-        league_id = get_league_id(code)
-        if not league_id:
-            continue
-        
-        logger.info(f"Precaching team stats for {code}...")
-        
-        fixtures_data = api_get(
-            "fixtures",
-            params={"league": league_id, "season": season, "last": 10, "status": "ft"},
-            cache_key=f"precache_teams_{code}_{season}",
-            ttl=86400
-        )
-        
-        if not fixtures_data:
-            continue
-        
-        team_ids = set()
-        for f in fixtures_data.get("response", []):
-            teams = f.get("teams", {})
-            if teams.get("home", {}).get("id"):
-                team_ids.add(teams["home"]["id"])
-            if teams.get("away", {}).get("id"):
-                team_ids.add(teams["away"]["id"])
-        
-        for team_id in team_ids:
-            try:
-                stats = get_team_real_stats(team_id, league_id, season, max_fixtures=10)
-                if stats:
-                    logger.info(f"Cached team {team_id}")
-            except Exception as e:
-                logger.error(f"Error precaching team {team_id}: {e}")
-        
-        logger.info(f"Precached {len(team_ids)} teams for {code}")
-    
+
+    today_str = today.strftime("%Y-%m-%d")
+    today_fixtures = get_cached_fixtures(today_str)
+
+    if today_fixtures and today_fixtures.get("matches"):
+        matches = today_fixtures["matches"]
+        logger.info(f"Pre-caching stats for {len(matches)} matches today...")
+
+        top_match_count = 0
+        for m in matches[:15]:
+            comp_name = m.get("league_name", "")
+            is_top = any(tl in comp_name for tl in ["Premier", "La Liga", "Serie A", "Bundesliga", "Ligue 1", "Champions", "Brasileirao", "Liga MX", "MLS"])
+
+            if is_top and get_requests_remaining() > 20:
+                home_id = m.get("homeTeam", {}).get("id")
+                away_id = m.get("awayTeam", {}).get("id")
+                comp_id = m.get("competition", {}).get("id")
+
+                if home_id and away_id and comp_id:
+                    try:
+                        get_team_real_stats(home_id, comp_id, season, max_fixtures=5)
+                        get_team_real_stats(away_id, comp_id, season, max_fixtures=5)
+                        top_match_count += 1
+                    except Exception as e:
+                        logger.error(f"Error precaching stats: {e}")
+
+        logger.info(f"Precached stats for {top_match_count} matches")
+
     logger.info("=" * 60)
-    logger.info("PRECARGA DIARIA COMPLETADA")
+    logger.info(f"PRECARGA COMPLETADA - Requests usados hoy: {REQUEST_COUNT['total']}")
     logger.info("=" * 60)
 
 # ============================================================
@@ -1009,8 +993,7 @@ def home(request: Request):
 def api_matches(date: str = Query(None)):
     if not date:
         date = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-    
-    # 1. INTENTAR LEER DE CACHE (RAM o DISCO)
+
     cached = get_cached_fixtures(date)
     if cached:
         return {
@@ -1024,20 +1007,19 @@ def api_matches(date: str = Query(None)):
             "rate_limit_remaining": RATE_LIMIT.get("remaining"),
             "cached": True
         }
-    
-    # 2. FALLBACK: LLAMAR API EN PARALELO
+
     season = get_season()
     collected = []
     found = []
-    
-    with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
+
+    with ThreadPoolExecutor(max_workers=3) as executor:
         future_to_code = {}
-        for code in DEFAULT_COMPETITIONS:
+        for code in TOP_LEAGUES:
             league_id = get_league_id(code)
             if league_id:
                 future = executor.submit(get_fixtures_by_date, date, league_id, season)
                 future_to_code[future] = code
-        
+
         for future in as_completed(future_to_code):
             code = future_to_code[future]
             try:
@@ -1049,7 +1031,29 @@ def api_matches(date: str = Query(None)):
                         found.append({"code": code, "name": COMPETITIONS.get(code, code)})
             except Exception as e:
                 logger.error(f"Error fetching {code}: {e}")
-    
+
+    remaining = get_requests_remaining()
+    if remaining > 30:
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            future_to_code = {}
+            for code in SECONDARY_LEAGUES:
+                league_id = get_league_id(code)
+                if league_id:
+                    future = executor.submit(get_fixtures_by_date, date, league_id, season)
+                    future_to_code[future] = code
+
+            for future in as_completed(future_to_code):
+                code = future_to_code[future]
+                try:
+                    fixtures = future.result(timeout=30)
+                    if fixtures:
+                        comp_matches = [format_fixture(f) for f in fixtures]
+                        if comp_matches:
+                            collected.extend(comp_matches)
+                            found.append({"code": code, "name": COMPETITIONS.get(code, code)})
+                except Exception as e:
+                    logger.error(f"Error fetching {code}: {e}")
+
     seen = set()
     unique = []
     for m in collected:
@@ -1057,15 +1061,14 @@ def api_matches(date: str = Query(None)):
             seen.add(m["id"])
             unique.append(m)
     unique.sort(key=lambda x: x.get("utcDate", ""))
-    
-    # Guardar en cache
+
     if unique:
         save_cached_fixtures(date, {
             "matches": unique,
             "competitions_found": found,
             "date": date
         })
-    
+
     return {
         "matches": unique,
         "requested_date": date,
@@ -1116,37 +1119,34 @@ def analyze(
     league_id = get_league_id(comp_code) if comp_code else competition_id
     season = get_season()
 
-    # === INTENTAR LEER DE CACHE PRIMERO ===
     home_cached = get_cached_team_stats(home_id, league_id, season)
     away_cached = get_cached_team_stats(away_id, league_id, season)
-    
+
     home_stats = home_cached if home_cached else None
     away_stats = away_cached if away_cached else None
     home_form_data = None
     away_form_data = None
-    
+
     home_mode = "CACHED" if home_stats else "LIVE"
     away_mode = "CACHED" if away_stats else "LIVE"
-    
-    # Si no hay cache, obtener en tiempo real (PARALELO)
+
     if not home_stats or not away_stats:
         def fetch_home():
-            return get_team_real_stats(home_id, league_id, season, max_fixtures=10) if league_id else None
+            return get_team_real_stats(home_id, league_id, season, max_fixtures=5) if league_id else None
         def fetch_away():
-            return get_team_real_stats(away_id, league_id, season, max_fixtures=10) if league_id else None
-        
+            return get_team_real_stats(away_id, league_id, season, max_fixtures=5) if league_id else None
+
         with ThreadPoolExecutor(max_workers=2) as executor:
             home_future = executor.submit(fetch_home)
             away_future = executor.submit(fetch_away)
-            
+
             if not home_stats:
                 home_stats = home_future.result(timeout=60)
                 home_mode = "LIVE"
             if not away_stats:
                 away_stats = away_future.result(timeout=60)
                 away_mode = "LIVE"
-    
-    # Obtener forma
+
     if not home_form_data:
         home_form_data = api_get(
             "teams/statistics",
@@ -1180,7 +1180,6 @@ def analyze(
     home_form, home_form_str = parse_form(home_form_data)
     away_form, away_form_str = parse_form(away_form_data)
 
-    # FALLBACK mejorado
     if not home_stats or home_stats["played"] == 0:
         home_stats = {
             "played": 0, "goals_for": 0, "goals_against": 0,
@@ -1231,10 +1230,9 @@ def analyze(
         }
         away_mode = "DEFAULT"
 
-    # PREDICCIONES: INTENTAR CACHE PRIMERO
     predictions = get_cached_prediction(match_id)
     pred_mode = "CACHED" if predictions else "LIVE"
-    
+
     if not predictions:
         predictions = get_predictions(match_id)
 
@@ -1303,16 +1301,15 @@ def analyze(
 
 @app.get("/api/precache")
 def trigger_precache():
-    """Endpoint manual para disparar precarga (para testing)"""
     def run_in_background():
         precache_daily_data()
-    
+
     thread = threading.Thread(target=run_in_background, daemon=True)
     thread.start()
-    
+
     return {
         "status": "precache_started",
-        "message": "La precarga se está ejecutando en background. Puede tardar 2-5 minutos.",
+        "message": "La precarga se esta ejecutando en background. Puede tardar 2-5 minutos.",
         "time": datetime.now().isoformat()
     }
 
@@ -1320,47 +1317,70 @@ def trigger_precache():
 def ping():
     return {"status": "ok", "time": datetime.now().isoformat()}
 
-
-# ===== CÓDIGOS DE DESBLOQUEO =====
-# Tú defines estos códigos. Cuando alguien paga, le das uno.
-VALID_CODES = {
-    "TF2026A": {"used": False, "created": "2026-05-17"},
-    "TF2026B": {"used": False, "created": "2026-05-17"},
-    "TF2026C": {"used": False, "created": "2026-05-17"},
-    "VIP001": {"used": False, "created": "2026-05-17"},
-    "VIP002": {"used": False, "created": "2026-05-17"},
-}
+# ============================================================
+# SISTEMA ANTI-REVENTA DE CODIGOS - ENDPOINTS
+# ============================================================
 
 @app.post("/api/validate-code")
-def validate_code(code: str = Query(...)):
-    """Valida un código de desbloqueo"""
+def validate_code(request: Request, code: str = Query(...)):
+    """Valida un codigo de desbloqueo - ANTI-REVENTA"""
     code = code.upper().strip()
-    if code in VALID_CODES:
-        if VALID_CODES[code]["used"]:
-            return {"valid": False, "message": "Código ya usado"}
-        VALID_CODES[code]["used"] = True
-        return {"valid": True, "message": "Código válido"}
-    return {"valid": False, "message": "Código inválido"}
+
+    # Obtener IP del cliente para tracking
+    client_ip = request.client.host if request.client else "unknown"
+
+    db = load_codes_db()
+
+    if code not in db:
+        return {"valid": False, "message": "Codigo invalido"}
+
+    code_data = db[code]
+
+    if code_data.get("used", False):
+        # Codigo ya usado - verificar si es el mismo dispositivo (misma IP)
+        used_by = code_data.get("used_by")
+        if used_by and used_by != client_ip:
+            return {
+                "valid": False, 
+                "message": "Codigo ya usado en otro dispositivo. Contacta soporte.",
+                "anti_resell": True
+            }
+        # Mismo dispositivo, permitir re-validacion
+        return {
+            "valid": True, 
+            "message": "Codigo valido (ya activado)",
+            "already_used": True
+        }
+
+    # Marcar como usado
+    db[code]["used"] = True
+    db[code]["used_by"] = client_ip
+    db[code]["used_at"] = datetime.now(timezone.utc).isoformat()
+    save_codes_db(db)
+
+    logger.info(f"Code {code} activated by {client_ip}")
+
+    return {"valid": True, "message": "Codigo activado correctamente"}
 
 @app.get("/api/codes-status")
-def codes_status():
-    """Estado de los códigos (solo para admin)"""
+def codes_status(request: Request):
+    """Estado de los codigos (solo para admin - proteger en produccion)"""
+    db = load_codes_db()
     return {
-        "codes": VALID_CODES,
-        "total": len(VALID_CODES),
-        "used": sum(1 for v in VALID_CODES.values() if v["used"]),
-        "available": sum(1 for v in VALID_CODES.values() if not v["used"])
+        "codes": {k: {"used": v["used"], "used_at": v.get("used_at")} for k, v in db.items()},
+        "total": len(db),
+        "used": sum(1 for v in db.values() if v["used"]),
+        "available": sum(1 for v in db.values() if not v["used"])
     }
 
 @app.get("/health")
 def health():
-    # Contar archivos de cache en disco
     cache_files = 0
     try:
         cache_files = len(os.listdir(CACHE_DIR))
     except:
         pass
-    
+
     return {
         "status": "ok",
         "time": datetime.now().isoformat(),
@@ -1368,15 +1388,17 @@ def health():
         "cache_disk_files": cache_files,
         "cache_dir": CACHE_DIR,
         "api_football": "configured",
-        "version": "12.0.0",
+        "version": "13.0.0",
         "requests_today": REQUEST_COUNT["total"],
         "rate_limit_remaining": RATE_LIMIT.get("remaining"),
         "rate_limit_total": RATE_LIMIT.get("limit")
     }
 
 # ============================================================
-# STARTUP: Precarga automática al iniciar
-# ============================================================# === SELF KEEP-ALIVE ===
+# STARTUP: Precarga automatica al iniciar
+# ============================================================
+
+# === SELF KEEP-ALIVE ===
 def self_ping_loop():
     import time
     import requests
