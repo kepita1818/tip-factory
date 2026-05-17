@@ -7,6 +7,7 @@
   <link rel="stylesheet" href="/static/css/style.css" />
 <base target="_blank">
 <base target="_blank">
+<base target="_blank">
 </head>
 <body>
   <div id="app">
@@ -56,6 +57,25 @@
 
       <!-- TAB: RESUMEN -->
       <div class="tab-content active" id="tab-resumen">
+
+        <!-- PAYWALL OVERLAY -->
+        <div class="paywall-overlay" id="paywall-overlay">
+          <div class="paywall-blur"></div>
+          <div class="paywall-content">
+            <div class="paywall-lock">🔒</div>
+            <div class="paywall-title">Contenido Premium</div>
+            <div class="paywall-subtitle">Análisis avanzado con estadísticas reales de +20 partidos</div>
+            <div class="paywall-features">
+              <div class="paywall-feature">✓ Probabilidades de goles, corners y tarjetas</div>
+              <div class="paywall-feature">✓ Forma real del equipo (últimos 20 partidos)</div>
+              <div class="paywall-feature">✓ Predicciones API-Football</div>
+              <div class="paywall-feature">✓ Sin límite de análisis diarios</div>
+            </div>
+            <button class="paywall-btn" id="paywall-btn" onclick="unlockContent()">OBTENER ACCESO</button>
+            <div class="paywall-note">Desbloquea análisis ilimitados</div>
+          </div>
+        </div>
+
         <!-- Teams card -->
         <div class="card teams-card">
           <div class="teams-row">
@@ -99,6 +119,25 @@
 
       <!-- TAB: GOLES -->
       <div class="tab-content" id="tab-goles">
+
+        <!-- PAYWALL OVERLAY -->
+        <div class="paywall-overlay" id="paywall-overlay">
+          <div class="paywall-blur"></div>
+          <div class="paywall-content">
+            <div class="paywall-lock">🔒</div>
+            <div class="paywall-title">Contenido Premium</div>
+            <div class="paywall-subtitle">Análisis avanzado con estadísticas reales de +20 partidos</div>
+            <div class="paywall-features">
+              <div class="paywall-feature">✓ Probabilidades de goles, corners y tarjetas</div>
+              <div class="paywall-feature">✓ Forma real del equipo (últimos 20 partidos)</div>
+              <div class="paywall-feature">✓ Predicciones API-Football</div>
+              <div class="paywall-feature">✓ Sin límite de análisis diarios</div>
+            </div>
+            <button class="paywall-btn" id="paywall-btn" onclick="unlockContent()">OBTENER ACCESO</button>
+            <div class="paywall-note">Desbloquea análisis ilimitados</div>
+          </div>
+        </div>
+
         <div class="card">
           <div class="card-title">Tendencias de goles</div>
           <table class="stats-table" id="goals-table">
@@ -117,6 +156,25 @@
 
       <!-- TAB: CORNERS -->
       <div class="tab-content" id="tab-corners">
+
+        <!-- PAYWALL OVERLAY -->
+        <div class="paywall-overlay" id="paywall-overlay">
+          <div class="paywall-blur"></div>
+          <div class="paywall-content">
+            <div class="paywall-lock">🔒</div>
+            <div class="paywall-title">Contenido Premium</div>
+            <div class="paywall-subtitle">Análisis avanzado con estadísticas reales de +20 partidos</div>
+            <div class="paywall-features">
+              <div class="paywall-feature">✓ Probabilidades de goles, corners y tarjetas</div>
+              <div class="paywall-feature">✓ Forma real del equipo (últimos 20 partidos)</div>
+              <div class="paywall-feature">✓ Predicciones API-Football</div>
+              <div class="paywall-feature">✓ Sin límite de análisis diarios</div>
+            </div>
+            <button class="paywall-btn" id="paywall-btn" onclick="unlockContent()">OBTENER ACCESO</button>
+            <div class="paywall-note">Desbloquea análisis ilimitados</div>
+          </div>
+        </div>
+
         <div class="card">
           <div class="card-title">Corners ganados</div>
           <table class="stats-table" id="corners-table">
@@ -163,6 +221,25 @@
 
       <!-- TAB: TARJETAS -->
       <div class="tab-content" id="tab-tarjetas">
+
+        <!-- PAYWALL OVERLAY -->
+        <div class="paywall-overlay" id="paywall-overlay">
+          <div class="paywall-blur"></div>
+          <div class="paywall-content">
+            <div class="paywall-lock">🔒</div>
+            <div class="paywall-title">Contenido Premium</div>
+            <div class="paywall-subtitle">Análisis avanzado con estadísticas reales de +20 partidos</div>
+            <div class="paywall-features">
+              <div class="paywall-feature">✓ Probabilidades de goles, corners y tarjetas</div>
+              <div class="paywall-feature">✓ Forma real del equipo (últimos 20 partidos)</div>
+              <div class="paywall-feature">✓ Predicciones API-Football</div>
+              <div class="paywall-feature">✓ Sin límite de análisis diarios</div>
+            </div>
+            <button class="paywall-btn" id="paywall-btn" onclick="unlockContent()">OBTENER ACCESO</button>
+            <div class="paywall-note">Desbloquea análisis ilimitados</div>
+          </div>
+        </div>
+
         <div class="card">
           <div class="card-title">Tarjetas por equipo</div>
           <table class="stats-table" id="cards-table">
@@ -196,5 +273,37 @@
   </div>
 
   <script src="/static/js/app.js"></script>
+
+  <script>
+    // PAYWALL LOGIC
+    var isUnlocked = localStorage.getItem('tipfactory_unlocked') === 'true';
+
+    function checkPaywall() {
+      var overlays = document.querySelectorAll('.paywall-overlay');
+      overlays.forEach(function(overlay) {
+        if (isUnlocked) {
+          overlay.style.display = 'none';
+        } else {
+          overlay.style.display = 'flex';
+        }
+      });
+    }
+
+    function unlockContent() {
+      // Aquí iría la integración con Stripe/PayPal
+      // Por ahora simulamos el desbloqueo
+      alert('Redirigiendo a pasarela de pago...
+
+Precios:
+• 1 mes: 9.99€
+• 3 meses: 24.99€
+• 1 año: 79.99€');
+      // En producción: window.location.href = '/checkout';
+    }
+
+    // Verificar paywall al cargar y al cambiar de pestaña
+    document.addEventListener('DOMContentLoaded', checkPaywall);
+  </script>
+
 </body>
 </html>
