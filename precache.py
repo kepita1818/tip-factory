@@ -32,11 +32,14 @@ MAX_WORKERS = 10
 # Ligas más importantes (prioridad para precarga de stats)
 TOP_LEAGUES = [
     "PL", "PD", "SA", "BL1", "FL1",      # Top 5 Europa
+    "ELC", "SP", "SI", "SD", "FL2",      # Segundas divisiones Europa
+    "PPL", "DED", "BE", "CH", "DK", "NO", "FI", "CZ", "GR", "TR",  # Otras Europa
     "CL", "EL", "ECL",                    # Europa
-    "BSA", "ARG", "COL", "CHI", "URU",   # Sudamérica
-    "MLS", "MX",                          # Norteamérica
-    "JP", "KR",                           # Asia
-    "EG", "ZA"                            # África
+    "BSA", "BRA_B", "ARG", "ARG_B", "COL", "CHI", "URU", "PAR", "ECU", "PER",  # Sudamérica
+    "MLS", "MX", "MX_B",                  # Norteamérica
+    "JP", "JP_B", "KR", "KR_B", "CN",     # Asia
+    "AU_A", "SA_A",                       # Asia/Oceanía
+    "EG", "ZA", "MA", "TN"                # África
 ]
 
 def precache_fixtures():
@@ -96,7 +99,7 @@ def precache_team_stats():
         # Obtener fixtures recientes para extraer team_ids
         fixtures_data = api_get(
             "fixtures",
-            params={"league": league_id, "season": season, "last": 10, "status": "ft"},
+            params={"league": league_id, "season": season, "last": 20, "status": "ft"},
             cache_key=f"precache_teams_{code}_{season}",
             ttl=86400
         )
