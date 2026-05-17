@@ -1,7 +1,22 @@
-console.log('TipFactory v12.2 - Stable');
+console.log('TipFactory v12.2 - Sistema de códigos');
 
 var currentDate = new Date();
 var allMatches = [];
+
+// ===== CÓDIGOS DE DESBLOQUEO =====
+// TÚ defines estos códigos. Cuando alguien paga, le das uno de estos.
+// Puedes añadir/quitar códigos aquí.
+var VALID_CODES = [
+  'TF2026A',   // Código de ejemplo
+  'TF2026B',   // Código de ejemplo
+  'TF2026C',   // Código de ejemplo
+  'VIP001',    // Código de ejemplo
+  'VIP002'     // Código de ejemplo
+];
+
+// Verificar si ya está desbloqueado
+var isUnlocked = localStorage.getItem('tipfactory_unlocked') === 'true';
+var usedCode = localStorage.getItem('tipfactory_code') || '';
 
 function getEl(id) { return document.getElementById(id); }
 
@@ -76,6 +91,66 @@ function activateTab(tabName) {
   if (content) content.classList.add('active');
 }
 
+// ===== FUNCIONES DE PAYWALL =====
+
+function checkUnlockStatus() {
+  // Si está desbloqueado, quitar blur de TODOS los wrappers
+  if (isUnlocked) {
+    var wrappers = document.querySelectorAll('.tab-content-wrapper');
+    for (var i = 0; i < wrappers.length; i++) {
+      wrappers[i].classList.add('unlocked');
+    }
+  }
+}
+
+function goToTelegram() {
+  // Cambia esto por tu usuario de Telegram
+  window.open('https://t.me/tu_usuario_telegram', '_blank');
+}
+
+function unlockWithCode(tabName) {
+  var input = getEl('code-input-' + tabName);
+  var errorDiv = getEl('code-error-' + tabName);
+  var code = input.value.trim().toUpperCase();
+
+  if (!code) {
+    errorDiv.textContent = 'Introduce un código';
+    return;
+  }
+
+  // Verificar si el código es válido
+  var isValid = false;
+  for (var i = 0; i < VALID_CODES.length; i++) {
+    if (VALID_CODES[i] === code) {
+      isValid = true;
+      break;
+    }
+  }
+
+  if (isValid) {
+    // Desbloquear!
+    isUnlocked = true;
+    localStorage.setItem('tipfactory_unlocked', 'true');
+    localStorage.setItem('tipfactory_code', code);
+
+    // Quitar blur de todos los wrappers
+    var wrappers = document.querySelectorAll('.tab-content-wrapper');
+    for (var j = 0; j < wrappers.length; j++) {
+      wrappers[j].classList.add('unlocked');
+    }
+
+    alert('✅ Acceso desbloqueado con código: ' + code);
+  } else {
+    errorDiv.textContent = 'Código inválido. Contacta por Telegram para obtener uno.';
+    input.value = '';
+    input.focus();
+  }
+}
+
+// Hacer funciones globales para los onclick del HTML
+window.goToTelegram = goToTelegram;
+window.unlockWithCode = unlockWithCode;
+
 function setupEventListeners() {
   var prevBtn = getEl('prev-date');
   var nextBtn = getEl('next-date');
@@ -136,9 +211,7 @@ function loadMatches() {
       renderMatches();
     })
     .catch(function (error) {
-      if (matchesContainer) {
-        matchesContainer.innerHTML = '<div class="no-matches">Error cargando partidos: ' + error.message + '</div>';
-      }
+      if (matchesContainer) matchesContainer.innerHTML = '<div class="no-matches">Error cargando partidos: ' + error.message + '</div>';
     });
 }
 
@@ -681,6 +754,8 @@ function openAnalysis(card) {
       renderCornersTable(data);
       renderCardsTable(data);
       renderPrediction(data);
+      // Verificar si está desbloqueado
+      checkUnlockStatus();
     })
     .catch(function (error) {
       if (box) box.innerHTML = '<div class="prediction-error">Error: ' + error.message + '</div>';
@@ -691,4 +766,6 @@ document.addEventListener('DOMContentLoaded', function () {
   updateDateDisplay();
   setupEventListeners();
   loadMatches();
+  // Verificar estado de desbloqueo al cargar
+  checkUnlockStatus();
 });
