@@ -1307,6 +1307,39 @@ def health():
         "rate_limit_total": RATE_LIMIT.get("limit")
     }
 
+@app.get("/ping")
+def ping():
+    """Endpoint ultra-ligero para keep-alive (UptimeRobot, cron-job.org)"""
+    return {"status": "ok", "time": datetime.now().isoformat()}
+
+
+
+
+# ============================================================
+# SELF KEEP-ALIVE (para Render free tier)
+# ============================================================
+
+def self_ping_loop():
+    """Mantiene el servidor despierto haciendo ping a sí mismo cada 14 min"""
+    import time
+    import requests
+
+    # Esperar a que el servidor arranque
+    time.sleep(10)
+
+    port = int(os.getenv("PORT", 8000))
+    url = f"http://127.0.0.1:{port}/ping"
+
+    while True:
+        try:
+            resp = requests.get(url, timeout=5)
+            logger.info(f"Self-ping: {resp.status_code}")
+        except Exception as e:
+            logger.warning(f"Self-ping failed: {e}")
+
+        # Dormir 14 minutos (Render duerme a los 15)
+        time.sleep(14 * 60)
+
 # ============================================================
 # STARTUP: Precarga automática al iniciar
 # ============================================================
