@@ -93,7 +93,7 @@ function checkUnlockStatus() {
 }
 
 function goToTelegram() {
-  window.open('https://t.me/tu_usuario_telegram', '_blank');
+  window.open('https://t.me/TipFactoryofc', '_blank');
 }
 
 function unlockWithCode(tabName) {
