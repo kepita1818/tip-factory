@@ -1,22 +1,13 @@
-console.log('TipFactory v12.2 - Sistema de códigos');
+console.log('TipFactory v13.0 - Anti-resell + API Optimizado');
 
 var currentDate = new Date();
 var allMatches = [];
 
-// ===== CÓDIGOS DE DESBLOQUEO =====
-// TÚ defines estos códigos. Cuando alguien paga, le das uno de estos.
-// Puedes añadir/quitar códigos aquí.
-var VALID_CODES = [
-  'TF2026A',   // Código de ejemplo
-  'TF2026B',   // Código de ejemplo
-  'TF2026C',   // Código de ejemplo
-  'VIP001',    // Código de ejemplo
-  'VIP002'     // Código de ejemplo
-];
-
-// Verificar si ya está desbloqueado
-var isUnlocked = localStorage.getItem('tipfactory_unlocked') === 'true';
-var usedCode = localStorage.getItem('tipfactory_code') || '';
+// ===== ESTADO DE DESBLOQUEO =====
+// La validacion se hace en el SERVIDOR, no aqui
+// Solo guardamos el estado de sesion local
+var sessionUnlocked = localStorage.getItem('tipfactory_unlocked') === 'true';
+var sessionCode = localStorage.getItem('tipfactory_code') || '';
 
 function getEl(id) { return document.getElementById(id); }
 
@@ -91,21 +82,18 @@ function activateTab(tabName) {
   if (content) content.classList.add('active');
 }
 
-// ===== FUNCIONES DE PAYWALL =====
+// ===== FUNCIONES DE PAYWALL - AHORA VALIDA CONTRA SERVIDOR =====
 
 function checkUnlockStatus() {
-  // Si está desbloqueado, quitar blur de TODOS los wrappers
-  if (isUnlocked) {
-    var wrappers = document.querySelectorAll('.tab-content-wrapper');
-    for (var i = 0; i < wrappers.length; i++) {
-      wrappers[i].classList.add('unlocked');
-    }
+  // Verificar estado con el servidor al cargar
+  if (sessionUnlocked && sessionCode) {
+    // Re-validar con el servidor (permite mismo dispositivo)
+    validateCodeWithServer(sessionCode, true);
   }
 }
 
 function goToTelegram() {
-  // Cambia esto por tu usuario de Telegram
-  window.open('https://t.me/TipFactoryofc', '_blank');
+  window.open('https://t.me/tu_usuario_telegram', '_blank');
 }
 
 function unlockWithCode(tabName) {
@@ -114,37 +102,71 @@ function unlockWithCode(tabName) {
   var code = input.value.trim().toUpperCase();
 
   if (!code) {
-    errorDiv.textContent = 'Introduce un código';
+    errorDiv.textContent = 'Introduce un codigo';
     return;
   }
 
-  // Verificar si el código es válido
-  var isValid = false;
-  for (var i = 0; i < VALID_CODES.length; i++) {
-    if (VALID_CODES[i] === code) {
-      isValid = true;
-      break;
+  errorDiv.textContent = 'Validando...';
+
+  // Validar CONTRA EL SERVIDOR (anti-reventa)
+  validateCodeWithServer(code, false, function(success, message, alreadyUsed) {
+    if (success) {
+      sessionUnlocked = true;
+      sessionCode = code;
+      localStorage.setItem('tipfactory_unlocked', 'true');
+      localStorage.setItem('tipfactory_code', code);
+
+      var wrappers = document.querySelectorAll('.tab-content-wrapper');
+      for (var j = 0; j < wrappers.length; j++) {
+        wrappers[j].classList.add('unlocked');
+      }
+
+      if (alreadyUsed) {
+        alert('Codigo valido (ya estaba activado en este dispositivo)');
+      } else {
+        alert('Acceso desbloqueado con codigo: ' + code);
+      }
+    } else {
+      errorDiv.textContent = message || 'Codigo invalido. Contacta por Telegram.';
+      input.value = '';
+      input.focus();
     }
-  }
+  });
+}
 
-  if (isValid) {
-    // Desbloquear!
-    isUnlocked = true;
-    localStorage.setItem('tipfactory_unlocked', 'true');
-    localStorage.setItem('tipfactory_code', code);
+function validateCodeWithServer(code, silent, callback) {
+  callback = callback || function(){};
 
-    // Quitar blur de todos los wrappers
-    var wrappers = document.querySelectorAll('.tab-content-wrapper');
-    for (var j = 0; j < wrappers.length; j++) {
-      wrappers[j].classList.add('unlocked');
+  fetch('/api/validate-code?code=' + encodeURIComponent(code), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' }
+  })
+  .then(function(r) { return r.json(); })
+  .then(function(data) {
+    if (data.valid) {
+      callback(true, data.message, data.already_used);
+    } else {
+      callback(false, data.message, false);
+      if (!silent) {
+        // Si el codigo fue usado en otro dispositivo, limpiar localStorage
+        if (data.anti_resell) {
+          localStorage.removeItem('tipfactory_unlocked');
+          localStorage.removeItem('tipfactory_code');
+          sessionUnlocked = false;
+          sessionCode = '';
+        }
+      }
     }
-
-    alert('✅ Acceso desbloqueado con código: ' + code);
-  } else {
-    errorDiv.textContent = 'Código inválido. Contacta por Telegram para obtener uno.';
-    input.value = '';
-    input.focus();
-  }
+  })
+  .catch(function(error) {
+    console.error('Error validating code:', error);
+    // Fallback: si no hay conexion, permitir si ya estaba desbloqueado
+    if (sessionUnlocked && sessionCode === code) {
+      callback(true, 'Modo offline - acceso permitido', true);
+    } else {
+      callback(false, 'Error de conexion. Intenta de nuevo.', false);
+    }
+  });
 }
 
 // Hacer funciones globales para los onclick del HTML
@@ -237,22 +259,22 @@ function groupMatchesByLeague(matches) {
 
 function getFlagEmoji(country) {
   var flags = {
-    'Spain': '🇪🇸', 'England': '🏴󠁧󠁢󠁥󠁮󠁧󠁿', 'Italy': '🇮🇹', 'Germany': '🇩🇪', 'France': '🇫🇷',
-    'Portugal': '🇵🇹', 'Netherlands': '🇳🇱', 'Brazil': '🇧🇷', 'Argentina': '🇦🇷', 'Mexico': '🇲🇽',
-    'USA': '🇺🇸', 'Switzerland': '🇨🇭', 'Belgium': '🇧🇪', 'Austria': '🇦🇹', 'Denmark': '🇩🇰',
-    'Norway': '🇳🇴', 'Sweden': '🇸🇪', 'Finland': '🇫🇮', 'Poland': '🇵🇱', 'Czech Republic': '🇨🇿',
-    'Greece': '🇬🇷', 'Turkey': '🇹🇷', 'Ukraine': '🇺🇦', 'Croatia': '🇭🇷', 'Romania': '🇷🇴',
-    'Scotland': '🏴󠁧󠁢󠁳󠁣󠁴󠁿', 'Russia': '🇷🇺', 'Colombia': '🇨🇴', 'Chile': '🇨🇱', 'Uruguay': '🇺🇾',
-    'Peru': '🇵🇪', 'Ecuador': '🇪🇨', 'Paraguay': '🇵🇾', 'Venezuela': '🇻🇪', 'Bolivia': '🇧🇴',
-    'Costa Rica': '🇨🇷', 'Guatemala': '🇬🇹', 'Honduras': '🇭🇳', 'El Salvador': '🇸🇻', 'Panama': '🇵🇦',
-    'Jamaica': '🇯🇲', 'Canada': '🇨🇦', 'Japan': '🇯🇵', 'South Korea': '🇰🇷', 'China': '🇨🇳',
-    'Saudi Arabia': '🇸🇦', 'Iran': '🇮🇷', 'Qatar': '🇶🇦', 'UAE': '🇦🇪', 'Australia': '🇦🇺',
-    'India': '🇮🇳', 'Thailand': '🇹🇭', 'Indonesia': '🇮🇩', 'Malaysia': '🇲🇾', 'Singapore': '🇸🇬',
-    'Vietnam': '🇻🇳', 'Egypt': '🇪🇬', 'South Africa': '🇿🇦', 'Morocco': '🇲🇦', 'Tunisia': '🇹🇳',
-    'Algeria': '🇩🇿', 'Nigeria': '🇳🇬', 'Ghana': '🇬🇭', 'Kenya': '🇰🇪', 'Tanzania': '🇹🇿',
-    'Uganda': '🇺🇬', 'Zambia': '🇿🇲', 'Zimbabwe': '🇿🇼', 'Ivory Coast': '🇨🇮', 'Senegal': '🇸🇳'
+    'Spain': 'ES', 'England': 'GB', 'Italy': 'IT', 'Germany': 'DE', 'France': 'FR',
+    'Portugal': 'PT', 'Netherlands': 'NL', 'Brazil': 'BR', 'Argentina': 'AR', 'Mexico': 'MX',
+    'USA': 'US', 'Switzerland': 'CH', 'Belgium': 'BE', 'Austria': 'AT', 'Denmark': 'DK',
+    'Norway': 'NO', 'Sweden': 'SE', 'Finland': 'FI', 'Poland': 'PL', 'Czech Republic': 'CZ',
+    'Greece': 'GR', 'Turkey': 'TR', 'Ukraine': 'UA', 'Croatia': 'HR', 'Romania': 'RO',
+    'Scotland': 'GB', 'Russia': 'RU', 'Colombia': 'CO', 'Chile': 'CL', 'Uruguay': 'UY',
+    'Peru': 'PE', 'Ecuador': 'EC', 'Paraguay': 'PY', 'Venezuela': 'VE', 'Bolivia': 'BO',
+    'Costa Rica': 'CR', 'Guatemala': 'GT', 'Honduras': 'HN', 'El Salvador': 'SV', 'Panama': 'PA',
+    'Jamaica': 'JM', 'Canada': 'CA', 'Japan': 'JP', 'South Korea': 'KR', 'China': 'CN',
+    'Saudi Arabia': 'SA', 'Iran': 'IR', 'Qatar': 'QA', 'UAE': 'AE', 'Australia': 'AU',
+    'India': 'IN', 'Thailand': 'TH', 'Indonesia': 'ID', 'Malaysia': 'MY', 'Singapore': 'SG',
+    'Vietnam': 'VN', 'Egypt': 'EG', 'South Africa': 'ZA', 'Morocco': 'MA', 'Tunisia': 'TN',
+    'Algeria': 'DZ', 'Nigeria': 'NG', 'Ghana': 'GH', 'Kenya': 'KE', 'Tanzania': 'TZ',
+    'Uganda': 'UG', 'Zambia': 'ZM', 'Zimbabwe': 'ZW', 'Ivory Coast': 'CI', 'Senegal': 'SN'
   };
-  return flags[country] || '🏆';
+  return flags[country] || 'W';
 }
 
 function renderMatches() {
@@ -441,13 +463,13 @@ function renderProbabilities(data) {
 
   var over25 = num(p.over_2_5);
   html += '<div class="prob-box ' + probColorClass(over25) + '">';
-  html += '<div class="prob-box-value">' + pct(p.over_2_5) + ' Más de 2,5</div>';
+  html += '<div class="prob-box-value">' + pct(p.over_2_5) + ' Mas de 2,5</div>';
   html += '<div class="prob-box-sub">Basado en ' + (hs.played || 0) + ' partidos reales</div>';
   html += '</div>';
 
   var over15 = num(p.over_1_5);
   html += '<div class="prob-box ' + probColorClass(over15) + '">';
-  html += '<div class="prob-box-value">' + pct(p.over_1_5) + ' Más de 1,5</div>';
+  html += '<div class="prob-box-value">' + pct(p.over_1_5) + ' Mas de 1,5</div>';
   html += '<div class="prob-box-sub">Frecuencia real</div>';
   html += '</div>';
 
@@ -471,8 +493,8 @@ function renderProbabilities(data) {
 
   var avgCorners = num(hs.avg_corners) + num(as.avg_corners);
   html += '<div class="prob-box ' + probColorClass(avgCorners * 7) + '">';
-  html += '<div class="prob-box-value">' + dec(avgCorners, 2) + ' Córners</div>';
-  html += '<div class="prob-box-sub">Córners reales por partido</div>';
+  html += '<div class="prob-box-value">' + dec(avgCorners, 2) + ' Corners</div>';
+  html += '<div class="prob-box-sub">Corners reales por partido</div>';
   html += '</div>';
 
   var grid = getEl('prob-grid');
@@ -488,8 +510,8 @@ function renderMiniStats(data) {
   html += '<div class="mini-stat-box"><div class="mini-stat-value">' + valueOrDash(as.played) + '</div><div class="mini-stat-label">PJ visitante</div></div>';
   html += '<div class="mini-stat-box"><div class="mini-stat-value">' + valueOrDash(hs.avg_team_goals) + '</div><div class="mini-stat-label">Goles local</div></div>';
   html += '<div class="mini-stat-box"><div class="mini-stat-value">' + valueOrDash(as.avg_team_goals) + '</div><div class="mini-stat-label">Goles visitante</div></div>';
-  html += '<div class="mini-stat-box"><div class="mini-stat-value">' + pct(hs.clean_sheet_pct) + '</div><div class="mini-stat-label">Portería a 0 local</div></div>';
-  html += '<div class="mini-stat-box"><div class="mini-stat-value">' + pct(as.clean_sheet_pct) + '</div><div class="mini-stat-label">Portería a 0 visitante</div></div>';
+  html += '<div class="mini-stat-box"><div class="mini-stat-value">' + pct(hs.clean_sheet_pct) + '</div><div class="mini-stat-label">Porteria a 0 local</div></div>';
+  html += '<div class="mini-stat-box"><div class="mini-stat-value">' + pct(as.clean_sheet_pct) + '</div><div class="mini-stat-label">Porteria a 0 visitante</div></div>';
 
   var grid = getEl('mini-stats-grid');
   if (grid) grid.innerHTML = html;
@@ -507,9 +529,9 @@ function renderGoalsTable(data) {
 
   var rows = [
     ['Goles/Partido', dec(hs.avg_team_goals), dec(as.avg_team_goals), dec((num(hs.avg_team_goals) + num(as.avg_team_goals)) / 2)],
-    ['Más de 1,5', pct(hs.over_1_5_pct), pct(as.over_1_5_pct), pct((num(hs.over_1_5_pct) + num(as.over_1_5_pct)) / 2)],
-    ['Más de 2,5', pct(hs.over_2_5_pct), pct(as.over_2_5_pct), pct((num(hs.over_2_5_pct) + num(as.over_2_5_pct)) / 2)],
-    ['Más de 3,5', pct(hs.over_3_5_pct), pct(as.over_3_5_pct), pct((num(hs.over_3_5_pct) + num(as.over_3_5_pct)) / 2)],
+    ['Mas de 1,5', pct(hs.over_1_5_pct), pct(as.over_1_5_pct), pct((num(hs.over_1_5_pct) + num(as.over_1_5_pct)) / 2)],
+    ['Mas de 2,5', pct(hs.over_2_5_pct), pct(as.over_2_5_pct), pct((num(hs.over_2_5_pct) + num(as.over_2_5_pct)) / 2)],
+    ['Mas de 3,5', pct(hs.over_3_5_pct), pct(as.over_3_5_pct), pct((num(hs.over_3_5_pct) + num(as.over_3_5_pct)) / 2)],
     ['AMB', pct(hs.btts_pct), pct(as.btts_pct), pct((num(hs.btts_pct) + num(as.btts_pct)) / 2)]
   ];
 
@@ -539,13 +561,13 @@ function renderCornersTable(data) {
 
   var rows1 = [
     ['Obtenidos/Partido', dec(hs.avg_corners), dec(as.avg_corners), dec((num(hs.avg_corners) + num(as.avg_corners)) / 2)],
-    ['Más de 4,5', pct(hcp.over_4_5 || 0), pct(acp.over_4_5 || 0), pct((num(hcp.over_4_5) + num(acp.over_4_5)) / 2)],
-    ['Más de 5,5', pct(hcp.over_5_5 || 0), pct(acp.over_5_5 || 0), pct((num(hcp.over_5_5) + num(acp.over_5_5)) / 2)],
-    ['Más de 6,5', pct(hcp.over_6_5 || 0), pct(acp.over_6_5 || 0), pct((num(hcp.over_6_5) + num(acp.over_6_5)) / 2)],
-    ['Más de 7,5', pct(hcp.over_7_5 || 0), pct(acp.over_7_5 || 0), pct((num(hcp.over_7_5) + num(acp.over_7_5)) / 2)],
-    ['Más de 8,5', pct(hcp.over_8_5 || 0), pct(acp.over_8_5 || 0), pct((num(hcp.over_8_5) + num(acp.over_8_5)) / 2)],
-    ['Más de 9,5', pct(hcp.over_9_5 || 0), pct(acp.over_9_5 || 0), pct((num(hcp.over_9_5) + num(acp.over_9_5)) / 2)],
-    ['Más de 10,5', pct(hcp.over_10_5 || 0), pct(acp.over_10_5 || 0), pct((num(hcp.over_10_5) + num(acp.over_10_5)) / 2)]
+    ['Mas de 4,5', pct(hcp.over_4_5 || 0), pct(acp.over_4_5 || 0), pct((num(hcp.over_4_5) + num(acp.over_4_5)) / 2)],
+    ['Mas de 5,5', pct(hcp.over_5_5 || 0), pct(acp.over_5_5 || 0), pct((num(hcp.over_5_5) + num(acp.over_5_5)) / 2)],
+    ['Mas de 6,5', pct(hcp.over_6_5 || 0), pct(acp.over_6_5 || 0), pct((num(hcp.over_6_5) + num(acp.over_6_5)) / 2)],
+    ['Mas de 7,5', pct(hcp.over_7_5 || 0), pct(acp.over_7_5 || 0), pct((num(hcp.over_7_5) + num(acp.over_7_5)) / 2)],
+    ['Mas de 8,5', pct(hcp.over_8_5 || 0), pct(acp.over_8_5 || 0), pct((num(hcp.over_8_5) + num(acp.over_8_5)) / 2)],
+    ['Mas de 9,5', pct(hcp.over_9_5 || 0), pct(acp.over_9_5 || 0), pct((num(hcp.over_9_5) + num(acp.over_9_5)) / 2)],
+    ['Mas de 10,5', pct(hcp.over_10_5 || 0), pct(acp.over_10_5 || 0), pct((num(hcp.over_10_5) + num(acp.over_10_5)) / 2)]
   ];
 
   var html1 = '';
@@ -575,13 +597,13 @@ function renderCornersTable(data) {
   var totalLambda = homeLambda + awayLambda;
 
   var rows3 = [
-    ['Más de 6,5', pct(poissonOver(homeLambda, 6)), pct(poissonOver(awayLambda, 6)), pct(poissonOver(totalLambda, 6))],
-    ['Más de 7,5', pct(poissonOver(homeLambda, 7)), pct(poissonOver(awayLambda, 7)), pct(poissonOver(totalLambda, 7))],
-    ['Más de 8,5', pct(poissonOver(homeLambda, 8)), pct(poissonOver(awayLambda, 8)), pct(poissonOver(totalLambda, 8))],
-    ['Más de 9,5', pct(poissonOver(homeLambda, 9)), pct(poissonOver(awayLambda, 9)), pct(poissonOver(totalLambda, 9))],
-    ['Más de 10,5', pct(poissonOver(homeLambda, 10)), pct(poissonOver(awayLambda, 10)), pct(poissonOver(totalLambda, 10))],
-    ['Más de 11,5', pct(poissonOver(homeLambda, 11)), pct(poissonOver(awayLambda, 11)), pct(poissonOver(totalLambda, 11))],
-    ['Más de 12,5', pct(poissonOver(homeLambda, 12)), pct(poissonOver(awayLambda, 12)), pct(poissonOver(totalLambda, 12))]
+    ['Mas de 6,5', pct(poissonOver(homeLambda, 6)), pct(poissonOver(awayLambda, 6)), pct(poissonOver(totalLambda, 6))],
+    ['Mas de 7,5', pct(poissonOver(homeLambda, 7)), pct(poissonOver(awayLambda, 7)), pct(poissonOver(totalLambda, 7))],
+    ['Mas de 8,5', pct(poissonOver(homeLambda, 8)), pct(poissonOver(awayLambda, 8)), pct(poissonOver(totalLambda, 8))],
+    ['Mas de 9,5', pct(poissonOver(homeLambda, 9)), pct(poissonOver(awayLambda, 9)), pct(poissonOver(totalLambda, 9))],
+    ['Mas de 10,5', pct(poissonOver(homeLambda, 10)), pct(poissonOver(awayLambda, 10)), pct(poissonOver(totalLambda, 10))],
+    ['Mas de 11,5', pct(poissonOver(homeLambda, 11)), pct(poissonOver(awayLambda, 11)), pct(poissonOver(totalLambda, 11))],
+    ['Mas de 12,5', pct(poissonOver(homeLambda, 12)), pct(poissonOver(awayLambda, 12)), pct(poissonOver(totalLambda, 12))]
   ];
 
   var html3 = '';
@@ -617,11 +639,11 @@ function renderCardsTable(data) {
 
   var rows = [
     ['Tarjetas/Partido', dec(homeTotalCards, 2), dec(awayTotalCards, 2), dec(avgTotalCards, 2)],
-    ['Más de 1,5', pct(hcp.over_1_5 || 0), pct(acp.over_1_5 || 0), pct((num(hcp.over_1_5) + num(acp.over_1_5)) / 2)],
-    ['Más de 2,5', pct(hcp.over_2_5 || 0), pct(acp.over_2_5 || 0), pct((num(hcp.over_2_5) + num(acp.over_2_5)) / 2)],
-    ['Más de 3,5', pct(hcp.over_3_5 || 0), pct(acp.over_3_5 || 0), pct((num(hcp.over_3_5) + num(acp.over_3_5)) / 2)],
-    ['Más de 4,5', pct(hcp.over_4_5 || 0), pct(acp.over_4_5 || 0), pct((num(hcp.over_4_5) + num(acp.over_4_5)) / 2)],
-    ['Más de 5,5', pct(hcp.over_5_5 || 0), pct(acp.over_5_5 || 0), pct((num(hcp.over_5_5) + num(acp.over_5_5)) / 2)]
+    ['Mas de 1,5', pct(hcp.over_1_5 || 0), pct(acp.over_1_5 || 0), pct((num(hcp.over_1_5) + num(acp.over_1_5)) / 2)],
+    ['Mas de 2,5', pct(hcp.over_2_5 || 0), pct(acp.over_2_5 || 0), pct((num(hcp.over_2_5) + num(acp.over_2_5)) / 2)],
+    ['Mas de 3,5', pct(hcp.over_3_5 || 0), pct(acp.over_3_5 || 0), pct((num(hcp.over_3_5) + num(acp.over_3_5)) / 2)],
+    ['Mas de 4,5', pct(hcp.over_4_5 || 0), pct(acp.over_4_5 || 0), pct((num(hcp.over_4_5) + num(acp.over_4_5)) / 2)],
+    ['Mas de 5,5', pct(hcp.over_5_5 || 0), pct(acp.over_5_5 || 0), pct((num(hcp.over_5_5) + num(acp.over_5_5)) / 2)]
   ];
 
   var html = '';
@@ -639,12 +661,12 @@ function renderCardsTable(data) {
   var totalCardsLambda = homeCardsLambda + awayCardsLambda;
 
   var rowsTotal = [
-    ['Más de 2,5', pct(poissonOver(homeCardsLambda, 2)), pct(poissonOver(awayCardsLambda, 2)), pct(poissonOver(totalCardsLambda, 2))],
-    ['Más de 3,5', pct(poissonOver(homeCardsLambda, 3)), pct(poissonOver(awayCardsLambda, 3)), pct(poissonOver(totalCardsLambda, 3))],
-    ['Más de 4,5', pct(poissonOver(homeCardsLambda, 4)), pct(poissonOver(awayCardsLambda, 4)), pct(poissonOver(totalCardsLambda, 4))],
-    ['Más de 5,5', pct(poissonOver(homeCardsLambda, 5)), pct(poissonOver(awayCardsLambda, 5)), pct(poissonOver(totalCardsLambda, 5))],
-    ['Más de 6,5', pct(poissonOver(homeCardsLambda, 6)), pct(poissonOver(awayCardsLambda, 6)), pct(poissonOver(totalCardsLambda, 6))],
-    ['Más de 7,5', pct(poissonOver(homeCardsLambda, 7)), pct(poissonOver(awayCardsLambda, 7)), pct(poissonOver(totalCardsLambda, 7))]
+    ['Mas de 2,5', pct(poissonOver(homeCardsLambda, 2)), pct(poissonOver(awayCardsLambda, 2)), pct(poissonOver(totalCardsLambda, 2))],
+    ['Mas de 3,5', pct(poissonOver(homeCardsLambda, 3)), pct(poissonOver(awayCardsLambda, 3)), pct(poissonOver(totalCardsLambda, 3))],
+    ['Mas de 4,5', pct(poissonOver(homeCardsLambda, 4)), pct(poissonOver(awayCardsLambda, 4)), pct(poissonOver(totalCardsLambda, 4))],
+    ['Mas de 5,5', pct(poissonOver(homeCardsLambda, 5)), pct(poissonOver(awayCardsLambda, 5)), pct(poissonOver(totalCardsLambda, 5))],
+    ['Mas de 6,5', pct(poissonOver(homeCardsLambda, 6)), pct(poissonOver(awayCardsLambda, 6)), pct(poissonOver(totalCardsLambda, 6))],
+    ['Mas de 7,5', pct(poissonOver(homeCardsLambda, 7)), pct(poissonOver(awayCardsLambda, 7)), pct(poissonOver(totalCardsLambda, 7))]
   ];
 
   var totalCardsBody = getEl('total-cards-body');
@@ -672,8 +694,8 @@ function fillHeader(data) {
   if (subtitle) subtitle.textContent = (mi.country || '') + ' - ' + (mi.league || '');
   if (matchMeta) {
     var metaText = 'Hora de inicio: ' + (mi.time || '--:--');
-    if (mi.matchday && mi.matchday !== '0') metaText += ' · Jornada ' + mi.matchday;
-    if (mi.venue) metaText += ' · ' + mi.venue;
+    if (mi.matchday && mi.matchday !== '0') metaText += ' - Jornada ' + mi.matchday;
+    if (mi.venue) metaText += ' - ' + mi.venue;
     matchMeta.textContent = metaText;
   }
   if (homeName) homeName.textContent = mi.home_team || 'Local';
@@ -695,16 +717,16 @@ function renderPrediction(data) {
 
   var html = '';
   if (pred.winner) {
-    html += '<div class="prediction-winner">🏆 Ganador: <strong>' + pred.winner + '</strong></div>';
+    html += '<div class="prediction-winner">Ganador: <strong>' + pred.winner + '</strong></div>';
   }
   if (pred.advice) {
-    html += '<div class="prediction-advice">💡 ' + pred.advice + '</div>';
+    html += '<div class="prediction-advice">' + pred.advice + '</div>';
   }
   if (pred.under_over) {
-    html += '<div class="prediction-over">📊 Over/Under: ' + pred.under_over + '</div>';
+    html += '<div class="prediction-over">Over/Under: ' + pred.under_over + '</div>';
   }
   if (!html) {
-    html = '<div class="prediction-empty">Predicción no disponible para este partido</div>';
+    html = '<div class="prediction-empty">Prediccion no disponible para este partido</div>';
   }
   box.innerHTML = html;
 }
@@ -737,7 +759,7 @@ function openAnalysis(card) {
   activateTab('resumen');
 
   var box = getEl('prediction-box');
-  if (box) box.innerHTML = '<div class="prediction-loading">Cargando predicción...</div>';
+  if (box) box.innerHTML = '<div class="prediction-loading">Cargando prediccion...</div>';
 
   fetch('/api/analyze/' + encodeURIComponent(matchId) + '?' + params.toString())
     .then(function (r) {
@@ -754,7 +776,7 @@ function openAnalysis(card) {
       renderCornersTable(data);
       renderCardsTable(data);
       renderPrediction(data);
-      // Verificar si está desbloqueado
+      // Verificar si esta desbloqueado
       checkUnlockStatus();
     })
     .catch(function (error) {
