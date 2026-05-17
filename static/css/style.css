@@ -639,39 +639,69 @@ body {
 }
 
 
+/* ===== TAB CONTENT WRAPPER (para posicionar overlay) ===== */
+.tab-content-wrapper {
+  position: relative;
+  min-height: 300px;
+}
+
+.tab-real-content {
+  /* El contenido real siempre se renderiza */
+  transition: filter 0.3s ease;
+}
+
+/* Cuando hay paywall, el contenido real se ve borroso */
+.tab-content-wrapper.locked .tab-real-content {
+  filter: blur(6px);
+  pointer-events: none;
+  user-select: none;
+}
+
 /* ===== PAYWALL OVERLAY ===== */
 .paywall-overlay {
-  position: relative;
-  display: flex;
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: none; /* Oculto por defecto */
   flex-direction: column;
   align-items: center;
   justify-content: center;
   padding: 20px 16px;
-  margin-top: 10px;
-  border-radius: 12px;
-  overflow: hidden;
-  min-height: 280px;
+  z-index: 100;
 }
 
-.paywall-blur {
+.paywall-overlay.active {
+  display: flex;
+}
+
+/* Fondo borroso del overlay */
+.paywall-blur-bg {
   position: absolute;
   inset: 0;
-  background: rgba(10, 22, 40, 0.85);
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
+  background: rgba(10, 22, 40, 0.75);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
   z-index: 1;
 }
 
-.paywall-content {
+/* Caja de contenido del overlay */
+.paywall-content-box {
   position: relative;
   z-index: 2;
   text-align: center;
   width: 100%;
   max-width: 340px;
+  background: linear-gradient(180deg, rgba(17, 29, 50, 0.95) 0%, rgba(10, 22, 40, 0.98) 100%);
+  border: 1px solid rgba(59, 130, 246, 0.25);
+  border-radius: 16px;
+  padding: 24px 20px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
 }
 
 .paywall-lock {
-  font-size: 32px;
+  font-size: 36px;
   margin-bottom: 8px;
 }
 
@@ -695,7 +725,7 @@ body {
   gap: 6px;
   margin-bottom: 20px;
   text-align: left;
-  padding: 0 8px;
+  padding: 0 4px;
 }
 
 .paywall-feature {
@@ -718,6 +748,7 @@ body {
   cursor: pointer;
   width: 100%;
   max-width: 280px;
+  margin: 0 auto;
   transition: transform 0.15s ease, box-shadow 0.15s ease;
   box-shadow: 0 4px 15px rgba(59, 130, 246, 0.4);
 }
@@ -733,6 +764,11 @@ body {
 }
 
 /* Cuando está desbloqueado, ocultar overlay */
-.paywall-overlay.unlocked {
+.tab-content-wrapper.unlocked .paywall-overlay {
   display: none !important;
+}
+
+.tab-content-wrapper.unlocked .tab-real-content {
+  filter: none;
+  pointer-events: auto;
 }
