@@ -1,4 +1,4 @@
-console.log('TipFactory v11.2 - Datos 100% reales API-Football');
+console.log('TipFactory v12.2 - Stable');
 
 var currentDate = new Date();
 var allMatches = [];
@@ -126,17 +126,8 @@ function loadMatches() {
   var matchesContainer = getEl('matches-container');
   if (matchesContainer) matchesContainer.innerHTML = '<div class="loading">Cargando partidos...</div>';
 
-  // Timeout de 15 segundos (Render free tier tarda en despertar)
-  var controller = new AbortController();
-  var timeoutId = setTimeout(function() {
-    controller.abort();
-  }, 15000);
-
-  fetch('/api/matches?date=' + encodeURIComponent(dateStr), {
-    signal: controller.signal
-  })
+  fetch('/api/matches?date=' + encodeURIComponent(dateStr))
     .then(function (r) {
-      clearTimeout(timeoutId);
       if (!r.ok) return r.text().then(function (t) { throw new Error('HTTP ' + r.status + ' - ' + t); });
       return r.json();
     })
@@ -145,22 +136,8 @@ function loadMatches() {
       renderMatches();
     })
     .catch(function (error) {
-      clearTimeout(timeoutId);
-      var errorMsg = error.message || 'Error desconocido';
-
-      // Si es timeout, probablemente Render está despertando
-      if (error.name === 'AbortError') {
-        errorMsg = 'El servidor está despertando (Render free tier). Intenta de nuevo en 30 segundos.';
-      }
-
       if (matchesContainer) {
-        matchesContainer.innerHTML = 
-          '<div class="no-matches">' +
-          '<div style="font-size: 32px; margin-bottom: 8px;">😴</div>' +
-          '<div style="font-weight: 700; margin-bottom: 4px;">' + errorMsg + '</div>' +
-          '<div style="font-size: 11px; color: var(--muted);">Si es la primera vez que entras hoy, el servidor puede tardar hasta 1 minuto en despertar.</div>' +
-          '<button onclick="loadMatches()" style="margin-top: 12px; padding: 8px 16px; background: var(--accent); color: #fff; border: none; border-radius: 8px; cursor: pointer; font-size: 12px; font-weight: 600;">🔄 Reintentar</button>' +
-          '</div>';
+        matchesContainer.innerHTML = '<div class="no-matches">Error cargando partidos: ' + error.message + '</div>';
       }
     });
 }
@@ -364,10 +341,6 @@ function probColorClass(val) {
   return 'prob-low';
 }
 
-// ============================================
-// POISSON - Solo para TOTALES (mathematically correct)
-// ============================================
-
 function factorial(n) {
   if (n <= 1) return 1;
   var result = 1;
@@ -387,53 +360,42 @@ function poissonOver(lambda, threshold) {
   return Math.min(100, Math.max(0, (1 - cumul) * 100));
 }
 
-// ============================================
-// RENDER PROBABILIDADES GENERAL (datos reales)
-// ============================================
-
 function renderProbabilities(data) {
   var p = data.probabilities || {};
-  var pred = data.predictions || {};
   var hs = data.home_stats || {};
   var as = data.away_stats || {};
   var html = '';
 
-  // Over 2.5 - % real de frecuencia
   var over25 = num(p.over_2_5);
   html += '<div class="prob-box ' + probColorClass(over25) + '">';
   html += '<div class="prob-box-value">' + pct(p.over_2_5) + ' Más de 2,5</div>';
   html += '<div class="prob-box-sub">Basado en ' + (hs.played || 0) + ' partidos reales</div>';
   html += '</div>';
 
-  // Over 1.5
   var over15 = num(p.over_1_5);
   html += '<div class="prob-box ' + probColorClass(over15) + '">';
   html += '<div class="prob-box-value">' + pct(p.over_1_5) + ' Más de 1,5</div>';
   html += '<div class="prob-box-sub">Frecuencia real</div>';
   html += '</div>';
 
-  // BTTS
   var btts = num(p.btts);
   html += '<div class="prob-box ' + probColorClass(btts) + '">';
   html += '<div class="prob-box-value">' + pct(p.btts) + ' AEM</div>';
   html += '<div class="prob-box-sub">Ambos marcan</div>';
   html += '</div>';
 
-  // Goals per match
   var xg = num(p.total_expected_goals);
   html += '<div class="prob-box ' + probColorClass(xg * 20) + '">';
   html += '<div class="prob-box-value">' + dec(xg, 2) + ' Goles / Partido</div>';
   html += '<div class="prob-box-sub">Media real</div>';
   html += '</div>';
 
-  // Cards REALES
   var avgCards = num(hs.avg_yellow_cards) + num(as.avg_yellow_cards);
   html += '<div class="prob-box ' + probColorClass(avgCards * 15) + '">';
   html += '<div class="prob-box-value">' + dec(avgCards, 2) + ' Tarjetas</div>';
   html += '<div class="prob-box-sub">Amarillas reales por partido</div>';
   html += '</div>';
 
-  // Corners REALES
   var avgCorners = num(hs.avg_corners) + num(as.avg_corners);
   html += '<div class="prob-box ' + probColorClass(avgCorners * 7) + '">';
   html += '<div class="prob-box-value">' + dec(avgCorners, 2) + ' Córners</div>';
@@ -459,10 +421,6 @@ function renderMiniStats(data) {
   var grid = getEl('mini-stats-grid');
   if (grid) grid.innerHTML = html;
 }
-
-// ============================================
-// GOLES - Porcentajes REALES del backend
-// ============================================
 
 function renderGoalsTable(data) {
   var hs = data.home_stats || {};
@@ -493,12 +451,6 @@ function renderGoalsTable(data) {
   if (body) body.innerHTML = html;
 }
 
-// ============================================
-// CORNERS - Datos 100% REALES de la API
-// Individual: porcentajes reales del backend
-// Total: Poisson con lambda = home_avg + away_avg (correcto)
-// ============================================
-
 function renderCornersTable(data) {
   var hs = data.home_stats || {};
   var as = data.away_stats || {};
@@ -512,7 +464,6 @@ function renderCornersTable(data) {
   var hcp = hs.corners_pct || {};
   var acp = as.corners_pct || {};
 
-  // === CORNERS GANADOS POR EQUIPO - PORCENTAJES REALES ===
   var rows1 = [
     ['Obtenidos/Partido', dec(hs.avg_corners), dec(as.avg_corners), dec((num(hs.avg_corners) + num(as.avg_corners)) / 2)],
     ['Más de 4,5', pct(hcp.over_4_5 || 0), pct(acp.over_4_5 || 0), pct((num(hcp.over_4_5) + num(acp.over_4_5)) / 2)],
@@ -533,7 +484,6 @@ function renderCornersTable(data) {
   var body1 = getEl('corners-table-body');
   if (body1) body1.innerHTML = html1;
 
-  // === CORNERS EN CONTRA (estimado) ===
   var homeConcededCorners = num(hs.avg_conceded) * 1.5;
   var awayConcededCorners = num(as.avg_conceded) * 1.5;
 
@@ -547,11 +497,6 @@ function renderCornersTable(data) {
   var body2 = getEl('corners-conceded-body');
   if (body2) body2.innerHTML = html2;
 
-  // === TOTAL DE CORNERS - POISSON CON LAMBDA = SUMA DE MEDIAS ===
-  // FIX: Cada columna usa su propio lambda para dar valores DIFERENTES
-  // Local: lambda = home_avg (prob de que el LOCAL supere la línea total)
-  // Visitante: lambda = away_avg (prob de que el VISITANTE supere la línea total)
-  // Media: lambda = home_avg + away_avg (prob de que el TOTAL supere la línea)
   var homeLambda = num(hs.avg_corners);
   var awayLambda = num(as.avg_corners);
   var totalLambda = homeLambda + awayLambda;
@@ -575,12 +520,6 @@ function renderCornersTable(data) {
   if (body3) body3.innerHTML = html3;
 }
 
-// ============================================
-// TARJETAS - Datos 100% REALES de la API
-// Individual: porcentajes reales del backend
-// Total: Poisson con lambda = home_avg + away_avg (correcto)
-// ============================================
-
 function renderCardsTable(data) {
   var hs = data.home_stats || {};
   var as = data.away_stats || {};
@@ -603,7 +542,6 @@ function renderCardsTable(data) {
   var awayTotalCards = awayYellow + awayRed;
   var avgTotalCards = (homeTotalCards + awayTotalCards) / 2;
 
-  // === TARJETAS POR EQUIPO - PORCENTAJES REALES ===
   var rows = [
     ['Tarjetas/Partido', dec(homeTotalCards, 2), dec(awayTotalCards, 2), dec(avgTotalCards, 2)],
     ['Más de 1,5', pct(hcp.over_1_5 || 0), pct(acp.over_1_5 || 0), pct((num(hcp.over_1_5) + num(acp.over_1_5)) / 2)],
@@ -623,8 +561,6 @@ function renderCardsTable(data) {
   var body = getEl('cards-table-body');
   if (body) body.innerHTML = html;
 
-  // === TOTAL DE TARJETAS - POISSON CON LAMBDA = SUMA DE MEDIAS ===
-  // FIX: Cada columna usa su propio lambda para dar valores DIFERENTES
   var homeCardsLambda = homeTotalCards;
   var awayCardsLambda = awayTotalCards;
   var totalCardsLambda = homeCardsLambda + awayCardsLambda;
@@ -727,45 +663,11 @@ function openAnalysis(card) {
   showAnalysis();
   activateTab('resumen');
 
-  // Mostrar datos básicos inmediatamente (escudos, nombres, forma)
-  fillHeader({
-    match_info: {
-      home_team: card.dataset.homeTeam || 'Local',
-      away_team: card.dataset.awayTeam || 'Visitante',
-      home_short: card.dataset.homeShort || 'Local',
-      away_short: card.dataset.awayShort || 'Visitante',
-      home_logo: card.dataset.homeLogo || '',
-      away_logo: card.dataset.awayLogo || '',
-      league: card.dataset.league || '',
-      country: card.dataset.country || '',
-      date: card.dataset.date || '',
-      time: card.dataset.time || '--:--',
-      venue: card.dataset.venue || '',
-      matchday: card.dataset.matchday || '0',
-      status: card.dataset.status || 'SCHEDULED',
-      home_score: card.dataset.homeScore || null,
-      away_score: card.dataset.awayScore || null
-    }
-  });
-
-  // Renderizar forma vacía mientras carga
-  renderFormBadges([], 'home-form-badges');
-  renderFormBadges([], 'away-form-badges');
-
   var box = getEl('prediction-box');
-  if (box) box.innerHTML = '<div class="prediction-loading">Cargando análisis...</div>';
+  if (box) box.innerHTML = '<div class="prediction-loading">Cargando predicción...</div>';
 
-  // Timeout de 20 segundos para análisis (puede tardar si no hay cache)
-  var controller = new AbortController();
-  var timeoutId = setTimeout(function() {
-    controller.abort();
-  }, 20000);
-
-  fetch('/api/analyze/' + encodeURIComponent(matchId) + '?' + params.toString(), {
-    signal: controller.signal
-  })
+  fetch('/api/analyze/' + encodeURIComponent(matchId) + '?' + params.toString())
     .then(function (r) {
-      clearTimeout(timeoutId);
       if (!r.ok) return r.text().then(function (t) { throw new Error('HTTP ' + r.status + ' - ' + t); });
       return r.json();
     })
@@ -779,27 +681,9 @@ function openAnalysis(card) {
       renderCornersTable(data);
       renderCardsTable(data);
       renderPrediction(data);
-      // Verificar paywall después de renderizar
-      setTimeout(checkPaywall, 100);
     })
     .catch(function (error) {
-      clearTimeout(timeoutId);
-      var errorMsg = error.message || 'Error desconocido';
-
-      if (error.name === 'AbortError') {
-        errorMsg = 'El análisis está tardando demasiado. El servidor puede estar sin peticiones API disponibles.';
-      }
-
-      // Mostrar error pero mantener la cabecera del partido visible
-      if (box) {
-        box.innerHTML = 
-          '<div class="prediction-error" style="text-align: center; padding: 20px;">' +
-          '<div style="font-size: 32px; margin-bottom: 8px;">⚠️</div>' +
-          '<div style="font-weight: 700; margin-bottom: 4px;">' + errorMsg + '</div>' +
-          '<div style="font-size: 11px; color: var(--muted); margin-bottom: 12px;">Es posible que se haya alcanzado el límite diario de peticiones a la API de fútbol.</div>' +
-          '<button onclick="openAnalysis(document.querySelector(\'[data-match-id=\'' + matchId + '\']\'))" style="padding: 8px 16px; background: var(--accent); color: #fff; border: none; border-radius: 8px; cursor: pointer; font-size: 12px; font-weight: 600;">🔄 Reintentar</button>' +
-          '</div>';
-      }
+      if (box) box.innerHTML = '<div class="prediction-error">Error: ' + error.message + '</div>';
     });
 }
 
