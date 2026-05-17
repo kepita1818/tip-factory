@@ -1,61 +1,3 @@
-// TipFactory v12.1 - Keep-alive para Render free tier
-// Render duerme el servidor después de 15 min de inactividad
-// Este self-ping mantiene el servidor despierto
-
-var RENDER_URL = window.location.origin;
-var KEEP_ALIVE_INTERVAL = 14 * 60 * 1000; // 14 minutos (menos que 15)
-
-function keepAlive() {
-  fetch(RENDER_URL + '/health', { method: 'GET', cache: 'no-store' })
-    .then(function(r) {
-      console.log('Keep-alive ping:', r.status, new Date().toISOString());
-    })
-    .catch(function(e) {
-      console.log('Keep-alive error:', e.message);
-    });
-}
-
-// Iniciar keep-alive solo si estamos en Render
-if (RENDER_URL.indexOf('onrender.com') > -1) {
-  setInterval(keepAlive, KEEP_ALIVE_INTERVAL);
-  console.log('Keep-alive activado para Render (cada 14 min)');
-}
-
-// ===== PAYWALL FUNCTIONS =====
-var isUnlocked = localStorage.getItem('tipfactory_unlocked') === 'true';
-
-function checkPaywall() {
-  var wrappers = document.querySelectorAll('.tab-content-wrapper');
-  for (var i = 0; i < wrappers.length; i++) {
-    var wrapper = wrappers[i];
-    var overlay = wrapper.querySelector('.paywall-overlay');
-
-    if (isUnlocked) {
-      wrapper.classList.add('unlocked');
-      wrapper.classList.remove('locked');
-      if (overlay) overlay.classList.remove('active');
-    } else {
-      wrapper.classList.add('locked');
-      wrapper.classList.remove('unlocked');
-      if (overlay) overlay.classList.add('active');
-    }
-  }
-}
-
-function unlockContent() {
-  // Aquí iría la integración con Stripe/PayPal
-  // Por ahora simulamos el desbloqueo para testing
-  if (confirm('🔓 DEMO: ¿Desbloquear contenido?\n\nEn producción esto redirigiría a Stripe/PayPal')) {
-    localStorage.setItem('tipfactory_unlocked', 'true');
-    isUnlocked = true;
-    checkPaywall();
-    alert('✅ Contenido desbloqueado (modo demo)');
-  }
-}
-
-// Hacer unlockContent global para el onclick del HTML
-window.unlockContent = unlockContent;
-
 console.log('TipFactory v11.2 - Datos 100% reales API-Football');
 
 var currentDate = new Date();
@@ -132,8 +74,6 @@ function activateTab(tabName) {
   var content = getEl('tab-' + tabName);
   if (tab) tab.classList.add('active');
   if (content) content.classList.add('active');
-  // Verificar paywall al cambiar de pestaña
-  setTimeout(checkPaywall, 50);
 }
 
 function setupEventListeners() {
@@ -186,8 +126,17 @@ function loadMatches() {
   var matchesContainer = getEl('matches-container');
   if (matchesContainer) matchesContainer.innerHTML = '<div class="loading">Cargando partidos...</div>';
 
-  fetch('/api/matches?date=' + encodeURIComponent(dateStr))
+  // Timeout de 15 segundos (Render free tier tarda en despertar)
+  var controller = new AbortController();
+  var timeoutId = setTimeout(function() {
+    controller.abort();
+  }, 15000);
+
+  fetch('/api/matches?date=' + encodeURIComponent(dateStr), {
+    signal: controller.signal
+  })
     .then(function (r) {
+      clearTimeout(timeoutId);
       if (!r.ok) return r.text().then(function (t) { throw new Error('HTTP ' + r.status + ' - ' + t); });
       return r.json();
     })
@@ -196,7 +145,23 @@ function loadMatches() {
       renderMatches();
     })
     .catch(function (error) {
-      if (matchesContainer) matchesContainer.innerHTML = '<div class="no-matches">Error cargando partidos: ' + error.message + '</div>';
+      clearTimeout(timeoutId);
+      var errorMsg = error.message || 'Error desconocido';
+
+      // Si es timeout, probablemente Render está despertando
+      if (error.name === 'AbortError') {
+        errorMsg = 'El servidor está despertando (Render free tier). Intenta de nuevo en 30 segundos.';
+      }
+
+      if (matchesContainer) {
+        matchesContainer.innerHTML = 
+          '<div class="no-matches">' +
+          '<div style="font-size: 32px; margin-bottom: 8px;">😴</div>' +
+          '<div style="font-weight: 700; margin-bottom: 4px;">' + errorMsg + '</div>' +
+          '<div style="font-size: 11px; color: var(--muted);">Si es la primera vez que entras hoy, el servidor puede tardar hasta 1 minuto en despertar.</div>' +
+          '<button onclick="loadMatches()" style="margin-top: 12px; padding: 8px 16px; background: var(--accent); color: #fff; border: none; border-radius: 8px; cursor: pointer; font-size: 12px; font-weight: 600;">🔄 Reintentar</button>' +
+          '</div>';
+      }
     });
 }
 
@@ -761,14 +726,46 @@ function openAnalysis(card) {
 
   showAnalysis();
   activateTab('resumen');
-  // Verificar paywall después de un pequeño delay para que el DOM se actualice
-  setTimeout(checkPaywall, 100);
+
+  // Mostrar datos básicos inmediatamente (escudos, nombres, forma)
+  fillHeader({
+    match_info: {
+      home_team: card.dataset.homeTeam || 'Local',
+      away_team: card.dataset.awayTeam || 'Visitante',
+      home_short: card.dataset.homeShort || 'Local',
+      away_short: card.dataset.awayShort || 'Visitante',
+      home_logo: card.dataset.homeLogo || '',
+      away_logo: card.dataset.awayLogo || '',
+      league: card.dataset.league || '',
+      country: card.dataset.country || '',
+      date: card.dataset.date || '',
+      time: card.dataset.time || '--:--',
+      venue: card.dataset.venue || '',
+      matchday: card.dataset.matchday || '0',
+      status: card.dataset.status || 'SCHEDULED',
+      home_score: card.dataset.homeScore || null,
+      away_score: card.dataset.awayScore || null
+    }
+  });
+
+  // Renderizar forma vacía mientras carga
+  renderFormBadges([], 'home-form-badges');
+  renderFormBadges([], 'away-form-badges');
 
   var box = getEl('prediction-box');
-  if (box) box.innerHTML = '<div class="prediction-loading">Cargando predicción...</div>';
+  if (box) box.innerHTML = '<div class="prediction-loading">Cargando análisis...</div>';
 
-  fetch('/api/analyze/' + encodeURIComponent(matchId) + '?' + params.toString())
+  // Timeout de 20 segundos para análisis (puede tardar si no hay cache)
+  var controller = new AbortController();
+  var timeoutId = setTimeout(function() {
+    controller.abort();
+  }, 20000);
+
+  fetch('/api/analyze/' + encodeURIComponent(matchId) + '?' + params.toString(), {
+    signal: controller.signal
+  })
     .then(function (r) {
+      clearTimeout(timeoutId);
       if (!r.ok) return r.text().then(function (t) { throw new Error('HTTP ' + r.status + ' - ' + t); });
       return r.json();
     })
@@ -782,9 +779,27 @@ function openAnalysis(card) {
       renderCornersTable(data);
       renderCardsTable(data);
       renderPrediction(data);
+      // Verificar paywall después de renderizar
+      setTimeout(checkPaywall, 100);
     })
     .catch(function (error) {
-      if (box) box.innerHTML = '<div class="prediction-error">Error: ' + error.message + '</div>';
+      clearTimeout(timeoutId);
+      var errorMsg = error.message || 'Error desconocido';
+
+      if (error.name === 'AbortError') {
+        errorMsg = 'El análisis está tardando demasiado. El servidor puede estar sin peticiones API disponibles.';
+      }
+
+      // Mostrar error pero mantener la cabecera del partido visible
+      if (box) {
+        box.innerHTML = 
+          '<div class="prediction-error" style="text-align: center; padding: 20px;">' +
+          '<div style="font-size: 32px; margin-bottom: 8px;">⚠️</div>' +
+          '<div style="font-weight: 700; margin-bottom: 4px;">' + errorMsg + '</div>' +
+          '<div style="font-size: 11px; color: var(--muted); margin-bottom: 12px;">Es posible que se haya alcanzado el límite diario de peticiones a la API de fútbol.</div>' +
+          '<button onclick="openAnalysis(document.querySelector(\'[data-match-id=\'' + matchId + '\']\'))" style="padding: 8px 16px; background: var(--accent); color: #fff; border: none; border-radius: 8px; cursor: pointer; font-size: 12px; font-weight: 600;">🔄 Reintentar</button>' +
+          '</div>';
+      }
     });
 }
 
@@ -792,6 +807,4 @@ document.addEventListener('DOMContentLoaded', function () {
   updateDateDisplay();
   setupEventListeners();
   loadMatches();
-  // Verificar estado del paywall al cargar
-  setTimeout(checkPaywall, 200);
 });
