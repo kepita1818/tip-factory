@@ -1,3 +1,61 @@
+// TipFactory v12.1 - Keep-alive para Render free tier
+// Render duerme el servidor después de 15 min de inactividad
+// Este self-ping mantiene el servidor despierto
+
+var RENDER_URL = window.location.origin;
+var KEEP_ALIVE_INTERVAL = 14 * 60 * 1000; // 14 minutos (menos que 15)
+
+function keepAlive() {
+  fetch(RENDER_URL + '/health', { method: 'GET', cache: 'no-store' })
+    .then(function(r) {
+      console.log('Keep-alive ping:', r.status, new Date().toISOString());
+    })
+    .catch(function(e) {
+      console.log('Keep-alive error:', e.message);
+    });
+}
+
+// Iniciar keep-alive solo si estamos en Render
+if (RENDER_URL.indexOf('onrender.com') > -1) {
+  setInterval(keepAlive, KEEP_ALIVE_INTERVAL);
+  console.log('Keep-alive activado para Render (cada 14 min)');
+}
+
+// ===== PAYWALL FUNCTIONS =====
+var isUnlocked = localStorage.getItem('tipfactory_unlocked') === 'true';
+
+function checkPaywall() {
+  var wrappers = document.querySelectorAll('.tab-content-wrapper');
+  for (var i = 0; i < wrappers.length; i++) {
+    var wrapper = wrappers[i];
+    var overlay = wrapper.querySelector('.paywall-overlay');
+
+    if (isUnlocked) {
+      wrapper.classList.add('unlocked');
+      wrapper.classList.remove('locked');
+      if (overlay) overlay.classList.remove('active');
+    } else {
+      wrapper.classList.add('locked');
+      wrapper.classList.remove('unlocked');
+      if (overlay) overlay.classList.add('active');
+    }
+  }
+}
+
+function unlockContent() {
+  // Aquí iría la integración con Stripe/PayPal
+  // Por ahora simulamos el desbloqueo para testing
+  if (confirm('🔓 DEMO: ¿Desbloquear contenido?\n\nEn producción esto redirigiría a Stripe/PayPal')) {
+    localStorage.setItem('tipfactory_unlocked', 'true');
+    isUnlocked = true;
+    checkPaywall();
+    alert('✅ Contenido desbloqueado (modo demo)');
+  }
+}
+
+// Hacer unlockContent global para el onclick del HTML
+window.unlockContent = unlockContent;
+
 console.log('TipFactory v11.2 - Datos 100% reales API-Football');
 
 var currentDate = new Date();
@@ -74,6 +132,8 @@ function activateTab(tabName) {
   var content = getEl('tab-' + tabName);
   if (tab) tab.classList.add('active');
   if (content) content.classList.add('active');
+  // Verificar paywall al cambiar de pestaña
+  setTimeout(checkPaywall, 50);
 }
 
 function setupEventListeners() {
@@ -701,7 +761,8 @@ function openAnalysis(card) {
 
   showAnalysis();
   activateTab('resumen');
-  checkPaywall();
+  // Verificar paywall después de un pequeño delay para que el DOM se actualice
+  setTimeout(checkPaywall, 100);
 
   var box = getEl('prediction-box');
   if (box) box.innerHTML = '<div class="prediction-loading">Cargando predicción...</div>';
@@ -721,46 +782,16 @@ function openAnalysis(card) {
       renderCornersTable(data);
       renderCardsTable(data);
       renderPrediction(data);
-      checkPaywall();
     })
     .catch(function (error) {
       if (box) box.innerHTML = '<div class="prediction-error">Error: ' + error.message + '</div>';
     });
 }
 
-
-// ===== PAYWALL FUNCTIONS =====
-var isUnlocked = localStorage.getItem('tipfactory_unlocked') === 'true';
-
-function checkPaywall() {
-  var overlays = document.querySelectorAll('.paywall-overlay');
-  for (var i = 0; i < overlays.length; i++) {
-    if (isUnlocked) {
-      overlays[i].style.display = 'none';
-    } else {
-      overlays[i].style.display = 'flex';
-    }
-  }
-}
-
-function unlockContent() {
-  // Aquí iría la integración con Stripe/PayPal
-  // Por ahora simulamos el desbloqueo para testing
-  if (confirm('🔓 DEMO: ¿Desbloquear contenido?
-
-En producción esto redirigiría a Stripe/PayPal')) {
-    localStorage.setItem('tipfactory_unlocked', 'true');
-    isUnlocked = true;
-    checkPaywall();
-    alert('✅ Contenido desbloqueado (modo demo)');
-  }
-}
-
-// Hacer unlockContent global para el onclick del HTML
-window.unlockContent = unlockContent;
-
 document.addEventListener('DOMContentLoaded', function () {
   updateDateDisplay();
   setupEventListeners();
   loadMatches();
+  // Verificar estado del paywall al cargar
+  setTimeout(checkPaywall, 200);
 });
