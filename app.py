@@ -3,6 +3,8 @@ import logging
 import json
 import threading
 import time
+import secrets
+import string
 from datetime import datetime, timedelta, timezone
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
@@ -16,7 +18,7 @@ from fastapi.templating import Jinja2Templates
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
 
-app = FastAPI(title="TipFactory", version="13.0.0")
+app = FastAPI(title="TipFactory", version="14.0.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -65,7 +67,7 @@ def get_requests_remaining():
 
 
 
-# === CACHE EN DISCO (para persistencia entre reinicios) ===
+# === CACHE EN DISCO ===
 CACHE_DIR = "/tmp/tipfactory_cache"
 os.makedirs(CACHE_DIR, exist_ok=True)
 
@@ -110,10 +112,26 @@ def delete_disk_cache(pattern=""):
         logger.error(f"Error cleaning disk cache: {e}")
 
 # ============================================================
-# SISTEMA ANTI-REVENTA DE CODIGOS
+# SISTEMA DINAMICO DE CODIGOS CON DURACION PERSONALIZABLE
 # ============================================================
 
 CODES_FILE = os.path.join(CACHE_DIR, "codes_db.json")
+ADMIN_SECRET = os.getenv("ADMIN_SECRET", "tipfactory_admin_2026")
+
+DURATIONS = {
+    "1d": {"days": 1, "label": "1 dia"},
+    "7d": {"days": 7, "label": "1 semana"},
+    "30d": {"days": 30, "label": "1 mes"},
+    "90d": {"days": 90, "label": "3 meses"},
+    "180d": {"days": 180, "label": "6 meses"},
+    "365d": {"days": 365, "label": "1 ano"},
+}
+
+def generate_random_code(prefix="TF", length=6):
+    """Genera un codigo aleatorio seguro"""
+    chars = string.ascii_uppercase + string.digits
+    random_part = ''.join(secrets.choice(chars) for _ in range(length))
+    return f"{prefix}{random_part}"
 
 def load_codes_db():
     try:
@@ -127,33 +145,293 @@ def load_codes_db():
 def save_codes_db(db):
     try:
         with open(CODES_FILE, 'w', encoding='utf-8') as f:
-            json.dump(db, f, ensure_ascii=False)
+            json.dump(db, f, ensure_ascii=False, indent=2)
         return True
     except Exception as e:
         logger.error(f"Error saving codes DB: {e}")
         return False
 
-def init_codes():
+def is_code_expired(code_data):
+    """Verifica si un codigo ha expirado"""
+    expires_at = code_data.get("expires_at")
+    if not expires_at:
+        return False
+    try:
+        expiry = datetime.fromisoformat(expires_at)
+        return datetime.now(timezone.utc) > expiry
+    except:
+        return False
+
+def get_code_status(code_data):
+    """Devuelve el estado completo de un codigo"""
+    if not code_data:
+        return {"valid": False, "reason": "not_found"}
+
+    if is_code_expired(code_data):
+        return {"valid": False, "reason": "expired", "expired_at": code_data.get("expires_at")}
+
+    if code_data.get("used", False):
+        return {"valid": False, "reason": "already_used", "used_at": code_data.get("used_at")}
+
+    return {"valid": True}
+
+def create_code(code_str=None, duration_key="30d", prefix="TF", auto_generate=True):
+    """Crea un nuevo codigo con duracion especifica"""
     db = load_codes_db()
-    default_codes = {
-        "TF2026A": {"used": False, "created": "2026-05-17", "used_by": None, "used_at": None},
-        "TF2026B": {"used": False, "created": "2026-05-17", "used_by": None, "used_at": None},
-        "TF2026C": {"used": False, "created": "2026-05-17", "used_by": None, "used_at": None},
-        "TF2026D": {"used": False, "created": "2026-05-17", "used_by": None, "used_at": None},
-        "TF2026E": {"used": False, "created": "2026-05-17", "used_by": None, "used_at": None},
-        "VIP001": {"used": False, "created": "2026-05-17", "used_by": None, "used_at": None},
-        "VIP002": {"used": False, "created": "2026-05-17", "used_by": None, "used_at": None},
-        "VIP003": {"used": False, "created": "2026-05-17", "used_by": None, "used_at": None},
-        "VIP004": {"used": False, "created": "2026-05-17", "used_by": None, "used_at": None},
-        "VIP005": {"used": False, "created": "2026-05-17", "used_by": None, "used_at": None},
+
+    if auto_generate or not code_str:
+        code_str = generate_random_code(prefix)
+        while code_str in db:
+            code_str = generate_random_code(prefix)
+
+    duration = DURATIONS.get(duration_key, DURATIONS["30d"])
+    now = datetime.now(timezone.utc)
+    expires = now + timedelta(days=duration["days"])
+
+    db[code_str] = {
+        "created_at": now.isoformat(),
+        "expires_at": expires.isoformat(),
+        "duration": duration_key,
+        "duration_label": duration["label"],
+        "used": False,
+        "used_by": None,
+        "used_at": None,
+        "used_count": 0,
+        "auto_generated": auto_generate
     }
-    for code, data in default_codes.items():
-        if code not in db:
-            db[code] = data
+
     save_codes_db(db)
+    logger.info(f"Code {code_str} created, expires {expires.isoformat()}")
+    return code_str, db[code_str]
+
+def init_codes():
+    """Inicializa codigos por defecto si no existen"""
+    db = load_codes_db()
+    if not db:
+        # Crear algunos codigos de ejemplo
+        for _ in range(5):
+            create_code(duration_key="30d", prefix="TF")
+        for _ in range(3):
+            create_code(duration_key="365d", prefix="VIP")
+        logger.info("Default codes created")
     return db
 
-VALID_CODES = init_codes()
+# Inicializar codigos al arrancar
+init_codes()
+
+# ============================================================
+# ENDPOINTS DE ADMINISTRACION DE CODIGOS
+# ============================================================
+
+@app.post("/api/admin/codes/create")
+def admin_create_code(
+    secret: str = Query(...),
+    code: str = Query(None),
+    duration: str = Query("30d"),
+    prefix: str = Query("TF"),
+    count: int = Query(1)
+):
+    """Crear codigos nuevos (admin only)"""
+    if secret != ADMIN_SECRET:
+        return JSONResponse({"error": "Unauthorized"}, status_code=401)
+
+    if duration not in DURATIONS:
+        return JSONResponse({
+            "error": f"Invalid duration. Valid: {list(DURATIONS.keys())}"
+        }, status_code=400)
+
+    created = []
+    for _ in range(min(count, 50)):  # Max 50 at once
+        if code and count == 1:
+            code_str, data = create_code(code_str=code, duration_key=duration, prefix=prefix, auto_generate=False)
+        else:
+            code_str, data = create_code(duration_key=duration, prefix=prefix, auto_generate=True)
+        created.append({
+            "code": code_str,
+            "expires_at": data["expires_at"],
+            "duration": data["duration_label"]
+        })
+
+    return {
+        "created": created,
+        "count": len(created)
+    }
+
+@app.get("/api/admin/codes/list")
+def admin_list_codes(secret: str = Query(...)):
+    """Listar todos los codigos con estado (admin only)"""
+    if secret != ADMIN_SECRET:
+        return JSONResponse({"error": "Unauthorized"}, status_code=401)
+
+    db = load_codes_db()
+    now = datetime.now(timezone.utc)
+
+    codes_list = []
+    for code_str, data in db.items():
+        status = get_code_status(data)
+        codes_list.append({
+            "code": code_str,
+            "status": status["reason"] if not status["valid"] else "active",
+            "created_at": data.get("created_at"),
+            "expires_at": data.get("expires_at"),
+            "duration": data.get("duration_label"),
+            "used": data.get("used", False),
+            "used_by": data.get("used_by"),
+            "used_at": data.get("used_at"),
+            "used_count": data.get("used_count", 0)
+        })
+
+    # Ordenar: activos primero, luego por fecha de creacion
+    codes_list.sort(key=lambda x: (x["status"] != "active", x["created_at"]))
+
+    return {
+        "codes": codes_list,
+        "total": len(codes_list),
+        "active": sum(1 for c in codes_list if c["status"] == "active"),
+        "used": sum(1 for c in codes_list if c["status"] == "already_used"),
+        "expired": sum(1 for c in codes_list if c["status"] == "expired"),
+        "durations_available": {k: v["label"] for k, v in DURATIONS.items()}
+    }
+
+@app.post("/api/admin/codes/delete")
+def admin_delete_code(secret: str = Query(...), code: str = Query(...)):
+    """Eliminar un codigo (admin only)"""
+    if secret != ADMIN_SECRET:
+        return JSONResponse({"error": "Unauthorized"}, status_code=401)
+
+    db = load_codes_db()
+    if code not in db:
+        return JSONResponse({"error": "Code not found"}, status_code=404)
+
+    del db[code]
+    save_codes_db(db)
+    return {"deleted": True, "code": code}
+
+@app.post("/api/admin/codes/reset")
+def admin_reset_code(secret: str = Query(...), code: str = Query(...)):
+    """Resetear un codigo usado (admin only)"""
+    if secret != ADMIN_SECRET:
+        return JSONResponse({"error": "Unauthorized"}, status_code=401)
+
+    db = load_codes_db()
+    if code not in db:
+        return JSONResponse({"error": "Code not found"}, status_code=404)
+
+    db[code]["used"] = False
+    db[code]["used_by"] = None
+    db[code]["used_at"] = None
+    save_codes_db(db)
+    return {"reset": True, "code": code}
+
+@app.post("/api/admin/codes/cleanup")
+def admin_cleanup_codes(secret: str = Query(...)):
+    """Eliminar codigos expirados (admin only)"""
+    if secret != ADMIN_SECRET:
+        return JSONResponse({"error": "Unauthorized"}, status_code=401)
+
+    db = load_codes_db()
+    removed = []
+    for code_str in list(db.keys()):
+        if is_code_expired(db[code_str]):
+            removed.append(code_str)
+            del db[code_str]
+
+    save_codes_db(db)
+    return {"removed": removed, "count": len(removed)}
+
+# ============================================================
+# VALIDACION DE CODIGOS (ANTI-REVENTA + EXPIRACION)
+# ============================================================
+
+@app.post("/api/validate-code")
+def validate_code(request: Request, code: str = Query(...)):
+    """Valida un codigo de desbloqueo - ANTI-REVENTA + EXPIRACION"""
+    code = code.upper().strip()
+    client_ip = request.client.host if request.client else "unknown"
+
+    db = load_codes_db()
+
+    if code not in db:
+        return {"valid": False, "message": "Codigo invalido"}
+
+    code_data = db[code]
+    status = get_code_status(code_data)
+
+    if status["reason"] == "expired":
+        return {
+            "valid": False, 
+            "message": f"Codigo expirado el {status.get('expired_at', 'N/A')}",
+            "expired": True
+        }
+
+    if status["reason"] == "already_used":
+        used_by = code_data.get("used_by")
+        if used_by and used_by != client_ip:
+            return {
+                "valid": False, 
+                "message": "Codigo ya usado en otro dispositivo. Contacta soporte.",
+                "anti_resell": True
+            }
+        # Mismo dispositivo, permitir re-validacion
+        return {
+            "valid": True, 
+            "message": "Codigo valido (ya activado en este dispositivo)",
+            "already_used": True,
+            "expires_at": code_data.get("expires_at"),
+            "duration": code_data.get("duration_label")
+        }
+
+    # Marcar como usado
+    db[code]["used"] = True
+    db[code]["used_by"] = client_ip
+    db[code]["used_at"] = datetime.now(timezone.utc).isoformat()
+    db[code]["used_count"] = code_data.get("used_count", 0) + 1
+    save_codes_db(db)
+
+    logger.info(f"Code {code} activated by {client_ip}")
+
+    return {
+        "valid": True, 
+        "message": "Codigo activado correctamente",
+        "expires_at": code_data.get("expires_at"),
+        "duration": code_data.get("duration_label")
+    }
+
+@app.get("/api/codes-status")
+def codes_status(request: Request, secret: str = Query(None)):
+    """Estado de los codigos (publico: solo contadores, admin: detalles)"""
+    db = load_codes_db()
+
+    if secret == ADMIN_SECRET:
+        # Admin view - full details
+        codes_list = []
+        for code_str, data in db.items():
+            status = get_code_status(data)
+            codes_list.append({
+                "code": code_str,
+                "status": status["reason"] if not status["valid"] else "active",
+                "created_at": data.get("created_at"),
+                "expires_at": data.get("expires_at"),
+                "duration": data.get("duration_label"),
+                "used": data.get("used", False),
+                "used_count": data.get("used_count", 0)
+            })
+        return {
+            "codes": codes_list,
+            "total": len(codes_list),
+            "active": sum(1 for c in codes_list if c["status"] == "active"),
+            "used": sum(1 for c in codes_list if c["status"] == "already_used"),
+            "expired": sum(1 for c in codes_list if c["status"] == "expired"),
+            "durations_available": {k: v["label"] for k, v in DURATIONS.items()}
+        }
+
+    # Public view - solo contadores
+    return {
+        "total": len(db),
+        "active": sum(1 for d in db.values() if get_code_status(d)["valid"]),
+        "used": sum(1 for d in db.values() if d.get("used", False)),
+        "expired": sum(1 for d in db.values() if is_code_expired(d))
+    }
 
 # === LIGAS SOPORTADAS ===
 LEAGUE_IDS = {
@@ -212,7 +490,6 @@ COMPETITIONS = {
     "GOLD": "Gold Cup", "ASIA": "Asian Cup", "WCC": "FIFA Club World Cup",
 }
 
-# === LIGAS PRIORITARIAS (reducidas para ahorrar API calls) ===
 TOP_LEAGUES = [
     "PL", "PD", "SA", "BL1", "FL1",
     "CL", "EL", "ECL",
@@ -329,7 +606,7 @@ def get_season():
         return now.year - 1
 
 # ============================================================
-# CACHE INTELIGENTE PARA FIXTURES Y STATS
+# CACHE INTELIGENTE
 # ============================================================
 
 def get_cached_fixtures(date_str):
@@ -882,7 +1159,7 @@ def format_fixture(f):
     }
 
 # ============================================================
-# PRECARGA DIARIA - OPTIMIZADA PARA AHORRAR REQUESTS
+# PRECARGA DIARIA - OPTIMIZADA
 # ============================================================
 
 def precache_daily_data():
@@ -982,12 +1259,27 @@ def precache_daily_data():
     logger.info("=" * 60)
 
 # ============================================================
-# ENDPOINTS
+# ENDPOINTS PRINCIPALES
 # ============================================================
 
 @app.get("/", response_class=HTMLResponse)
 def home(request: Request):
     return templates.TemplateResponse("index.html", {"request": request})
+
+@app.get("/admin", response_class=HTMLResponse)
+def admin_panel():
+    """Panel de administracion de codigos"""
+    try:
+        with open("static/admin.html", "r", encoding="utf-8") as f:
+            return HTMLResponse(content=f.read())
+    except:
+        # Fallback: read from current directory
+        try:
+            with open("admin.html", "r", encoding="utf-8") as f:
+                return HTMLResponse(content=f.read())
+        except:
+            return HTMLResponse(content="<h1>Admin panel not found</h1>", status_code=404)
+
 
 @app.get("/api/matches")
 def api_matches(date: str = Query(None)):
@@ -1317,62 +1609,6 @@ def trigger_precache():
 def ping():
     return {"status": "ok", "time": datetime.now().isoformat()}
 
-# ============================================================
-# SISTEMA ANTI-REVENTA DE CODIGOS - ENDPOINTS
-# ============================================================
-
-@app.post("/api/validate-code")
-def validate_code(request: Request, code: str = Query(...)):
-    """Valida un codigo de desbloqueo - ANTI-REVENTA"""
-    code = code.upper().strip()
-
-    # Obtener IP del cliente para tracking
-    client_ip = request.client.host if request.client else "unknown"
-
-    db = load_codes_db()
-
-    if code not in db:
-        return {"valid": False, "message": "Codigo invalido"}
-
-    code_data = db[code]
-
-    if code_data.get("used", False):
-        # Codigo ya usado - verificar si es el mismo dispositivo (misma IP)
-        used_by = code_data.get("used_by")
-        if used_by and used_by != client_ip:
-            return {
-                "valid": False, 
-                "message": "Codigo ya usado en otro dispositivo. Contacta soporte.",
-                "anti_resell": True
-            }
-        # Mismo dispositivo, permitir re-validacion
-        return {
-            "valid": True, 
-            "message": "Codigo valido (ya activado)",
-            "already_used": True
-        }
-
-    # Marcar como usado
-    db[code]["used"] = True
-    db[code]["used_by"] = client_ip
-    db[code]["used_at"] = datetime.now(timezone.utc).isoformat()
-    save_codes_db(db)
-
-    logger.info(f"Code {code} activated by {client_ip}")
-
-    return {"valid": True, "message": "Codigo activado correctamente"}
-
-@app.get("/api/codes-status")
-def codes_status(request: Request):
-    """Estado de los codigos (solo para admin - proteger en produccion)"""
-    db = load_codes_db()
-    return {
-        "codes": {k: {"used": v["used"], "used_at": v.get("used_at")} for k, v in db.items()},
-        "total": len(db),
-        "used": sum(1 for v in db.values() if v["used"]),
-        "available": sum(1 for v in db.values() if not v["used"])
-    }
-
 @app.get("/health")
 def health():
     cache_files = 0
@@ -1388,17 +1624,16 @@ def health():
         "cache_disk_files": cache_files,
         "cache_dir": CACHE_DIR,
         "api_football": "configured",
-        "version": "13.0.0",
+        "version": "14.0.0",
         "requests_today": REQUEST_COUNT["total"],
         "rate_limit_remaining": RATE_LIMIT.get("remaining"),
         "rate_limit_total": RATE_LIMIT.get("limit")
     }
 
 # ============================================================
-# STARTUP: Precarga automatica al iniciar
+# STARTUP
 # ============================================================
 
-# === SELF KEEP-ALIVE ===
 def self_ping_loop():
     import time
     import requests
