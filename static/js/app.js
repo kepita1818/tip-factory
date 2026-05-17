@@ -88,12 +88,32 @@ function checkUnlockStatus() {
   // Verificar estado con el servidor al cargar
   if (sessionUnlocked && sessionCode) {
     // Re-validar con el servidor (permite mismo dispositivo)
-    validateCodeWithServer(sessionCode, true);
+    validateCodeWithServer(sessionCode, true, function(success, message, alreadyUsed, expiresAt, duration) {
+      if (success) {
+        var wrappers = document.querySelectorAll('.tab-content-wrapper');
+        for (var j = 0; j < wrappers.length; j++) {
+          wrappers[j].classList.add('unlocked');
+        }
+        // Mostrar info de expiracion si existe
+        var expInfo = localStorage.getItem('tipfactory_expires');
+        var durInfo = localStorage.getItem('tipfactory_duration');
+        if (expInfo || durInfo) {
+          console.log('Acceso activo' + (durInfo ? ' (' + durInfo + ')' : '') + (expInfo ? ' - Expira: ' + new Date(expInfo).toLocaleDateString('es-ES') : ''));
+        }
+      } else {
+        // Si el servidor dice que no es valido, bloquear
+        sessionUnlocked = false;
+        localStorage.removeItem('tipfactory_unlocked');
+        localStorage.removeItem('tipfactory_code');
+        localStorage.removeItem('tipfactory_expires');
+        localStorage.removeItem('tipfactory_duration');
+      }
+    });
   }
 }
 
 function goToTelegram() {
-  window.open('https://t.me/TipFactoryofc', '_blank');
+  window.open('https://t.me/tu_usuario_telegram', '_blank');
 }
 
 function unlockWithCode(tabName) {
@@ -108,63 +128,32 @@ function unlockWithCode(tabName) {
 
   errorDiv.textContent = 'Validando...';
 
-  // Validar CONTRA EL SERVIDOR (anti-reventa)
-  validateCodeWithServer(code, false, function(success, message, alreadyUsed) {
+  // Validar CONTRA EL SERVIDOR (anti-reventa + expiracion)
+  validateCodeWithServer(code, false, function(success, message, alreadyUsed, expiresAt, duration) {
     if (success) {
       sessionUnlocked = true;
       sessionCode = code;
       localStorage.setItem('tipfactory_unlocked', 'true');
       localStorage.setItem('tipfactory_code', code);
+      if (expiresAt) {
+        localStorage.setItem('tipfactory_expires', expiresAt);
+      }
 
       var wrappers = document.querySelectorAll('.tab-content-wrapper');
       for (var j = 0; j < wrappers.length; j++) {
         wrappers[j].classList.add('unlocked');
       }
 
-      if (alreadyUsed) {
-        alert('Codigo valido (ya estaba activado en este dispositivo)');
-      } else {
-        alert('Acceso desbloqueado con codigo: ' + code);
-      }
+      var msg = 'Acceso desbloqueado';
+      if (duration) msg += ' (' + duration + ')';
+      if (alreadyUsed) msg = 'Codigo valido (ya activado en este dispositivo)';
+      if (expiresAt) msg += '
+Expira: ' + new Date(expiresAt).toLocaleDateString('es-ES');
+      alert(msg);
     } else {
       errorDiv.textContent = message || 'Codigo invalido. Contacta por Telegram.';
       input.value = '';
       input.focus();
-    }
-  });
-}
-
-function validateCodeWithServer(code, silent, callback) {
-  callback = callback || function(){};
-
-  fetch('/api/validate-code?code=' + encodeURIComponent(code), {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' }
-  })
-  .then(function(r) { return r.json(); })
-  .then(function(data) {
-    if (data.valid) {
-      callback(true, data.message, data.already_used);
-    } else {
-      callback(false, data.message, false);
-      if (!silent) {
-        // Si el codigo fue usado en otro dispositivo, limpiar localStorage
-        if (data.anti_resell) {
-          localStorage.removeItem('tipfactory_unlocked');
-          localStorage.removeItem('tipfactory_code');
-          sessionUnlocked = false;
-          sessionCode = '';
-        }
-      }
-    }
-  })
-  .catch(function(error) {
-    console.error('Error validating code:', error);
-    // Fallback: si no hay conexion, permitir si ya estaba desbloqueado
-    if (sessionUnlocked && sessionCode === code) {
-      callback(true, 'Modo offline - acceso permitido', true);
-    } else {
-      callback(false, 'Error de conexion. Intenta de nuevo.', false);
     }
   });
 }
@@ -790,4 +779,29 @@ document.addEventListener('DOMContentLoaded', function () {
   loadMatches();
   // Verificar estado de desbloqueo al cargar
   checkUnlockStatus();
+});
+
+
+// Mostrar info de expiracion si hay codigo activo
+function showExpirationInfo() {
+  var expires = localStorage.getItem('tipfactory_expires');
+  if (expires && sessionUnlocked) {
+    var date = new Date(expires);
+    var now = new Date();
+    var daysLeft = Math.ceil((date - now) / (1000 * 60 * 60 * 24));
+    if (daysLeft > 0) {
+      console.log('Acceso activo. Expira en ' + daysLeft + ' dias (' + date.toLocaleDateString('es-ES') + ')');
+    } else {
+      console.log('Acceso expirado el ' + date.toLocaleDateString('es-ES'));
+      localStorage.removeItem('tipfactory_unlocked');
+      localStorage.removeItem('tipfactory_code');
+      localStorage.removeItem('tipfactory_expires');
+      sessionUnlocked = false;
+    }
+  }
+}
+
+// Verificar expiracion al cargar
+document.addEventListener('DOMContentLoaded', function() {
+  showExpirationInfo();
 });
