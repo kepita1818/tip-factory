@@ -13,7 +13,7 @@ services:
       - key: RENDER
         value: "true"
       - key: DAILY_API_LIMIT
-        value: "100"  # Free tier API-Football = 100/día. Cambiar a 7500 para Pro tier.
+        value: "7500"  # Free tier API-Football = 100/día. Cambiar a 7500 para Pro tier.
       # Para mantener despierto en free tier:
       # 1. Self-ping interno (ya activado en código)
       # 2. UptimeRobot: https://uptimerobot.com (gratis, ping cada 5 min)
@@ -32,4 +32,4 @@ services:
       - key: API_FOOTBALL_KEY
         sync: false
       - key: DAILY_API_LIMIT
-        value: "100"
+        value: "7500"
