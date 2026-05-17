@@ -639,136 +639,94 @@ body {
 }
 
 
-/* ===== TAB CONTENT WRAPPER (para posicionar overlay) ===== */
-.tab-content-wrapper {
-  position: relative;
-  min-height: 300px;
-}
-
-.tab-real-content {
-  /* El contenido real siempre se renderiza */
-  transition: filter 0.3s ease;
-}
-
-/* Cuando hay paywall, el contenido real se ve borroso */
-.tab-content-wrapper.locked .tab-real-content {
-  filter: blur(6px);
-  pointer-events: none;
-  user-select: none;
-}
-
-/* ===== PAYWALL OVERLAY ===== */
-.paywall-overlay {
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  display: none; /* Oculto por defecto */
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  padding: 20px 16px;
-  z-index: 100;
-}
-
-.paywall-overlay.active {
-  display: flex;
-}
-
-/* Fondo borroso del overlay */
-.paywall-blur-bg {
-  position: absolute;
-  inset: 0;
-  background: rgba(10, 22, 40, 0.75);
-  backdrop-filter: blur(4px);
-  -webkit-backdrop-filter: blur(4px);
-  z-index: 1;
-}
-
-/* Caja de contenido del overlay */
-.paywall-content-box {
-  position: relative;
-  z-index: 2;
+/* ===== ERROR / LOADING STATES ===== */
+.loading {
+  padding: 40px 16px;
   text-align: center;
-  width: 100%;
-  max-width: 340px;
-  background: linear-gradient(180deg, rgba(17, 29, 50, 0.95) 0%, rgba(10, 22, 40, 0.98) 100%);
-  border: 1px solid rgba(59, 130, 246, 0.25);
-  border-radius: 16px;
-  padding: 24px 20px;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
-}
-
-.paywall-lock {
-  font-size: 36px;
-  margin-bottom: 8px;
-}
-
-.paywall-title {
-  font-size: 18px;
-  font-weight: 800;
-  color: #fff;
-  margin-bottom: 4px;
-}
-
-.paywall-subtitle {
-  font-size: 12px;
   color: var(--muted);
-  margin-bottom: 16px;
-  line-height: 1.4;
+  font-size: 13px;
 }
 
-.paywall-features {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  margin-bottom: 20px;
-  text-align: left;
-  padding: 0 4px;
+.loading::after {
+  content: '';
+  display: block;
+  width: 24px;
+  height: 24px;
+  border: 2px solid var(--line);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  margin: 12px auto 0;
+  animation: spin 1s linear infinite;
 }
 
-.paywall-feature {
-  font-size: 12px;
-  color: var(--text);
-  display: flex;
-  align-items: center;
-  gap: 6px;
+@keyframes spin {
+  to { transform: rotate(360deg); }
 }
 
-.paywall-btn {
+.no-matches {
+  padding: 40px 20px;
+  text-align: center;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.no-matches button {
+  margin-top: 12px;
+  padding: 10px 20px;
   background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
   color: #fff;
   border: none;
-  border-radius: 24px;
-  padding: 14px 32px;
-  font-size: 14px;
-  font-weight: 800;
-  letter-spacing: 0.5px;
+  border-radius: 10px;
   cursor: pointer;
-  width: 100%;
-  max-width: 280px;
-  margin: 0 auto;
-  transition: transform 0.15s ease, box-shadow 0.15s ease;
-  box-shadow: 0 4px 15px rgba(59, 130, 246, 0.4);
+  font-size: 13px;
+  font-weight: 700;
+  transition: transform 0.15s ease;
 }
 
-.paywall-btn:active {
+.no-matches button:active {
   transform: scale(0.97);
 }
 
-.paywall-note {
-  font-size: 10px;
+/* ===== PREDICTION ERROR ===== */
+.prediction-error {
+  text-align: center;
+  padding: 20px;
   color: var(--muted);
-  margin-top: 10px;
 }
 
-/* Cuando está desbloqueado, ocultar overlay */
-.tab-content-wrapper.unlocked .paywall-overlay {
-  display: none !important;
+.prediction-error button {
+  margin-top: 12px;
+  padding: 10px 20px;
+  background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+  color: #fff;
+  border: none;
+  border-radius: 10px;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 700;
 }
 
-.tab-content-wrapper.unlocked .tab-real-content {
-  filter: none;
-  pointer-events: auto;
+/* ===== RATE LIMIT WARNING BAR ===== */
+.rate-limit-bar {
+  background: linear-gradient(90deg, rgba(239, 68, 68, 0.15) 0%, rgba(234, 179, 8, 0.15) 50%, rgba(34, 197, 94, 0.15) 100%);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 8px 12px;
+  margin: 8px 16px;
+  font-size: 11px;
+  color: var(--muted);
+  text-align: center;
+}
+
+.rate-limit-bar.warning {
+  background: rgba(234, 179, 8, 0.15);
+  border-color: rgba(234, 179, 8, 0.3);
+  color: #eab308;
+}
+
+.rate-limit-bar.danger {
+  background: rgba(239, 68, 68, 0.15);
+  border-color: rgba(239, 68, 68, 0.3);
+  color: #ef4444;
 }
