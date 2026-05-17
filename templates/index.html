@@ -32,20 +32,17 @@
 
     <!-- ANALYSIS SCREEN -->
     <section class="section hidden" id="analysis-section">
-      <!-- Back button + title -->
       <div class="analysis-top-bar">
         <button class="back-arrow" id="back-btn">&#10094;</button>
         <span class="analysis-top-title">Análisis del partido</span>
       </div>
 
-      <!-- Match title card -->
       <div class="match-title-card">
         <h2 id="match-title">Local vs Visitante</h2>
         <div class="match-subtitle" id="analysis-subtitle">Liga</div>
         <div class="match-meta" id="match-meta">Hora de inicio: --:--</div>
       </div>
 
-      <!-- Tabs -->
       <div class="tabs">
         <button class="tab-btn active" data-tab="resumen">General</button>
         <button class="tab-btn" data-tab="goles">Goles</button>
@@ -55,9 +52,8 @@
 
       <!-- TAB: RESUMEN -->
       <div class="tab-content active" id="tab-resumen">
-        <div class="tab-content-wrapper">
+        <div class="tab-content-wrapper" id="wrapper-resumen">
           <div class="tab-real-content">
-            <!-- Teams card -->
             <div class="card teams-card">
               <div class="teams-row">
                 <div class="team-block">
@@ -77,150 +73,96 @@
                 <div class="form-badges" id="away-form-badges"></div>
               </div>
             </div>
-
-            <!-- Prediction box -->
             <div class="card prediction-card">
               <div class="card-title">🔮 Predicción API-Football</div>
               <div id="prediction-box">
                 <div class="prediction-loading">Cargando predicción...</div>
               </div>
             </div>
-
-            <!-- Probabilities grid -->
             <div class="card prob-grid-card">
               <div class="prob-grid" id="prob-grid"></div>
             </div>
-
-            <!-- Mini stats -->
             <div class="card">
               <div class="card-title">Mini stats</div>
               <div class="mini-stats-grid" id="mini-stats-grid"></div>
             </div>
           </div>
-          <!-- OVERLAY SIMPLE: solo blur + botón -->
+          <!-- OVERLAY CON INPUT DE CÓDIGO -->
           <div class="paywall-overlay" id="paywall-resumen">
             <div class="paywall-blur-bg"></div>
-            <button class="paywall-btn-simple" onclick="alert('Redirigiendo a pago...')">OBTENER ACCESO</button>
+            <div class="paywall-box">
+              <button class="paywall-btn-telegram" onclick="goToTelegram()">💬 OBTENER ACCESO</button>
+              <div class="paywall-or">o introduce tu código</div>
+              <input type="text" class="paywall-input" id="code-input-resumen" placeholder="Código de desbloqueo" maxlength="10">
+              <button class="paywall-btn-unlock" onclick="unlockWithCode('resumen')">🔓 DESBLOQUEAR</button>
+              <div class="paywall-error" id="code-error-resumen"></div>
+            </div>
           </div>
         </div>
       </div>
 
       <!-- TAB: GOLES -->
       <div class="tab-content" id="tab-goles">
-        <div class="tab-content-wrapper">
+        <div class="tab-content-wrapper" id="wrapper-goles">
           <div class="tab-real-content">
             <div class="card">
               <div class="card-title">Tendencias de goles</div>
               <table class="stats-table" id="goals-table">
-                <thead>
-                  <tr>
-                    <th>Métrica</th>
-                    <th id="goals-home-header">Local</th>
-                    <th id="goals-away-header">Visitante</th>
-                    <th>Media</th>
-                  </tr>
-                </thead>
+                <thead><tr><th>Métrica</th><th id="goals-home-header">Local</th><th id="goals-away-header">Visitante</th><th>Media</th></tr></thead>
                 <tbody id="goals-table-body"></tbody>
               </table>
             </div>
           </div>
           <div class="paywall-overlay" id="paywall-goles">
             <div class="paywall-blur-bg"></div>
-            <button class="paywall-btn-simple" onclick="alert('Redirigiendo a pago...')">OBTENER ACCESO</button>
+            <div class="paywall-box">
+              <button class="paywall-btn-telegram" onclick="goToTelegram()">💬 OBTENER ACCESO</button>
+              <div class="paywall-or">o introduce tu código</div>
+              <input type="text" class="paywall-input" id="code-input-goles" placeholder="Código de desbloqueo" maxlength="10">
+              <button class="paywall-btn-unlock" onclick="unlockWithCode('goles')">🔓 DESBLOQUEAR</button>
+              <div class="paywall-error" id="code-error-goles"></div>
+            </div>
           </div>
         </div>
       </div>
 
       <!-- TAB: CORNERS -->
       <div class="tab-content" id="tab-corners">
-        <div class="tab-content-wrapper">
+        <div class="tab-content-wrapper" id="wrapper-corners">
           <div class="tab-real-content">
-            <div class="card">
-              <div class="card-title">Corners ganados</div>
-              <table class="stats-table" id="corners-table">
-                <thead>
-                  <tr>
-                    <th>Métrica</th>
-                    <th id="corners-home-header">Local</th>
-                    <th id="corners-away-header">Visitante</th>
-                    <th>Media</th>
-                  </tr>
-                </thead>
-                <tbody id="corners-table-body"></tbody>
-              </table>
-            </div>
-            <div class="card">
-              <div class="card-title">Córners en contra</div>
-              <table class="stats-table" id="corners-conceded-table">
-                <thead>
-                  <tr>
-                    <th>Métrica</th>
-                    <th id="corners-conceded-home-header">Local</th>
-                    <th id="corners-conceded-away-header">Visitante</th>
-                    <th>Media</th>
-                  </tr>
-                </thead>
-                <tbody id="corners-conceded-body"></tbody>
-              </table>
-            </div>
-            <div class="card">
-              <div class="card-title">Total de córners</div>
-              <table class="stats-table" id="total-corners-table">
-                <thead>
-                  <tr>
-                    <th>Línea</th>
-                    <th>Local</th>
-                    <th>Visitante</th>
-                    <th>Media</th>
-                  </tr>
-                </thead>
-                <tbody id="total-corners-body"></tbody>
-              </table>
-            </div>
+            <div class="card"><div class="card-title">Corners ganados</div><table class="stats-table" id="corners-table"><thead><tr><th>Métrica</th><th id="corners-home-header">Local</th><th id="corners-away-header">Visitante</th><th>Media</th></tr></thead><tbody id="corners-table-body"></tbody></table></div>
+            <div class="card"><div class="card-title">Córners en contra</div><table class="stats-table" id="corners-conceded-table"><thead><tr><th>Métrica</th><th id="corners-conceded-home-header">Local</th><th id="corners-conceded-away-header">Visitante</th><th>Media</th></tr></thead><tbody id="corners-conceded-body"></tbody></table></div>
+            <div class="card"><div class="card-title">Total de córners</div><table class="stats-table" id="total-corners-table"><thead><tr><th>Línea</th><th>Local</th><th>Visitante</th><th>Media</th></tr></thead><tbody id="total-corners-body"></tbody></table></div>
           </div>
           <div class="paywall-overlay" id="paywall-corners">
             <div class="paywall-blur-bg"></div>
-            <button class="paywall-btn-simple" onclick="alert('Redirigiendo a pago...')">OBTENER ACCESO</button>
+            <div class="paywall-box">
+              <button class="paywall-btn-telegram" onclick="goToTelegram()">💬 OBTENER ACCESO</button>
+              <div class="paywall-or">o introduce tu código</div>
+              <input type="text" class="paywall-input" id="code-input-corners" placeholder="Código de desbloqueo" maxlength="10">
+              <button class="paywall-btn-unlock" onclick="unlockWithCode('corners')">🔓 DESBLOQUEAR</button>
+              <div class="paywall-error" id="code-error-corners"></div>
+            </div>
           </div>
         </div>
       </div>
 
       <!-- TAB: TARJETAS -->
       <div class="tab-content" id="tab-tarjetas">
-        <div class="tab-content-wrapper">
+        <div class="tab-content-wrapper" id="wrapper-tarjetas">
           <div class="tab-real-content">
-            <div class="card">
-              <div class="card-title">Tarjetas por equipo</div>
-              <table class="stats-table" id="cards-table">
-                <thead>
-                  <tr>
-                    <th>Métrica</th>
-                    <th id="cards-home-header">Local</th>
-                    <th id="cards-away-header">Visitante</th>
-                    <th>Media</th>
-                  </tr>
-                </thead>
-                <tbody id="cards-table-body"></tbody>
-              </table>
-            </div>
-            <div class="card">
-              <div class="card-title">Total de tarjetas</div>
-              <table class="stats-table" id="total-cards-table">
-                <thead>
-                  <tr>
-                    <th>Línea</th>
-                    <th>Local</th>
-                    <th>Visitante</th>
-                    <th>Media</th>
-                  </tr>
-                </thead>
-                <tbody id="total-cards-body"></tbody>
-              </table>
-            </div>
+            <div class="card"><div class="card-title">Tarjetas por equipo</div><table class="stats-table" id="cards-table"><thead><tr><th>Métrica</th><th id="cards-home-header">Local</th><th id="cards-away-header">Visitante</th><th>Media</th></tr></thead><tbody id="cards-table-body"></tbody></table></div>
+            <div class="card"><div class="card-title">Total de tarjetas</div><table class="stats-table" id="total-cards-table"><thead><tr><th>Línea</th><th>Local</th><th>Visitante</th><th>Media</th></tr></thead><tbody id="total-cards-body"></tbody></table></div>
           </div>
           <div class="paywall-overlay" id="paywall-tarjetas">
             <div class="paywall-blur-bg"></div>
-            <button class="paywall-btn-simple" onclick="alert('Redirigiendo a pago...')">OBTENER ACCESO</button>
+            <div class="paywall-box">
+              <button class="paywall-btn-telegram" onclick="goToTelegram()">💬 OBTENER ACCESO</button>
+              <div class="paywall-or">o introduce tu código</div>
+              <input type="text" class="paywall-input" id="code-input-tarjetas" placeholder="Código de desbloqueo" maxlength="10">
+              <button class="paywall-btn-unlock" onclick="unlockWithCode('tarjetas')">🔓 DESBLOQUEAR</button>
+              <div class="paywall-error" id="code-error-tarjetas"></div>
+            </div>
           </div>
         </div>
       </div>
