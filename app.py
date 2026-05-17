@@ -1320,6 +1320,38 @@ def trigger_precache():
 def ping():
     return {"status": "ok", "time": datetime.now().isoformat()}
 
+
+# ===== CÓDIGOS DE DESBLOQUEO =====
+# Tú defines estos códigos. Cuando alguien paga, le das uno.
+VALID_CODES = {
+    "TF2026A": {"used": False, "created": "2026-05-17"},
+    "TF2026B": {"used": False, "created": "2026-05-17"},
+    "TF2026C": {"used": False, "created": "2026-05-17"},
+    "VIP001": {"used": False, "created": "2026-05-17"},
+    "VIP002": {"used": False, "created": "2026-05-17"},
+}
+
+@app.post("/api/validate-code")
+def validate_code(code: str = Query(...)):
+    """Valida un código de desbloqueo"""
+    code = code.upper().strip()
+    if code in VALID_CODES:
+        if VALID_CODES[code]["used"]:
+            return {"valid": False, "message": "Código ya usado"}
+        VALID_CODES[code]["used"] = True
+        return {"valid": True, "message": "Código válido"}
+    return {"valid": False, "message": "Código inválido"}
+
+@app.get("/api/codes-status")
+def codes_status():
+    """Estado de los códigos (solo para admin)"""
+    return {
+        "codes": VALID_CODES,
+        "total": len(VALID_CODES),
+        "used": sum(1 for v in VALID_CODES.values() if v["used"]),
+        "available": sum(1 for v in VALID_CODES.values() if not v["used"])
+    }
+
 @app.get("/health")
 def health():
     # Contar archivos de cache en disco
