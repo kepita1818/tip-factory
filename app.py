@@ -413,7 +413,7 @@ def get_fixture_events(fixture_id):
 # ESTADÍSTICAS REALES DEL EQUIPO
 # ============================================================
 
-def get_team_real_stats(team_id, league_id, season, max_fixtures=10):
+def get_team_real_stats(team_id, league_id, season, max_fixtures=20):
     if not team_id or not league_id or not season:
         return None
 
@@ -936,7 +936,7 @@ def precache_daily_data():
         
         fixtures_data = api_get(
             "fixtures",
-            params={"league": league_id, "season": season, "last": 10, "status": "ft"},
+            params={"league": league_id, "season": season, "last": 20, "status": "ft"},
             cache_key=f"precache_teams_{code}_{season}",
             ttl=86400
         )
@@ -954,7 +954,7 @@ def precache_daily_data():
         
         for team_id in team_ids:
             try:
-                stats = get_team_real_stats(team_id, league_id, season, max_fixtures=10)
+                stats = get_team_real_stats(team_id, league_id, season, max_fixtures=20)
                 if stats:
                     logger.info(f"Cached team {team_id}")
             except Exception as e:
@@ -1100,9 +1100,9 @@ def analyze(
     # Si no hay cache, obtener en tiempo real (PARALELO)
     if not home_stats or not away_stats:
         def fetch_home():
-            return get_team_real_stats(home_id, league_id, season, max_fixtures=10) if league_id else None
+            return get_team_real_stats(home_id, league_id, season, max_fixtures=20) if league_id else None
         def fetch_away():
-            return get_team_real_stats(away_id, league_id, season, max_fixtures=10) if league_id else None
+            return get_team_real_stats(away_id, league_id, season, max_fixtures=20) if league_id else None
         
         with ThreadPoolExecutor(max_workers=2) as executor:
             home_future = executor.submit(fetch_home)
