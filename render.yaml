@@ -13,13 +13,11 @@ services:
       - key: RENDER
         value: "true"
       - key: DAILY_API_LIMIT
-        value: "7500"  # Free tier API-Football = 100/día. Cambiar a 7500 para Pro tier.
-      # Para mantener despierto en free tier:
-      # 1. Self-ping interno (ya activado en código)
-      # 2. UptimeRobot: https://uptimerobot.com (gratis, ping cada 5 min)
-      #    Añade monitor HTTP: https://tu-app.onrender.com/ping
-      # 3. cron-job.org: https://cron-job.org (gratis, ping cada 14 min)
-      #    URL: https://tu-app.onrender.com/ping
+        value: "7500"
+    # Keep-alive para evitar que Render duerma la app
+    healthCheckPath: /health
+    # Auto-deploy al hacer push
+    autoDeploy: true
 
   - type: cron
     name: tip-factory-precache
@@ -27,7 +25,7 @@ services:
     plan: free
     buildCommand: pip install -r requirements.txt
     startCommand: python -c "from app import precache_daily_data; precache_daily_data()"
-    schedule: "0 6,18 * * *"  # 6am y 6pm UTC
+    schedule: "0 6,18 * * *"
     envVars:
       - key: API_FOOTBALL_KEY
         sync: false
