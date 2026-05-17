@@ -6,8 +6,6 @@
   <title>TipFactory</title>
   <link rel="stylesheet" href="/static/css/style.css" />
 <base target="_blank">
-<base target="_blank">
-<base target="_blank">
 </head>
 <body>
   <div id="app">
@@ -57,253 +55,228 @@
 
       <!-- TAB: RESUMEN -->
       <div class="tab-content active" id="tab-resumen">
-
-        <!-- PAYWALL OVERLAY -->
-        <div class="paywall-overlay" id="paywall-overlay">
-          <div class="paywall-blur"></div>
-          <div class="paywall-content">
-            <div class="paywall-lock">🔒</div>
-            <div class="paywall-title">Contenido Premium</div>
-            <div class="paywall-subtitle">Análisis avanzado con estadísticas reales de +20 partidos</div>
-            <div class="paywall-features">
-              <div class="paywall-feature">✓ Probabilidades de goles, corners y tarjetas</div>
-              <div class="paywall-feature">✓ Forma real del equipo (últimos 20 partidos)</div>
-              <div class="paywall-feature">✓ Predicciones API-Football</div>
-              <div class="paywall-feature">✓ Sin límite de análisis diarios</div>
+        <div class="tab-content-wrapper">
+          <!-- CONTENIDO REAL (renderizado siempre, se ve borroso si no hay acceso) -->
+          <div class="tab-real-content">
+            <!-- Teams card -->
+            <div class="card teams-card">
+              <div class="teams-row">
+                <div class="team-block">
+                  <img id="home-logo" src="" alt="Local">
+                  <span class="team-label" id="home-name">Local</span>
+                  <span class="team-role">Local</span>
+                </div>
+                <div class="vs-center">VS</div>
+                <div class="team-block">
+                  <img id="away-logo" src="" alt="Visitante">
+                  <span class="team-label" id="away-name">Visitante</span>
+                  <span class="team-role">Visitante</span>
+                </div>
+              </div>
+              <div class="form-row">
+                <div class="form-badges" id="home-form-badges"></div>
+                <div class="form-badges" id="away-form-badges"></div>
+              </div>
             </div>
-            <button class="paywall-btn" id="paywall-btn" onclick="unlockContent()">OBTENER ACCESO</button>
-            <div class="paywall-note">Desbloquea análisis ilimitados</div>
-          </div>
-        </div>
 
-        <!-- Teams card -->
-        <div class="card teams-card">
-          <div class="teams-row">
-            <div class="team-block">
-              <img id="home-logo" src="" alt="Local">
-              <span class="team-label" id="home-name">Local</span>
-              <span class="team-role">Local</span>
+            <!-- Prediction box -->
+            <div class="card prediction-card">
+              <div class="card-title">🔮 Predicción API-Football</div>
+              <div id="prediction-box">
+                <div class="prediction-loading">Cargando predicción...</div>
+              </div>
             </div>
-            <div class="vs-center">VS</div>
-            <div class="team-block">
-              <img id="away-logo" src="" alt="Visitante">
-              <span class="team-label" id="away-name">Visitante</span>
-              <span class="team-role">Visitante</span>
+
+            <!-- Probabilities grid -->
+            <div class="card prob-grid-card">
+              <div class="prob-grid" id="prob-grid"></div>
+            </div>
+
+            <!-- Mini stats -->
+            <div class="card">
+              <div class="card-title">Mini stats</div>
+              <div class="mini-stats-grid" id="mini-stats-grid"></div>
             </div>
           </div>
-          <div class="form-row">
-            <div class="form-badges" id="home-form-badges"></div>
-            <div class="form-badges" id="away-form-badges"></div>
+
+          <!-- PAYWALL OVERLAY (posicionado absolutamente encima) -->
+          <div class="paywall-overlay" id="paywall-resumen">
+            <div class="paywall-blur-bg"></div>
+            <div class="paywall-content-box">
+              <div class="paywall-lock">🔒</div>
+              <div class="paywall-title">Contenido Premium</div>
+              <div class="paywall-subtitle">Análisis avanzado con estadísticas reales de +20 partidos</div>
+              <div class="paywall-features">
+                <div class="paywall-feature">✓ Probabilidades de goles, corners y tarjetas</div>
+                <div class="paywall-feature">✓ Forma real del equipo (últimos 20 partidos)</div>
+                <div class="paywall-feature">✓ Predicciones API-Football</div>
+                <div class="paywall-feature">✓ Sin límite de análisis diarios</div>
+              </div>
+              <button class="paywall-btn" onclick="unlockContent()">OBTENER ACCESO</button>
+              <div class="paywall-note">Desbloquea análisis ilimitados</div>
+            </div>
           </div>
-        </div>
-
-        <!-- Prediction box (reemplaza GPT) -->
-        <div class="card prediction-card">
-          <div class="card-title">🔮 Predicción API-Football</div>
-          <div id="prediction-box">
-            <div class="prediction-loading">Cargando predicción...</div>
-          </div>
-        </div>
-
-        <!-- Probabilities grid -->
-        <div class="card prob-grid-card">
-          <div class="prob-grid" id="prob-grid"></div>
-        </div>
-
-        <!-- Mini stats -->
-        <div class="card">
-          <div class="card-title">Mini stats</div>
-          <div class="mini-stats-grid" id="mini-stats-grid"></div>
         </div>
       </div>
 
       <!-- TAB: GOLES -->
       <div class="tab-content" id="tab-goles">
-
-        <!-- PAYWALL OVERLAY -->
-        <div class="paywall-overlay" id="paywall-overlay">
-          <div class="paywall-blur"></div>
-          <div class="paywall-content">
-            <div class="paywall-lock">🔒</div>
-            <div class="paywall-title">Contenido Premium</div>
-            <div class="paywall-subtitle">Análisis avanzado con estadísticas reales de +20 partidos</div>
-            <div class="paywall-features">
-              <div class="paywall-feature">✓ Probabilidades de goles, corners y tarjetas</div>
-              <div class="paywall-feature">✓ Forma real del equipo (últimos 20 partidos)</div>
-              <div class="paywall-feature">✓ Predicciones API-Football</div>
-              <div class="paywall-feature">✓ Sin límite de análisis diarios</div>
+        <div class="tab-content-wrapper">
+          <div class="tab-real-content">
+            <div class="card">
+              <div class="card-title">Tendencias de goles</div>
+              <table class="stats-table" id="goals-table">
+                <thead>
+                  <tr>
+                    <th>Métrica</th>
+                    <th id="goals-home-header">Local</th>
+                    <th id="goals-away-header">Visitante</th>
+                    <th>Media</th>
+                  </tr>
+                </thead>
+                <tbody id="goals-table-body"></tbody>
+              </table>
             </div>
-            <button class="paywall-btn" id="paywall-btn" onclick="unlockContent()">OBTENER ACCESO</button>
-            <div class="paywall-note">Desbloquea análisis ilimitados</div>
           </div>
-        </div>
-
-        <div class="card">
-          <div class="card-title">Tendencias de goles</div>
-          <table class="stats-table" id="goals-table">
-            <thead>
-              <tr>
-                <th>Métrica</th>
-                <th id="goals-home-header">Local</th>
-                <th id="goals-away-header">Visitante</th>
-                <th>Media</th>
-              </tr>
-            </thead>
-            <tbody id="goals-table-body"></tbody>
-          </table>
+          <div class="paywall-overlay" id="paywall-goles">
+            <div class="paywall-blur-bg"></div>
+            <div class="paywall-content-box">
+              <div class="paywall-lock">🔒</div>
+              <div class="paywall-title">Contenido Premium</div>
+              <div class="paywall-subtitle">Análisis avanzado con estadísticas reales de +20 partidos</div>
+              <div class="paywall-features">
+                <div class="paywall-feature">✓ Probabilidades de goles, corners y tarjetas</div>
+                <div class="paywall-feature">✓ Forma real del equipo (últimos 20 partidos)</div>
+                <div class="paywall-feature">✓ Predicciones API-Football</div>
+                <div class="paywall-feature">✓ Sin límite de análisis diarios</div>
+              </div>
+              <button class="paywall-btn" onclick="unlockContent()">OBTENER ACCESO</button>
+              <div class="paywall-note">Desbloquea análisis ilimitados</div>
+            </div>
+          </div>
         </div>
       </div>
 
       <!-- TAB: CORNERS -->
       <div class="tab-content" id="tab-corners">
-
-        <!-- PAYWALL OVERLAY -->
-        <div class="paywall-overlay" id="paywall-overlay">
-          <div class="paywall-blur"></div>
-          <div class="paywall-content">
-            <div class="paywall-lock">🔒</div>
-            <div class="paywall-title">Contenido Premium</div>
-            <div class="paywall-subtitle">Análisis avanzado con estadísticas reales de +20 partidos</div>
-            <div class="paywall-features">
-              <div class="paywall-feature">✓ Probabilidades de goles, corners y tarjetas</div>
-              <div class="paywall-feature">✓ Forma real del equipo (últimos 20 partidos)</div>
-              <div class="paywall-feature">✓ Predicciones API-Football</div>
-              <div class="paywall-feature">✓ Sin límite de análisis diarios</div>
+        <div class="tab-content-wrapper">
+          <div class="tab-real-content">
+            <div class="card">
+              <div class="card-title">Corners ganados</div>
+              <table class="stats-table" id="corners-table">
+                <thead>
+                  <tr>
+                    <th>Métrica</th>
+                    <th id="corners-home-header">Local</th>
+                    <th id="corners-away-header">Visitante</th>
+                    <th>Media</th>
+                  </tr>
+                </thead>
+                <tbody id="corners-table-body"></tbody>
+              </table>
             </div>
-            <button class="paywall-btn" id="paywall-btn" onclick="unlockContent()">OBTENER ACCESO</button>
-            <div class="paywall-note">Desbloquea análisis ilimitados</div>
+            <div class="card">
+              <div class="card-title">Córners en contra</div>
+              <table class="stats-table" id="corners-conceded-table">
+                <thead>
+                  <tr>
+                    <th>Métrica</th>
+                    <th id="corners-conceded-home-header">Local</th>
+                    <th id="corners-conceded-away-header">Visitante</th>
+                    <th>Media</th>
+                  </tr>
+                </thead>
+                <tbody id="corners-conceded-body"></tbody>
+              </table>
+            </div>
+            <div class="card">
+              <div class="card-title">Total de córners</div>
+              <table class="stats-table" id="total-corners-table">
+                <thead>
+                  <tr>
+                    <th>Línea</th>
+                    <th>Local</th>
+                    <th>Visitante</th>
+                    <th>Media</th>
+                  </tr>
+                </thead>
+                <tbody id="total-corners-body"></tbody>
+              </table>
+            </div>
           </div>
-        </div>
-
-        <div class="card">
-          <div class="card-title">Corners ganados</div>
-          <table class="stats-table" id="corners-table">
-            <thead>
-              <tr>
-                <th>Métrica</th>
-                <th id="corners-home-header">Local</th>
-                <th id="corners-away-header">Visitante</th>
-                <th>Media</th>
-              </tr>
-            </thead>
-            <tbody id="corners-table-body"></tbody>
-          </table>
-        </div>
-        <div class="card">
-          <div class="card-title">Córners en contra</div>
-          <table class="stats-table" id="corners-conceded-table">
-            <thead>
-              <tr>
-                <th>Métrica</th>
-                <th id="corners-conceded-home-header">Local</th>
-                <th id="corners-conceded-away-header">Visitante</th>
-                <th>Media</th>
-              </tr>
-            </thead>
-            <tbody id="corners-conceded-body"></tbody>
-          </table>
-        </div>
-        <div class="card">
-          <div class="card-title">Total de córners</div>
-          <table class="stats-table" id="total-corners-table">
-            <thead>
-              <tr>
-                <th>Línea</th>
-                <th>Local</th>
-                <th>Visitante</th>
-                <th>Media</th>
-              </tr>
-            </thead>
-            <tbody id="total-corners-body"></tbody>
-          </table>
+          <div class="paywall-overlay" id="paywall-corners">
+            <div class="paywall-blur-bg"></div>
+            <div class="paywall-content-box">
+              <div class="paywall-lock">🔒</div>
+              <div class="paywall-title">Contenido Premium</div>
+              <div class="paywall-subtitle">Análisis avanzado con estadísticas reales de +20 partidos</div>
+              <div class="paywall-features">
+                <div class="paywall-feature">✓ Probabilidades de goles, corners y tarjetas</div>
+                <div class="paywall-feature">✓ Forma real del equipo (últimos 20 partidos)</div>
+                <div class="paywall-feature">✓ Predicciones API-Football</div>
+                <div class="paywall-feature">✓ Sin límite de análisis diarios</div>
+              </div>
+              <button class="paywall-btn" onclick="unlockContent()">OBTENER ACCESO</button>
+              <div class="paywall-note">Desbloquea análisis ilimitados</div>
+            </div>
+          </div>
         </div>
       </div>
 
       <!-- TAB: TARJETAS -->
       <div class="tab-content" id="tab-tarjetas">
-
-        <!-- PAYWALL OVERLAY -->
-        <div class="paywall-overlay" id="paywall-overlay">
-          <div class="paywall-blur"></div>
-          <div class="paywall-content">
-            <div class="paywall-lock">🔒</div>
-            <div class="paywall-title">Contenido Premium</div>
-            <div class="paywall-subtitle">Análisis avanzado con estadísticas reales de +20 partidos</div>
-            <div class="paywall-features">
-              <div class="paywall-feature">✓ Probabilidades de goles, corners y tarjetas</div>
-              <div class="paywall-feature">✓ Forma real del equipo (últimos 20 partidos)</div>
-              <div class="paywall-feature">✓ Predicciones API-Football</div>
-              <div class="paywall-feature">✓ Sin límite de análisis diarios</div>
+        <div class="tab-content-wrapper">
+          <div class="tab-real-content">
+            <div class="card">
+              <div class="card-title">Tarjetas por equipo</div>
+              <table class="stats-table" id="cards-table">
+                <thead>
+                  <tr>
+                    <th>Métrica</th>
+                    <th id="cards-home-header">Local</th>
+                    <th id="cards-away-header">Visitante</th>
+                    <th>Media</th>
+                  </tr>
+                </thead>
+                <tbody id="cards-table-body"></tbody>
+              </table>
             </div>
-            <button class="paywall-btn" id="paywall-btn" onclick="unlockContent()">OBTENER ACCESO</button>
-            <div class="paywall-note">Desbloquea análisis ilimitados</div>
+            <div class="card">
+              <div class="card-title">Total de tarjetas</div>
+              <table class="stats-table" id="total-cards-table">
+                <thead>
+                  <tr>
+                    <th>Línea</th>
+                    <th>Local</th>
+                    <th>Visitante</th>
+                    <th>Media</th>
+                  </tr>
+                </thead>
+                <tbody id="total-cards-body"></tbody>
+              </table>
+            </div>
           </div>
-        </div>
-
-        <div class="card">
-          <div class="card-title">Tarjetas por equipo</div>
-          <table class="stats-table" id="cards-table">
-            <thead>
-              <tr>
-                <th>Métrica</th>
-                <th id="cards-home-header">Local</th>
-                <th id="cards-away-header">Visitante</th>
-                <th>Media</th>
-              </tr>
-            </thead>
-            <tbody id="cards-table-body"></tbody>
-          </table>
-        </div>
-        <div class="card">
-          <div class="card-title">Total de tarjetas</div>
-          <table class="stats-table" id="total-cards-table">
-            <thead>
-              <tr>
-                <th>Línea</th>
-                <th>Local</th>
-                <th>Visitante</th>
-                <th>Media</th>
-              </tr>
-            </thead>
-            <tbody id="total-cards-body"></tbody>
-          </table>
+          <div class="paywall-overlay" id="paywall-tarjetas">
+            <div class="paywall-blur-bg"></div>
+            <div class="paywall-content-box">
+              <div class="paywall-lock">🔒</div>
+              <div class="paywall-title">Contenido Premium</div>
+              <div class="paywall-subtitle">Análisis avanzado con estadísticas reales de +20 partidos</div>
+              <div class="paywall-features">
+                <div class="paywall-feature">✓ Probabilidades de goles, corners y tarjetas</div>
+                <div class="paywall-feature">✓ Forma real del equipo (últimos 20 partidos)</div>
+                <div class="paywall-feature">✓ Predicciones API-Football</div>
+                <div class="paywall-feature">✓ Sin límite de análisis diarios</div>
+              </div>
+              <button class="paywall-btn" onclick="unlockContent()">OBTENER ACCESO</button>
+              <div class="paywall-note">Desbloquea análisis ilimitados</div>
+            </div>
+          </div>
         </div>
       </div>
     </section>
   </div>
 
   <script src="/static/js/app.js"></script>
-
-  <script>
-    // PAYWALL LOGIC
-    var isUnlocked = localStorage.getItem('tipfactory_unlocked') === 'true';
-
-    function checkPaywall() {
-      var overlays = document.querySelectorAll('.paywall-overlay');
-      overlays.forEach(function(overlay) {
-        if (isUnlocked) {
-          overlay.style.display = 'none';
-        } else {
-          overlay.style.display = 'flex';
-        }
-      });
-    }
-
-    function unlockContent() {
-      // Aquí iría la integración con Stripe/PayPal
-      // Por ahora simulamos el desbloqueo
-      alert('Redirigiendo a pasarela de pago...
-
-Precios:
-• 1 mes: 9.99€
-• 3 meses: 24.99€
-• 1 año: 79.99€');
-      // En producción: window.location.href = '/checkout';
-    }
-
-    // Verificar paywall al cargar y al cambiar de pestaña
-    document.addEventListener('DOMContentLoaded', checkPaywall);
-  </script>
-
 </body>
 </html>
