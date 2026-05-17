@@ -38,6 +38,39 @@ CACHE = {}
 REQUEST_COUNT = {"total": 0, "today": datetime.now().date(), "by_endpoint": {}}
 RATE_LIMIT = {"remaining": None, "limit": None, "reset": None}
 
+# === RATE LIMIT PROTECTION ===
+DAILY_REQUEST_LIMIT = int(os.getenv("DAILY_API_LIMIT", "100"))  # Free tier = 100/día
+SAFE_REQUEST_BUFFER = 20  # Dejar margen de seguridad
+
+def can_make_api_request():
+    """Verifica si podemos hacer una petición sin quedarnos sin límite"""
+    today = datetime.now().date()
+    if REQUEST_COUNT["today"] != today:
+        REQUEST_COUNT["total"] = 0
+        REQUEST_COUNT["by_endpoint"] = {}
+        REQUEST_COUNT["today"] = today
+
+    remaining = DAILY_REQUEST_LIMIT - REQUEST_COUNT["total"]
+
+    # Si sabemos el límite real de la API, usar el más restrictivo
+    if RATE_LIMIT.get("remaining"):
+        try:
+            api_remaining = int(RATE_LIMIT["remaining"])
+            remaining = min(remaining, api_remaining)
+        except:
+            pass
+
+    return remaining > SAFE_REQUEST_BUFFER
+
+def get_requests_remaining():
+    """Devuelve cuántas peticiones nos quedan hoy"""
+    today = datetime.now().date()
+    if REQUEST_COUNT["today"] != today:
+        return DAILY_REQUEST_LIMIT
+    return max(0, DAILY_REQUEST_LIMIT - REQUEST_COUNT["total"])
+
+
+
 # === CACHE EN DISCO (para persistencia entre reinicios) ===
 CACHE_DIR = "/tmp/tipfactory_cache"
 os.makedirs(CACHE_DIR, exist_ok=True)
@@ -176,16 +209,22 @@ def track_request(endpoint):
     REQUEST_COUNT["total"] += 1
     REQUEST_COUNT["by_endpoint"][endpoint] = REQUEST_COUNT["by_endpoint"].get(endpoint, 0) + 1
 
-def api_get(endpoint, params=None, cache_key=None, ttl=3600):
+def api_get(endpoint, params=None, cache_key=None, ttl=3600, force=False):
+    # 1. Intentar cache PRIMERO (siempre)
     if cache_key:
         cached = cache_get(cache_key, ttl)
         if cached is not None:
             return cached
 
+    # 2. Verificar rate limit (a menos que sea force=True)
+    if not force and not can_make_api_request():
+        logger.warning(f"RATE LIMIT PROTECTION: skipping {endpoint} (remaining: {get_requests_remaining()})")
+        return None
+
     try:
         url = f"{BASE_URL}/{endpoint.lstrip('/')}/"
         track_request(endpoint)
-        logger.info(f"API CALL #{REQUEST_COUNT['total']}: {url} | params={params}")
+        logger.info(f"API CALL #{REQUEST_COUNT['total']}/{DAILY_REQUEST_LIMIT}: {url} | params={params}")
         resp = requests.get(url, headers=HEADERS, params=params, timeout=30)
 
         RATE_LIMIT["remaining"] = resp.headers.get("x-ratelimit-requests-remaining")
@@ -878,28 +917,46 @@ def format_fixture(f):
 # ============================================================
 
 def precache_daily_data():
-    """Precarga fixtures y stats para los próximos días"""
+    """Precarga fixtures y stats para los próximos días - CONSERVADOR"""
     logger.info("=" * 60)
-    logger.info("INICIANDO PRECARGA DIARIA")
+    logger.info("INICIANDO PRECARGA DIARIA (modo conservador)")
+    logger.info(f"Límite diario: {DAILY_REQUEST_LIMIT} | Usadas hoy: {REQUEST_COUNT['total']}")
     logger.info("=" * 60)
-    
+
+    if not can_make_api_request():
+        logger.warning("RATE LIMIT ALCANZADO - Saltando precache")
+        return
+
     season = get_season()
     today = datetime.now(timezone.utc).date()
-    dates = [(today + timedelta(days=i)).strftime("%Y-%m-%d") for i in range(3)]
-    
-    # 1. Precargar fixtures
+    dates = [(today + timedelta(days=i)).strftime("%Y-%m-%d") for i in range(2)]  # Solo hoy y mañana
+
+    # 1. Precargar fixtures (solo ligas TOP para ahorrar peticiones)
+    TOP_COMPETITIONS_FOR_PRECACHE = [
+        "PL", "PD", "SA", "BL1", "FL1",  # Top 5 Europa
+        "CL", "EL",                       # Champions/Europa
+        "BSA", "ARG", "MLS", "MX"         # Sudamérica + NA
+    ]
+
     for date_str in dates:
+        if not can_make_api_request():
+            logger.warning("RATE LIMIT ALCANZADO durante precache de fixtures")
+            break
+
         logger.info(f"Precaching fixtures for {date_str}...")
         all_matches = []
-        
-        with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
+
+        # Solo precargar ligas top (ahorra ~80% de peticiones)
+        with ThreadPoolExecutor(max_workers=3) as executor:  # Menos workers = menos peticiones simultáneas
             future_to_code = {}
-            for code in DEFAULT_COMPETITIONS:
+            for code in TOP_COMPETITIONS_FOR_PRECACHE:
+                if not can_make_api_request():
+                    break
                 league_id = get_league_id(code)
                 if league_id:
                     future = executor.submit(get_fixtures_by_date, date_str, league_id, season)
                     future_to_code[future] = code
-            
+
             for future in as_completed(future_to_code):
                 code = future_to_code[future]
                 try:
@@ -908,7 +965,7 @@ def precache_daily_data():
                         all_matches.extend([format_fixture(f) for f in fixtures])
                 except Exception as e:
                     logger.error(f"Error precaching {code}: {e}")
-        
+
         seen = set()
         unique = []
         for m in all_matches:
@@ -916,34 +973,45 @@ def precache_daily_data():
                 seen.add(m["id"])
                 unique.append(m)
         unique.sort(key=lambda x: x.get("utcDate", ""))
-        
+
         save_cached_fixtures(date_str, {
             "matches": unique,
             "competitions_found": [{"code": c, "name": COMPETITIONS.get(c, c)} for c in set(m.get("competition", {}).get("id", "") for m in unique)],
             "date": date_str
         })
         logger.info(f"Saved {len(unique)} fixtures for {date_str}")
-    
-    # 2. Precargar stats para ligas top
-    top_leagues = ["PL", "PD", "SA", "BL1", "FL1", "CL", "BSA", "ARG", "MLS", "MX"]
-    
+
+    # 2. Precargar stats para ligas top (solo si quedan peticiones)
+    if not can_make_api_request():
+        logger.warning("RATE LIMIT ALCANZADO - Saltando precache de stats")
+        logger.info("=" * 60)
+        logger.info("PRECARGA DIARIA COMPLETADA (parcial por rate limit)")
+        logger.info("=" * 60)
+        return
+
+    top_leagues = ["PL", "PD", "SA", "BL1", "FL1"]
+
     for code in top_leagues:
+        if not can_make_api_request():
+            logger.warning(f"RATE LIMIT ALCANZADO - Precache de stats detenido en {code}")
+            break
+
         league_id = get_league_id(code)
         if not league_id:
             continue
-        
+
         logger.info(f"Precaching team stats for {code}...")
-        
+
         fixtures_data = api_get(
             "fixtures",
-            params={"league": league_id, "season": season, "last": 20, "status": "ft"},
+            params={"league": league_id, "season": season, "last": 5, "status": "ft"},  # Solo 5 partidos para ahorrar
             cache_key=f"precache_teams_{code}_{season}",
             ttl=86400
         )
-        
+
         if not fixtures_data:
             continue
-        
+
         team_ids = set()
         for f in fixtures_data.get("response", []):
             teams = f.get("teams", {})
@@ -951,19 +1019,25 @@ def precache_daily_data():
                 team_ids.add(teams["home"]["id"])
             if teams.get("away", {}).get("id"):
                 team_ids.add(teams["away"]["id"])
-        
+
+        # Limitar a máximo 10 equipos por liga para ahorrar peticiones
+        team_ids = list(team_ids)[:10]
+
         for team_id in team_ids:
+            if not can_make_api_request():
+                logger.warning(f"RATE LIMIT ALCANZADO - Stats detenido")
+                break
             try:
-                stats = get_team_real_stats(team_id, league_id, season, max_fixtures=20)
+                stats = get_team_real_stats(team_id, league_id, season, max_fixtures=5)
                 if stats:
                     logger.info(f"Cached team {team_id}")
             except Exception as e:
                 logger.error(f"Error precaching team {team_id}: {e}")
-        
+
         logger.info(f"Precached {len(team_ids)} teams for {code}")
-    
+
     logger.info("=" * 60)
-    logger.info("PRECARGA DIARIA COMPLETADA")
+    logger.info(f"PRECARGA DIARIA COMPLETADA - Peticiones usadas: {REQUEST_COUNT['total']}/{DAILY_REQUEST_LIMIT}")
     logger.info("=" * 60)
 
 # ============================================================
@@ -1285,6 +1359,11 @@ def trigger_precache():
         "time": datetime.now().isoformat()
     }
 
+@app.get("/ping")
+def ping():
+    """Endpoint ultra-ligero para keep-alive (UptimeRobot, cron-job.org)"""
+    return {"status": "ok", "time": datetime.now().isoformat()}
+
 @app.get("/health")
 def health():
     # Contar archivos de cache en disco
@@ -1307,14 +1386,8 @@ def health():
         "rate_limit_total": RATE_LIMIT.get("limit")
     }
 
-@app.get("/ping")
-def ping():
-    """Endpoint ultra-ligero para keep-alive (UptimeRobot, cron-job.org)"""
-    return {"status": "ok", "time": datetime.now().isoformat()}
-
-
-
-
+# ============================================================
+# STARTUP: Precarga automática al iniciar
 # ============================================================
 # SELF KEEP-ALIVE (para Render free tier)
 # ============================================================
@@ -1349,9 +1422,19 @@ async def startup_event():
     def run_precache():
         time.sleep(3)  # Esperar a que el servidor arranque
         precache_daily_data()
-    
+
+    def run_keepalive():
+        time.sleep(5)
+        self_ping_loop()
+
     thread = threading.Thread(target=run_precache, daemon=True)
     thread.start()
+
+    # Solo en Render: iniciar self-ping para mantener despierto
+    if os.getenv("RENDER"):
+        keepalive_thread = threading.Thread(target=run_keepalive, daemon=True)
+        keepalive_thread.start()
+        logger.info("Self keep-alive activado para Render free tier")
 
 if __name__ == "__main__":
     import uvicorn
