@@ -701,6 +701,7 @@ function openAnalysis(card) {
 
   showAnalysis();
   activateTab('resumen');
+  checkPaywall();
 
   var box = getEl('prediction-box');
   if (box) box.innerHTML = '<div class="prediction-loading">Cargando predicción...</div>';
@@ -720,11 +721,43 @@ function openAnalysis(card) {
       renderCornersTable(data);
       renderCardsTable(data);
       renderPrediction(data);
+      checkPaywall();
     })
     .catch(function (error) {
       if (box) box.innerHTML = '<div class="prediction-error">Error: ' + error.message + '</div>';
     });
 }
+
+
+// ===== PAYWALL FUNCTIONS =====
+var isUnlocked = localStorage.getItem('tipfactory_unlocked') === 'true';
+
+function checkPaywall() {
+  var overlays = document.querySelectorAll('.paywall-overlay');
+  for (var i = 0; i < overlays.length; i++) {
+    if (isUnlocked) {
+      overlays[i].style.display = 'none';
+    } else {
+      overlays[i].style.display = 'flex';
+    }
+  }
+}
+
+function unlockContent() {
+  // Aquí iría la integración con Stripe/PayPal
+  // Por ahora simulamos el desbloqueo para testing
+  if (confirm('🔓 DEMO: ¿Desbloquear contenido?
+
+En producción esto redirigiría a Stripe/PayPal')) {
+    localStorage.setItem('tipfactory_unlocked', 'true');
+    isUnlocked = true;
+    checkPaywall();
+    alert('✅ Contenido desbloqueado (modo demo)');
+  }
+}
+
+// Hacer unlockContent global para el onclick del HTML
+window.unlockContent = unlockContent;
 
 document.addEventListener('DOMContentLoaded', function () {
   updateDateDisplay();
