@@ -639,94 +639,53 @@ body {
 }
 
 
-/* ===== ERROR / LOADING STATES ===== */
-.loading {
-  padding: 40px 16px;
-  text-align: center;
-  color: var(--muted);
-  font-size: 13px;
+/* ===== PAYWALL OVERLAY SIMPLE (como la foto) ===== */
+.tab-content-wrapper {
+  position: relative;
 }
 
-.loading::after {
-  content: '';
-  display: block;
-  width: 24px;
-  height: 24px;
-  border: 2px solid var(--line);
-  border-top-color: var(--accent);
-  border-radius: 50%;
-  margin: 12px auto 0;
-  animation: spin 1s linear infinite;
+.tab-real-content {
+  filter: blur(6px);
+  pointer-events: none;
+  user-select: none;
 }
 
-@keyframes spin {
-  to { transform: rotate(360deg); }
+.paywall-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
 }
 
-.no-matches {
-  padding: 40px 20px;
-  text-align: center;
-  color: var(--muted);
-  font-size: 13px;
-  line-height: 1.5;
+.paywall-blur-bg {
+  position: absolute;
+  inset: 0;
+  background: rgba(10, 22, 40, 0.4);
+  backdrop-filter: blur(2px);
+  -webkit-backdrop-filter: blur(2px);
 }
 
-.no-matches button {
-  margin-top: 12px;
-  padding: 10px 20px;
-  background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+.paywall-btn-simple {
+  position: relative;
+  z-index: 2;
+  background: rgba(30, 30, 30, 0.9);
   color: #fff;
   border: none;
-  border-radius: 10px;
-  cursor: pointer;
-  font-size: 13px;
+  border-radius: 24px;
+  padding: 14px 32px;
+  font-size: 14px;
   font-weight: 700;
+  letter-spacing: 0.5px;
+  cursor: pointer;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
   transition: transform 0.15s ease;
 }
 
-.no-matches button:active {
+.paywall-btn-simple:active {
   transform: scale(0.97);
-}
-
-/* ===== PREDICTION ERROR ===== */
-.prediction-error {
-  text-align: center;
-  padding: 20px;
-  color: var(--muted);
-}
-
-.prediction-error button {
-  margin-top: 12px;
-  padding: 10px 20px;
-  background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
-  color: #fff;
-  border: none;
-  border-radius: 10px;
-  cursor: pointer;
-  font-size: 13px;
-  font-weight: 700;
-}
-
-/* ===== RATE LIMIT WARNING BAR ===== */
-.rate-limit-bar {
-  background: linear-gradient(90deg, rgba(239, 68, 68, 0.15) 0%, rgba(234, 179, 8, 0.15) 50%, rgba(34, 197, 94, 0.15) 100%);
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  padding: 8px 12px;
-  margin: 8px 16px;
-  font-size: 11px;
-  color: var(--muted);
-  text-align: center;
-}
-
-.rate-limit-bar.warning {
-  background: rgba(234, 179, 8, 0.15);
-  border-color: rgba(234, 179, 8, 0.3);
-  color: #eab308;
-}
-
-.rate-limit-bar.danger {
-  background: rgba(239, 68, 68, 0.15);
-  border-color: rgba(239, 68, 68, 0.3);
-  color: #ef4444;
 }
