@@ -32,14 +32,11 @@ MAX_WORKERS = 10
 # Ligas más importantes (prioridad para precarga de stats)
 TOP_LEAGUES = [
     "PL", "PD", "SA", "BL1", "FL1",      # Top 5 Europa
-    "ELC", "SP", "SI", "SD", "FL2",      # Segundas divisiones Europa
-    "PPL", "DED", "BE", "CH", "DK", "NO", "FI", "CZ", "GR", "TR",  # Otras Europa
     "CL", "EL", "ECL",                    # Europa
-    "BSA", "BRA_B", "ARG", "ARG_B", "COL", "CHI", "URU", "PAR", "ECU", "PER",  # Sudamérica
-    "MLS", "MX", "MX_B",                  # Norteamérica
-    "JP", "JP_B", "KR", "KR_B", "CN",     # Asia
-    "AU_A", "SA_A",                       # Asia/Oceanía
-    "EG", "ZA", "MA", "TN"                # África
+    "BSA", "ARG", "COL", "CHI", "URU",   # Sudamérica
+    "MLS", "MX",                          # Norteamérica
+    "JP", "KR",                           # Asia
+    "EG", "ZA"                            # África
 ]
 
 def precache_fixtures():
