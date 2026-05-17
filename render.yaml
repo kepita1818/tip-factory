@@ -10,6 +10,13 @@ services:
         sync: false
       - key: PORT
         value: 8000
+      - key: RENDER
+        value: "true"
+      # Para mantener despierto en free tier:
+      # 1. Self-ping interno (automático)
+      # 2. UptimeRobot: https://uptimerobot.com (gratis, ping cada 5 min)
+      # 3. cron-job.org: https://cron-job.org (gratis, ping cada 14 min)
+      # Endpoint a pingear: https://tu-app.onrender.com/ping
 
   - type: cron
     name: tip-factory-precache
